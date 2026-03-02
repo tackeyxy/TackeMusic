@@ -7,14 +7,22 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
+import com.tacke.music.data.api.ChartType
+import com.tacke.music.data.api.HighQualityPlaylist
+import com.tacke.music.data.api.PlaylistTag
+import com.tacke.music.data.api.RetrofitClient
+import com.tacke.music.data.model.ChartSong
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityMainBinding
+import com.tacke.music.ui.adapter.PlaylistTagAdapter
+import com.tacke.music.ui.adapter.RecommendPlaylistAdapter
 import com.tacke.music.ui.adapter.SongAdapter
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playlist.PlaylistManager
@@ -45,6 +53,30 @@ class MainActivity : AppCompatActivity() {
         MusicRepository.Platform.NETEASE to "网易"
     )
 
+    // 榜单数据缓存
+    private var chartSongsMap = mutableMapOf<ChartType, List<ChartSong>>()
+    private val chartTitles = mapOf(
+        ChartType.SOARING to "飙升榜",
+        ChartType.NEW to "新歌榜",
+        ChartType.ORIGINAL to "原创榜",
+        ChartType.HOT to "热歌榜"
+    )
+    private val chartSubtitles = mapOf(
+        ChartType.SOARING to "热度飙升",
+        ChartType.NEW to "最新发布",
+        ChartType.ORIGINAL to "原创作品",
+        ChartType.HOT to "全网热门"
+    )
+
+    // 推荐歌单相关
+    private lateinit var playlistTagAdapter: PlaylistTagAdapter
+    private lateinit var recommendPlaylistAdapter: RecommendPlaylistAdapter
+    private var playlistTags: List<PlaylistTag> = emptyList()
+    private var currentPlaylistCategory = "全部"
+    private var playlistLastTime: Long = 0
+    private var isLoadingPlaylists = false
+    private var hasMorePlaylists = true
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -54,10 +86,14 @@ class MainActivity : AppCompatActivity() {
         playlistRepository = PlaylistRepository(this)
         playlistManager = PlaylistManager.getInstance(this)
         setupRecyclerView()
+        setupPlaylistRecyclerView()
         setupClickListeners()
         setupBatchActionListeners()
         setupBottomNavigation()
+        setupChartCards()
         updateSourceSelectorText()
+        loadAllChartData()
+        loadPlaylistTags()
     }
 
     override fun onBackPressed() {
@@ -206,9 +242,329 @@ class MainActivity : AppCompatActivity() {
         binding.tvSourceSelector.setOnClickListener {
             showSourceSelectorDialog()
         }
+    }
 
-        // 热门推荐卡片点击
-        // 可以添加具体的点击事件处理
+    private fun setupChartCards() {
+        // 飙升榜 - 点击进入详情
+        binding.cardSoaring.setOnClickListener {
+            openChartDetail(ChartType.SOARING)
+        }
+
+        // 飙升榜前三首歌曲点击播放
+        binding.songSoaring1.setOnClickListener {
+            playChartSong(ChartType.SOARING, 0)
+        }
+        binding.songSoaring2.setOnClickListener {
+            playChartSong(ChartType.SOARING, 1)
+        }
+        binding.songSoaring3.setOnClickListener {
+            playChartSong(ChartType.SOARING, 2)
+        }
+
+        // 新歌榜 - 点击进入详情
+        binding.cardNew.setOnClickListener {
+            openChartDetail(ChartType.NEW)
+        }
+
+        // 新歌榜前三首歌曲点击播放
+        binding.songNew1.setOnClickListener {
+            playChartSong(ChartType.NEW, 0)
+        }
+        binding.songNew2.setOnClickListener {
+            playChartSong(ChartType.NEW, 1)
+        }
+        binding.songNew3.setOnClickListener {
+            playChartSong(ChartType.NEW, 2)
+        }
+
+        // 原创榜 - 点击进入详情
+        binding.cardOriginal.setOnClickListener {
+            openChartDetail(ChartType.ORIGINAL)
+        }
+
+        // 原创榜前三首歌曲点击播放
+        binding.songOriginal1.setOnClickListener {
+            playChartSong(ChartType.ORIGINAL, 0)
+        }
+        binding.songOriginal2.setOnClickListener {
+            playChartSong(ChartType.ORIGINAL, 1)
+        }
+        binding.songOriginal3.setOnClickListener {
+            playChartSong(ChartType.ORIGINAL, 2)
+        }
+
+        // 热歌榜 - 点击进入详情
+        binding.cardHot.setOnClickListener {
+            openChartDetail(ChartType.HOT)
+        }
+
+        // 热歌榜前三首歌曲点击播放
+        binding.songHot1.setOnClickListener {
+            playChartSong(ChartType.HOT, 0)
+        }
+        binding.songHot2.setOnClickListener {
+            playChartSong(ChartType.HOT, 1)
+        }
+        binding.songHot3.setOnClickListener {
+            playChartSong(ChartType.HOT, 2)
+        }
+    }
+
+    private fun playChartSong(chartType: ChartType, index: Int) {
+        val songs = chartSongsMap[chartType]
+        if (songs.isNullOrEmpty() || index >= songs.size) {
+            Toast.makeText(this, "歌曲数据加载中，请稍后再试", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val song = songs[index]
+        lifecycleScope.launch {
+            binding.progressBar.visibility = View.VISIBLE
+            try {
+                val platform = when (song.source.lowercase()) {
+                    "kuwo" -> MusicRepository.Platform.KUWO
+                    "netease" -> MusicRepository.Platform.NETEASE
+                    else -> MusicRepository.Platform.KUWO
+                }
+
+                val detail = withContext(Dispatchers.IO) {
+                    repository.getSongDetail(platform, song.id, "320k")
+                }
+
+                if (detail != null) {
+                    PlayerActivity.start(
+                        context = this@MainActivity,
+                        songId = song.id,
+                        songName = song.name,
+                        songArtists = song.artist,
+                        platform = platform,
+                        songUrl = detail.url,
+                        songCover = detail.cover,
+                        songLyrics = detail.lyrics
+                    )
+                } else {
+                    Toast.makeText(this@MainActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "播放失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                binding.progressBar.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun openChartDetail(chartType: ChartType) {
+        ChartDetailActivity.start(
+            this,
+            chartType,
+            chartTitles[chartType] ?: "",
+            chartSubtitles[chartType] ?: ""
+        )
+    }
+
+    private fun loadAllChartData() {
+        lifecycleScope.launch {
+            ChartType.values().forEach { chartType ->
+                launch {
+                    try {
+                        val response = withContext(Dispatchers.IO) {
+                            RetrofitClient.chartApi.getChartList(chartType.value)
+                        }
+                        if (response.code == 200 && response.data != null) {
+                            chartSongsMap[chartType] = response.data
+                            updateChartCardPreview(chartType, response.data)
+                        }
+                    } catch (e: Exception) {
+                        // 加载失败，使用默认文本
+                    }
+                }
+            }
+        }
+    }
+
+    private fun updateChartCardPreview(chartType: ChartType, songs: List<ChartSong>) {
+        val top3 = songs.take(3)
+        if (top3.isEmpty()) return
+
+        runOnUiThread {
+            when (chartType) {
+                ChartType.SOARING -> {
+                    updateChartCardTexts(
+                        binding.cardSoaring,
+                        top3
+                    )
+                }
+                ChartType.NEW -> {
+                    updateChartCardTexts(
+                        binding.cardNew,
+                        top3
+                    )
+                }
+                ChartType.ORIGINAL -> {
+                    updateChartCardTexts(
+                        binding.cardOriginal,
+                        top3
+                    )
+                }
+                ChartType.HOT -> {
+                    updateChartCardTexts(
+                        binding.cardHot,
+                        top3
+                    )
+                }
+            }
+        }
+    }
+
+    private fun updateChartCardTexts(cardView: android.view.View, songs: List<ChartSong>) {
+        // 获取卡片内的TextView并更新文本
+        val container = cardView as? android.view.ViewGroup ?: return
+        val linearLayout = container.getChildAt(0) as? android.view.ViewGroup ?: return
+
+        // 找到包含歌曲列表的LinearLayout（最后一个子View）
+        val songListLayout = linearLayout.getChildAt(linearLayout.childCount - 1) as? android.view.ViewGroup
+            ?: return
+
+        // 更新前三首歌曲的显示
+        for (i in 0 until minOf(3, songs.size)) {
+            val songLayout = songListLayout.getChildAt(i) as? android.view.ViewGroup ?: continue
+            val textView = songLayout.getChildAt(1) as? android.widget.TextView ?: continue
+            textView.text = "${i + 1}. ${songs[i].name}"
+        }
+    }
+
+    // ==================== 推荐歌单相关方法 ====================
+
+    private fun setupPlaylistRecyclerView() {
+        // 设置风格标签RecyclerView
+        playlistTagAdapter = PlaylistTagAdapter { tag ->
+            currentPlaylistCategory = tag.name
+            playlistLastTime = 0
+            hasMorePlaylists = true
+            recommendPlaylistAdapter.submitList(emptyList())
+            loadRecommendPlaylists(tag.name, isLoadMore = false)
+        }
+
+        binding.rvPlaylistTags.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        binding.rvPlaylistTags.adapter = playlistTagAdapter
+
+        // 设置推荐歌单RecyclerView - 使用GridLayoutManager，每行2列
+        recommendPlaylistAdapter = RecommendPlaylistAdapter { playlist ->
+            openPlaylistDetail(playlist)
+        }
+
+        val gridLayoutManager = GridLayoutManager(this, 2)
+        binding.rvRecommendPlaylists.layoutManager = gridLayoutManager
+        binding.rvRecommendPlaylists.adapter = recommendPlaylistAdapter
+
+        // 添加滚动监听，实现加载更多
+        binding.rvRecommendPlaylists.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(recyclerView, dx, dy)
+
+                if (dy > 0 && !isLoadingPlaylists && hasMorePlaylists) {
+                    val layoutManager = recyclerView.layoutManager as GridLayoutManager
+                    val visibleItemCount = layoutManager.childCount
+                    val totalItemCount = layoutManager.itemCount
+                    val firstVisibleItemPosition = layoutManager.findFirstVisibleItemPosition()
+
+                    // 当滚动到最后几个项目时触发加载更多
+                    if ((visibleItemCount + firstVisibleItemPosition) >= totalItemCount - 4) {
+                        loadMorePlaylists()
+                    }
+                }
+            }
+        })
+    }
+
+    private fun loadPlaylistTags() {
+        lifecycleScope.launch {
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    RetrofitClient.playlistApi.getPlaylistTags()
+                }
+                if (response.code == 200 && response.tags != null) {
+                    // 添加"全部"标签到列表开头，显示所有标签
+                    val allTag = PlaylistTag(0, "全部", 0, 0)
+                    playlistTags = listOf(allTag) + response.tags
+                    playlistTagAdapter.submitList(playlistTags)
+
+                    // 默认加载全部歌单
+                    loadRecommendPlaylists("全部", isLoadMore = false)
+                }
+            } catch (e: Exception) {
+                // 加载失败时使用默认标签
+                val defaultTags = listOf(
+                    PlaylistTag(0, "全部", 0, 0),
+                    PlaylistTag(1, "华语", 1, 0),
+                    PlaylistTag(2, "欧美", 1, 0),
+                    PlaylistTag(3, "电子", 1, 0),
+                    PlaylistTag(4, "轻音乐", 1, 0),
+                    PlaylistTag(5, "古风", 1, 0)
+                )
+                playlistTags = defaultTags
+                playlistTagAdapter.submitList(defaultTags)
+                loadRecommendPlaylists("全部", isLoadMore = false)
+            }
+        }
+    }
+
+    private fun loadRecommendPlaylists(category: String, isLoadMore: Boolean = false) {
+        if (isLoadingPlaylists) return
+
+        isLoadingPlaylists = true
+        if (isLoadMore) {
+            binding.progressBarPlaylistLoadMore.visibility = View.VISIBLE
+        }
+
+        lifecycleScope.launch {
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    RetrofitClient.playlistApi.getHighQualityPlaylists(
+                        category = category,
+                        limit = 10,
+                        before = if (isLoadMore) playlistLastTime else 0
+                    )
+                }
+
+                if (response.code == 200 && response.playlists != null) {
+                    if (isLoadMore) {
+                        recommendPlaylistAdapter.addPlaylists(response.playlists)
+                    } else {
+                        recommendPlaylistAdapter.submitList(response.playlists)
+                    }
+
+                    // 更新最后时间戳，用于分页
+                    playlistLastTime = response.lasttime
+                    hasMorePlaylists = response.more
+                } else {
+                    hasMorePlaylists = false
+                }
+            } catch (e: Exception) {
+                hasMorePlaylists = false
+                if (!isLoadMore) {
+                    Toast.makeText(this@MainActivity, "加载歌单失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                isLoadingPlaylists = false
+                binding.progressBarPlaylistLoadMore.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun loadMorePlaylists() {
+        if (isLoadingPlaylists || !hasMorePlaylists) return
+        loadRecommendPlaylists(currentPlaylistCategory, isLoadMore = true)
+    }
+
+    private fun openPlaylistDetail(playlist: HighQualityPlaylist) {
+        // 跳转到网易云歌单详情页
+        NeteasePlaylistDetailActivity.start(
+            this,
+            playlist.id,
+            playlist.name,
+            playlist.coverImgUrl ?: ""
+        )
     }
 
     private fun showSourceSelectorDialog() {
