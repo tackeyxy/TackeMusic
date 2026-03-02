@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center"
+    android:paddingVertical="12dp">
+
+    <TextView
+        android:id="@+id/tvLyricLine"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="歌词内容"
+        android:textSize="16sp"
+        android:textColor="@color/white"
+        android:gravity="center"
+        android:maxLines="2"
+        android:ellipsize="end"
+        tools:text="这是一句歌词" />
+
+</LinearLayout>

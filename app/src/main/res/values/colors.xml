@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 浅色主题配色 - 乳白色背景 -->
+    <color name="background">#FFFDFBF7</color>
+    <color name="background_dark">#FFF5F3EF</color>
+    <color name="surface">#FFFFFFFF</color>
+    <color name="surface_light">#FFF8F6F2</color>
+    <color name="surface_card">#FFFDFBF7</color>
+
+    <!-- 主色调 - 蓝色/青色渐变 -->
+    <color name="primary">#FF2B7CD3</color>
+    <color name="primary_light">#FF5BA3F5</color>
+    <color name="primary_dark">#FF1A5FA8</color>
+    <color name="accent">#FF2B7CD3</color>
+    <color name="accent_cyan">#FF39D0D8</color>
+    <color name="accent_blue">#FF2B7CD3</color>
+    <color name="accent_purple">#FF8B5CF6</color>
+
+    <!-- 文字颜色 - 与乳白色背景高对比度 -->
+    <color name="text_primary">#FF1A1A1A</color>
+    <color name="text_secondary">#FF4A4A4A</color>
+    <color name="text_tertiary">#FF7A7A7A</color>
+    <color name="text_hint">#FFAAAAAA</color>
+    
+    <!-- 功能色 -->
+    <color name="error">#FFE53935</color>
+    <color name="vip_gold">#FFFFD700</color>
+    <color name="vip_gradient_start">#FFFFD700</color>
+    <color name="vip_gradient_end">#FFFFA500</color>
+    
+    <!-- 基础色 -->
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+    <color name="transparent">#00000000</color>
+    
+    <!-- 渐变背景色 - 适配浅色主题 -->
+    <color name="gradient_blue_start">#FFE3F2FD</color>
+    <color name="gradient_blue_end">#FFFDFBF7</color>
+    <color name="gradient_cyan_start">#FFE0F7FA</color>
+    <color name="gradient_cyan_end">#FFFDFBF7</color>
+
+    <!-- 分割线 - 适配浅色主题 -->
+    <color name="divider">#FFE0E0E0</color>
+    <color name="divider_light">#FFF0F0F0</color>
+    
+    <!-- 浅水蓝色背景 -->
+    <color name="light_cyan">#FFE0F7FA</color>
+    <color name="light_blue_cyan">#FFB2EBF2</color>
+    <color name="cyan_100">#FFB2EBF2</color>
+    <color name="cyan_50">#FFE0F7FA</color>
+
+    <!-- 浅色系颜色（用于浅色主题对话框） -->
+    <color name="text_primary_light">#FF212121</color>
+    <color name="text_secondary_light">#FF757575</color>
+    <color name="text_tertiary_light">#FF9E9E9E</color>
+    <color name="surface_light_theme">#FFFFFFFF</color>
+</resources>

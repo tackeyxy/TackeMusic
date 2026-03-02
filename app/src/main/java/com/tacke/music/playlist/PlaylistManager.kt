@@ -1,0 +1,274 @@
+package com.tacke.music.playlist
+
+import android.content.Context
+import com.tacke.music.data.db.AppDatabase
+import com.tacke.music.data.model.PlaylistSong
+import com.tacke.music.data.model.Song
+import com.tacke.music.data.preferences.PlaybackPreferences
+import com.tacke.music.data.repository.MusicRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+class PlaylistManager private constructor(context: Context) {
+
+    private val database = AppDatabase.getDatabase(context)
+    private val playlistSongDao = database.playlistSongDao()
+    private val playbackPreferences = PlaybackPreferences.getInstance(context)
+
+    // 当前播放列表
+    private val _currentPlaylist = MutableStateFlow<List<PlaylistSong>>(emptyList())
+    val currentPlaylist: StateFlow<List<PlaylistSong>> = _currentPlaylist.asStateFlow()
+
+    // 当前播放索引
+    private val _currentIndex = MutableStateFlow(0)
+    val currentIndex: StateFlow<Int> = _currentIndex.asStateFlow()
+
+    // 播放模式: 0-顺序播放, 1-随机播放, 2-单曲循环
+    private val _playMode = MutableStateFlow(0)
+    val playMode: StateFlow<Int> = _playMode.asStateFlow()
+
+    companion object {
+        @Volatile
+        private var instance: PlaylistManager? = null
+
+        fun getInstance(context: Context): PlaylistManager {
+            return instance ?: synchronized(this) {
+                instance ?: PlaylistManager(context.applicationContext).also {
+                    instance = it
+                }
+            }
+        }
+    }
+
+    init {
+        // 从持久化存储恢复状态
+        _playMode.value = playbackPreferences.playMode
+        _currentIndex.value = playbackPreferences.currentIndex
+    }
+
+    // 加载播放列表
+    suspend fun loadPlaylist() {
+        val playlist = playlistSongDao.getAllSongsSync()
+        _currentPlaylist.value = playlist
+    }
+
+    // 设置播放列表
+    suspend fun setPlaylist(songs: List<PlaylistSong>, startIndex: Int = 0) {
+        // 更新顺序索引
+        val songsWithOrder = songs.mapIndexed { index, song ->
+            song.copy(orderIndex = index)
+        }
+
+        // 清空并插入新列表
+        playlistSongDao.deleteAllSongs()
+        playlistSongDao.insertSongs(songsWithOrder)
+
+        _currentPlaylist.value = songsWithOrder
+        _currentIndex.value = startIndex.coerceIn(0, songsWithOrder.size.coerceAtLeast(1) - 1)
+
+        // 保存到Preferences
+        playbackPreferences.savePlaylist(songsWithOrder)
+        playbackPreferences.currentIndex = _currentIndex.value
+    }
+
+    // 添加歌曲到播放列表
+    suspend fun addSong(song: PlaylistSong) {
+        val currentList = _currentPlaylist.value.toMutableList()
+        if (currentList.none { it.id == song.id }) {
+            val newSong = song.copy(orderIndex = currentList.size)
+            currentList.add(newSong)
+            playlistSongDao.insertSong(newSong)
+            _currentPlaylist.value = currentList
+            playbackPreferences.savePlaylist(currentList)
+        }
+    }
+
+    // 从播放列表移除歌曲
+    suspend fun removeSong(songId: String) {
+        val currentList = _currentPlaylist.value.toMutableList()
+        val removedIndex = currentList.indexOfFirst { it.id == songId }
+
+        if (removedIndex != -1) {
+            val song = currentList[removedIndex]
+            currentList.removeAt(removedIndex)
+
+            // 更新剩余歌曲的顺序
+            val updatedList = currentList.mapIndexed { index, s ->
+                s.copy(orderIndex = index)
+            }
+
+            playlistSongDao.deleteSong(song)
+            playlistSongDao.insertSongs(updatedList)
+
+            _currentPlaylist.value = updatedList
+
+            // 调整当前索引
+            if (removedIndex < _currentIndex.value) {
+                _currentIndex.value = (_currentIndex.value - 1).coerceAtLeast(0)
+            } else if (removedIndex == _currentIndex.value && _currentIndex.value >= updatedList.size) {
+                _currentIndex.value = (updatedList.size - 1).coerceAtLeast(0)
+            }
+
+            playbackPreferences.savePlaylist(updatedList)
+            playbackPreferences.currentIndex = _currentIndex.value
+        }
+    }
+
+    // 清空播放列表
+    suspend fun clearPlaylist() {
+        playlistSongDao.deleteAllSongs()
+        _currentPlaylist.value = emptyList()
+        _currentIndex.value = 0
+        playbackPreferences.savePlaylist(emptyList())
+        playbackPreferences.currentIndex = 0
+    }
+
+    // 获取当前歌曲
+    fun getCurrentSong(): PlaylistSong? {
+        val playlist = _currentPlaylist.value
+        val index = _currentIndex.value
+        return if (playlist.isNotEmpty() && index in playlist.indices) {
+            playlist[index]
+        } else null
+    }
+
+    // 设置当前索引
+    fun setCurrentIndex(index: Int) {
+        val playlist = _currentPlaylist.value
+        if (playlist.isNotEmpty()) {
+            _currentIndex.value = index.coerceIn(0, playlist.size - 1)
+            playbackPreferences.currentIndex = _currentIndex.value
+        }
+    }
+
+    // 下一首
+    fun next(): PlaylistSong? {
+        val playlist = _currentPlaylist.value
+        if (playlist.isEmpty()) return null
+
+        return when (_playMode.value) {
+            2 -> { // 单曲循环，返回当前歌曲
+                getCurrentSong()
+            }
+            1 -> { // 随机播放
+                if (playlist.size == 1) {
+                    playlist[0]
+                } else {
+                    val randomIndex = (playlist.indices).random()
+                    _currentIndex.value = randomIndex
+                    playbackPreferences.currentIndex = randomIndex
+                    playlist[randomIndex]
+                }
+            }
+            else -> { // 顺序播放
+                val nextIndex = if (_currentIndex.value + 1 < playlist.size) {
+                    _currentIndex.value + 1
+                } else {
+                    0 // 循环到第一首
+                }
+                _currentIndex.value = nextIndex
+                playbackPreferences.currentIndex = nextIndex
+                playlist[nextIndex]
+            }
+        }
+    }
+
+    // 上一首
+    fun previous(): PlaylistSong? {
+        val playlist = _currentPlaylist.value
+        if (playlist.isEmpty()) return null
+
+        return when (_playMode.value) {
+            2 -> { // 单曲循环，返回当前歌曲
+                getCurrentSong()
+            }
+            1 -> { // 随机播放
+                if (playlist.size == 1) {
+                    playlist[0]
+                } else {
+                    val randomIndex = (playlist.indices).random()
+                    _currentIndex.value = randomIndex
+                    playbackPreferences.currentIndex = randomIndex
+                    playlist[randomIndex]
+                }
+            }
+            else -> { // 顺序播放
+                val prevIndex = if (_currentIndex.value - 1 >= 0) {
+                    _currentIndex.value - 1
+                } else {
+                    playlist.size - 1 // 循环到最后一首
+                }
+                _currentIndex.value = prevIndex
+                playbackPreferences.currentIndex = prevIndex
+                playlist[prevIndex]
+            }
+        }
+    }
+
+    // 设置播放模式
+    fun setPlayMode(mode: Int) {
+        _playMode.value = mode.coerceIn(0, 2)
+        playbackPreferences.playMode = _playMode.value
+    }
+
+    // 切换播放模式
+    fun togglePlayMode(): Int {
+        val newMode = (_playMode.value + 1) % 3
+        setPlayMode(newMode)
+        return newMode
+    }
+
+    // 获取播放模式名称
+    fun getPlayModeName(): String {
+        return when (_playMode.value) {
+            0 -> "顺序播放"
+            1 -> "随机播放"
+            2 -> "单曲循环"
+            else -> "顺序播放"
+        }
+    }
+
+    // 是否有下一首
+    fun hasNext(): Boolean {
+        val playlist = _currentPlaylist.value
+        return when (_playMode.value) {
+            2 -> true // 单曲循环总有下一首
+            1 -> playlist.size > 1 // 随机播放需要至少2首
+            else -> playlist.isNotEmpty() // 顺序播放只要有歌曲就可以循环
+        }
+    }
+
+    // 是否有上一首
+    fun hasPrevious(): Boolean {
+        return hasNext() // 逻辑相同
+    }
+
+    // 播放指定歌曲
+    suspend fun playSong(songId: String): PlaylistSong? {
+        val playlist = _currentPlaylist.value
+        val index = playlist.indexOfFirst { it.id == songId }
+        return if (index != -1) {
+            _currentIndex.value = index
+            playbackPreferences.currentIndex = index
+            playlist[index]
+        } else null
+    }
+
+    // 将Song转换为PlaylistSong
+    fun convertToPlaylistSong(song: Song, platform: MusicRepository.Platform): PlaylistSong {
+        return PlaylistSong(
+            id = song.id,
+            name = song.name,
+            artists = song.artists,
+            coverUrl = song.coverUrl,
+            platform = platform.name
+        )
+    }
+
+    // 获取播放列表Flow
+    fun getPlaylistFlow(): Flow<List<PlaylistSong>> {
+        return playlistSongDao.getAllSongs()
+    }
+}
