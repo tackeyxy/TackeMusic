@@ -171,15 +171,17 @@ class PlayerActivity : AppCompatActivity() {
         setupAlbumRotation()
         setupGestureDetector()
         setupSeekReceiver()
+        setupPlayer()
 
         // 启动并绑定服务
         val serviceIntent = Intent(this, MusicPlaybackService::class.java)
         startService(serviceIntent)
         bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
 
-        // 加载播放列表
+        // 加载播放列表并初始化播放模式图标
         lifecycleScope.launch {
             playlistManager.loadPlaylist()
+            updatePlayModeIcon()
         }
     }
 
@@ -227,6 +229,9 @@ class PlayerActivity : AppCompatActivity() {
                         binding.seekBar.max = duration.toInt()
                         binding.tvTotalTime.text = formatTime(duration)
                     }
+                } else if (playbackState == Player.STATE_ENDED) {
+                    // 播放完成，根据播放模式处理
+                    handlePlaybackEnded()
                 }
             }
 
@@ -254,6 +259,31 @@ class PlayerActivity : AppCompatActivity() {
                     updatePlayPauseButton(player.isPlaying)
                     // 发送播放进度广播给歌词页面
                     sendPlaybackUpdate(player.currentPosition, player.duration, player.isPlaying)
+                }
+            }
+        }
+    }
+
+    private fun handlePlaybackEnded() {
+        // 根据播放模式决定下一首行为
+        when (playlistManager.playMode.value) {
+            PlaylistManager.PLAY_MODE_REPEAT_ONE -> {
+                // 单曲循环：重新播放当前歌曲
+                exoPlayer?.seekTo(0)
+                exoPlayer?.play()
+            }
+            else -> {
+                // 其他模式：播放下一首
+                val nextSong = playlistManager.next()
+                if (nextSong != null) {
+                    lifecycleScope.launch {
+                        loadAndPlaySong(nextSong)
+                    }
+                } else {
+                    // 没有下一首（顺序播放到达末尾），重置到开始位置
+                    exoPlayer?.seekTo(0)
+                    updatePlayPauseButton(false)
+                    stopAlbumRotation()
                 }
             }
         }
@@ -594,8 +624,13 @@ class PlayerActivity : AppCompatActivity() {
                     player.pause()
                     stopAlbumRotation()
                 } else {
-                    player.play()
-                    startAlbumRotation()
+                    // 检查播放状态，如果已结束则重新播放或播放下一首
+                    if (player.playbackState == Player.STATE_ENDED) {
+                        handlePlaybackEnded()
+                    } else {
+                        player.play()
+                        startAlbumRotation()
+                    }
                 }
             }
         }
@@ -618,6 +653,7 @@ class PlayerActivity : AppCompatActivity() {
 
         binding.btnShuffle.setOnClickListener {
             val newMode = playlistManager.togglePlayMode()
+            updatePlayModeIcon()
             val modeName = playlistManager.getPlayModeName()
             Toast.makeText(this, modeName, Toast.LENGTH_SHORT).show()
         }
@@ -678,6 +714,9 @@ class PlayerActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 MusicRepository.Platform.KUWO
             }
+
+            // 标记为非空状态，这样播放控件才能正常使用
+            isFromEmptyState = false
 
             // 更新UI
             binding.tvSongName.text = songName
@@ -1160,6 +1199,18 @@ class PlayerActivity : AppCompatActivity() {
             putExtra(EXTRA_IS_PLAYING, isPlaying)
         }
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+    }
+
+    private fun updatePlayModeIcon() {
+        val playMode = playlistManager.playMode.value
+        val iconRes = when (playMode) {
+            PlaylistManager.PLAY_MODE_SEQUENTIAL -> R.drawable.ic_sequential
+            PlaylistManager.PLAY_MODE_SHUFFLE -> R.drawable.ic_shuffle
+            PlaylistManager.PLAY_MODE_REPEAT_LIST -> R.drawable.ic_repeat
+            PlaylistManager.PLAY_MODE_REPEAT_ONE -> R.drawable.ic_repeat_one
+            else -> R.drawable.ic_sequential
+        }
+        binding.btnShuffle.setImageResource(iconRes)
     }
 
     override fun onDestroy() {

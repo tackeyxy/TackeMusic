@@ -25,11 +25,16 @@ class PlaylistManager private constructor(context: Context) {
     private val _currentIndex = MutableStateFlow(0)
     val currentIndex: StateFlow<Int> = _currentIndex.asStateFlow()
 
-    // 播放模式: 0-顺序播放, 1-随机播放, 2-单曲循环
+    // 播放模式: 0-顺序播放, 1-随机播放, 2-列表循环, 3-单曲循环
     private val _playMode = MutableStateFlow(0)
     val playMode: StateFlow<Int> = _playMode.asStateFlow()
 
     companion object {
+        const val PLAY_MODE_SEQUENTIAL = 0  // 顺序播放
+        const val PLAY_MODE_SHUFFLE = 1     // 随机播放
+        const val PLAY_MODE_REPEAT_LIST = 2 // 列表循环
+        const val PLAY_MODE_REPEAT_ONE = 3  // 单曲循环
+
         @Volatile
         private var instance: PlaylistManager? = null
 
@@ -149,10 +154,10 @@ class PlaylistManager private constructor(context: Context) {
         if (playlist.isEmpty()) return null
 
         return when (_playMode.value) {
-            2 -> { // 单曲循环，返回当前歌曲
+            PLAY_MODE_REPEAT_ONE -> { // 单曲循环，返回当前歌曲
                 getCurrentSong()
             }
-            1 -> { // 随机播放
+            PLAY_MODE_SHUFFLE -> { // 随机播放
                 if (playlist.size == 1) {
                     playlist[0]
                 } else {
@@ -162,11 +167,21 @@ class PlaylistManager private constructor(context: Context) {
                     playlist[randomIndex]
                 }
             }
-            else -> { // 顺序播放
+            PLAY_MODE_REPEAT_LIST -> { // 列表循环
                 val nextIndex = if (_currentIndex.value + 1 < playlist.size) {
                     _currentIndex.value + 1
                 } else {
                     0 // 循环到第一首
+                }
+                _currentIndex.value = nextIndex
+                playbackPreferences.currentIndex = nextIndex
+                playlist[nextIndex]
+            }
+            else -> { // 顺序播放
+                val nextIndex = if (_currentIndex.value + 1 < playlist.size) {
+                    _currentIndex.value + 1
+                } else {
+                    return null // 顺序播放不循环，返回null
                 }
                 _currentIndex.value = nextIndex
                 playbackPreferences.currentIndex = nextIndex
@@ -181,10 +196,10 @@ class PlaylistManager private constructor(context: Context) {
         if (playlist.isEmpty()) return null
 
         return when (_playMode.value) {
-            2 -> { // 单曲循环，返回当前歌曲
+            PLAY_MODE_REPEAT_ONE -> { // 单曲循环，返回当前歌曲
                 getCurrentSong()
             }
-            1 -> { // 随机播放
+            PLAY_MODE_SHUFFLE -> { // 随机播放
                 if (playlist.size == 1) {
                     playlist[0]
                 } else {
@@ -194,11 +209,21 @@ class PlaylistManager private constructor(context: Context) {
                     playlist[randomIndex]
                 }
             }
-            else -> { // 顺序播放
+            PLAY_MODE_REPEAT_LIST -> { // 列表循环
                 val prevIndex = if (_currentIndex.value - 1 >= 0) {
                     _currentIndex.value - 1
                 } else {
                     playlist.size - 1 // 循环到最后一首
+                }
+                _currentIndex.value = prevIndex
+                playbackPreferences.currentIndex = prevIndex
+                playlist[prevIndex]
+            }
+            else -> { // 顺序播放
+                val prevIndex = if (_currentIndex.value - 1 >= 0) {
+                    _currentIndex.value - 1
+                } else {
+                    return null // 顺序播放不循环，返回null
                 }
                 _currentIndex.value = prevIndex
                 playbackPreferences.currentIndex = prevIndex
@@ -209,13 +234,13 @@ class PlaylistManager private constructor(context: Context) {
 
     // 设置播放模式
     fun setPlayMode(mode: Int) {
-        _playMode.value = mode.coerceIn(0, 2)
+        _playMode.value = mode.coerceIn(0, 3)
         playbackPreferences.playMode = _playMode.value
     }
 
     // 切换播放模式
     fun togglePlayMode(): Int {
-        val newMode = (_playMode.value + 1) % 3
+        val newMode = (_playMode.value + 1) % 4
         setPlayMode(newMode)
         return newMode
     }
@@ -223,9 +248,10 @@ class PlaylistManager private constructor(context: Context) {
     // 获取播放模式名称
     fun getPlayModeName(): String {
         return when (_playMode.value) {
-            0 -> "顺序播放"
-            1 -> "随机播放"
-            2 -> "单曲循环"
+            PLAY_MODE_SEQUENTIAL -> "顺序播放"
+            PLAY_MODE_SHUFFLE -> "随机播放"
+            PLAY_MODE_REPEAT_LIST -> "列表循环"
+            PLAY_MODE_REPEAT_ONE -> "单曲循环"
             else -> "顺序播放"
         }
     }
@@ -234,15 +260,22 @@ class PlaylistManager private constructor(context: Context) {
     fun hasNext(): Boolean {
         val playlist = _currentPlaylist.value
         return when (_playMode.value) {
-            2 -> true // 单曲循环总有下一首
-            1 -> playlist.size > 1 // 随机播放需要至少2首
-            else -> playlist.isNotEmpty() // 顺序播放只要有歌曲就可以循环
+            PLAY_MODE_REPEAT_ONE -> true // 单曲循环总有下一首
+            PLAY_MODE_SHUFFLE -> playlist.size > 1 // 随机播放需要至少2首
+            PLAY_MODE_REPEAT_LIST -> playlist.isNotEmpty() // 列表循环只要有歌曲就可以
+            else -> _currentIndex.value + 1 < playlist.size // 顺序播放需要检查是否到末尾
         }
     }
 
     // 是否有上一首
     fun hasPrevious(): Boolean {
-        return hasNext() // 逻辑相同
+        val playlist = _currentPlaylist.value
+        return when (_playMode.value) {
+            PLAY_MODE_REPEAT_ONE -> true // 单曲循环总有上一首
+            PLAY_MODE_SHUFFLE -> playlist.size > 1 // 随机播放需要至少2首
+            PLAY_MODE_REPEAT_LIST -> playlist.isNotEmpty() // 列表循环只要有歌曲就可以
+            else -> _currentIndex.value - 1 >= 0 // 顺序播放需要检查是否到开头
+        }
     }
 
     // 播放指定歌曲
