@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="16dp"
+    android:paddingEnd="8dp"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp"
+    android:background="?attr/selectableItemBackground">
+
+    <!-- 序号或正在播放指示器 -->
+    <FrameLayout
+        android:layout_width="32dp"
+        android:layout_height="32dp">
+
+        <TextView
+            android:id="@+id/tvIndex"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary"
+            tools:text="1" />
+
+        <ImageView
+            android:id="@+id/ivPlaying"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_play"
+            android:tint="@color/accent_color"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <!-- 歌曲信息 -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvSongName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="15sp"
+            android:textColor="@color/text_primary"
+            android:maxLines="1"
+            android:ellipsize="end"
+            tools:text="歌曲名称" />
+
+        <TextView
+            android:id="@+id/tvArtist"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:textSize="13sp"
+            android:textColor="@color/text_secondary"
+            android:maxLines="1"
+            android:ellipsize="end"
+            tools:text="艺术家" />
+    </LinearLayout>
+
+    <!-- 移除按钮 -->
+    <ImageButton
+        android:id="@+id/btnRemove"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:src="@drawable/ic_close"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:tint="@color/text_hint"
+        android:contentDescription="移除" />
+
+</LinearLayout>

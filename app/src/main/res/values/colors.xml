@@ -41,7 +41,11 @@
 
     <!-- 分割线 - 适配浅色主题 -->
     <color name="divider">#FFE0E0E0</color>
+    <color name="divider_color">#FFE0E0E0</color>
     <color name="divider_light">#FFF0F0F0</color>
+
+    <!-- 强调色 -->
+    <color name="accent_color">@color/accent</color>
     
     <!-- 浅水蓝色背景 -->
     <color name="light_cyan">#FFE0F7FA</color>

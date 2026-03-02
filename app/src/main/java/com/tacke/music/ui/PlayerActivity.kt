@@ -25,7 +25,10 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.tacke.music.R
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.SongDetail
@@ -37,6 +40,7 @@ import com.tacke.music.data.model.Song
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.service.MusicPlaybackService
+import com.tacke.music.ui.adapter.PlaylistDialogAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -741,40 +745,138 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    private var playlistDialog: BottomSheetDialog? = null
+    private var playlistAdapter: PlaylistDialogAdapter? = null
+
     private fun showPlaylistDialog() {
         lifecycleScope.launch {
             // 先加载最新的播放列表
             playlistManager.loadPlaylist()
 
             val playlist = playlistManager.currentPlaylist.value
-            if (playlist.isEmpty()) {
-                Toast.makeText(this@PlayerActivity, "播放列表为空", Toast.LENGTH_SHORT).show()
-                return@launch
+
+            // 创建 BottomSheetDialog
+            val dialog = BottomSheetDialog(this@PlayerActivity, R.style.BottomSheetDialogTheme)
+            playlistDialog = dialog
+
+            // 加载布局
+            val dialogView = layoutInflater.inflate(R.layout.dialog_playlist, null)
+            dialog.setContentView(dialogView)
+
+            // 获取视图引用
+            val tvCount = dialogView.findViewById<android.widget.TextView>(R.id.tvCount)
+            val btnClear = dialogView.findViewById<android.widget.ImageButton>(R.id.btnClear)
+            val btnClose = dialogView.findViewById<android.widget.ImageButton>(R.id.btnClose)
+            val layoutPlayMode = dialogView.findViewById<android.widget.LinearLayout>(R.id.layoutPlayMode)
+            val ivPlayMode = dialogView.findViewById<android.widget.ImageView>(R.id.ivPlayMode)
+            val tvPlayMode = dialogView.findViewById<android.widget.TextView>(R.id.tvPlayMode)
+            val recyclerView = dialogView.findViewById<RecyclerView>(R.id.recyclerView)
+            val layoutEmpty = dialogView.findViewById<android.widget.LinearLayout>(R.id.layoutEmpty)
+
+            // 更新歌曲数量
+            tvCount.text = "${playlist.size}首"
+
+            // 更新播放模式显示
+            fun updatePlayModeDisplay() {
+                val playMode = playlistManager.playMode.value
+                val (iconRes, modeName) = when (playMode) {
+                    PlaylistManager.PLAY_MODE_SEQUENTIAL -> R.drawable.ic_sequential to "顺序播放"
+                    PlaylistManager.PLAY_MODE_SHUFFLE -> R.drawable.ic_shuffle to "随机播放"
+                    PlaylistManager.PLAY_MODE_REPEAT_LIST -> R.drawable.ic_repeat to "列表循环"
+                    PlaylistManager.PLAY_MODE_REPEAT_ONE -> R.drawable.ic_repeat_one to "单曲循环"
+                    else -> R.drawable.ic_sequential to "顺序播放"
+                }
+                ivPlayMode.setImageResource(iconRes)
+                tvPlayMode.text = modeName
+            }
+            updatePlayModeDisplay()
+
+            // 播放模式点击切换
+            layoutPlayMode.setOnClickListener {
+                val newMode = playlistManager.togglePlayMode()
+                updatePlayModeDisplay()
+                updatePlayModeIcon()
+                val modeName = playlistManager.getPlayModeName()
+                Toast.makeText(this@PlayerActivity, modeName, Toast.LENGTH_SHORT).show()
             }
 
-            val songNames = playlist.map { "${it.name} - ${it.artists}" }.toTypedArray()
-            val currentIndex = playlistManager.currentIndex.value
+            // 关闭按钮
+            btnClose.setOnClickListener {
+                dialog.dismiss()
+            }
 
-            AlertDialog.Builder(this@PlayerActivity)
-                .setTitle("播放列表")
-                .setSingleChoiceItems(songNames, currentIndex) { dialog, which ->
-                    lifecycleScope.launch {
-                        playlistManager.setCurrentIndex(which)
-                        val song = playlistManager.getCurrentSong()
-                        if (song != null) {
-                            loadAndPlaySong(song)
+            // 清空按钮
+            btnClear.setOnClickListener {
+                if (playlist.isEmpty()) {
+                    Toast.makeText(this@PlayerActivity, "播放列表已为空", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                AlertDialog.Builder(this@PlayerActivity)
+                    .setTitle("清空播放列表")
+                    .setMessage("确定要清空播放列表吗？")
+                    .setPositiveButton("确定") { _, _ ->
+                        lifecycleScope.launch {
+                            playlistManager.clearPlaylist()
+                            playlistAdapter?.submitList(emptyList())
+                            tvCount.text = "0首"
+                            layoutEmpty.visibility = android.view.View.VISIBLE
+                            recyclerView.visibility = android.view.View.GONE
+                            Toast.makeText(this@PlayerActivity, "播放列表已清空", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    dialog.dismiss()
-                }
-                .setPositiveButton("关闭", null)
-                .setNeutralButton("清空") { _, _ ->
-                    lifecycleScope.launch {
-                        playlistManager.clearPlaylist()
-                        Toast.makeText(this@PlayerActivity, "播放列表已清空", Toast.LENGTH_SHORT).show()
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+
+            // 设置 RecyclerView
+            if (playlist.isEmpty()) {
+                layoutEmpty.visibility = android.view.View.VISIBLE
+                recyclerView.visibility = android.view.View.GONE
+            } else {
+                layoutEmpty.visibility = android.view.View.GONE
+                recyclerView.visibility = android.view.View.VISIBLE
+
+                recyclerView.layoutManager = LinearLayoutManager(this@PlayerActivity)
+                val currentIndex = playlistManager.currentIndex.value
+
+                playlistAdapter = PlaylistDialogAdapter(
+                    currentPlayingIndex = currentIndex,
+                    onItemClick = { position ->
+                        lifecycleScope.launch {
+                            playlistManager.setCurrentIndex(position)
+                            val song = playlistManager.getCurrentSong()
+                            if (song != null) {
+                                loadAndPlaySong(song)
+                                dialog.dismiss()
+                            }
+                        }
+                    },
+                    onRemoveClick = { position, song ->
+                        lifecycleScope.launch {
+                            playlistManager.removeSong(song.id)
+                            val newPlaylist = playlistManager.currentPlaylist.value
+                            playlistAdapter?.submitList(newPlaylist)
+                            tvCount.text = "${newPlaylist.size}首"
+
+                            if (newPlaylist.isEmpty()) {
+                                layoutEmpty.visibility = android.view.View.VISIBLE
+                                recyclerView.visibility = android.view.View.GONE
+                            }
+
+                            Toast.makeText(this@PlayerActivity, "已移除: ${song.name}", Toast.LENGTH_SHORT).show()
+                        }
                     }
+                )
+                recyclerView.adapter = playlistAdapter
+                playlistAdapter?.submitList(playlist)
+
+                // 滚动到当前播放的歌曲
+                if (currentIndex in playlist.indices) {
+                    recyclerView.scrollToPosition(currentIndex)
                 }
-                .show()
+            }
+
+            dialog.show()
         }
     }
 
