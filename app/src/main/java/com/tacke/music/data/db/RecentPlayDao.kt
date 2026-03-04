@@ -19,6 +19,9 @@ interface RecentPlayDao {
     @Query("DELETE FROM recent_plays WHERE id NOT IN (SELECT id FROM recent_plays ORDER BY playedAt DESC LIMIT :keepCount)")
     suspend fun trimOldRecords(keepCount: Int = 100)
 
+    @Query("DELETE FROM recent_plays WHERE id = :id")
+    suspend fun deleteById(id: String)
+
     @Query("DELETE FROM recent_plays")
     suspend fun clearAll()
 

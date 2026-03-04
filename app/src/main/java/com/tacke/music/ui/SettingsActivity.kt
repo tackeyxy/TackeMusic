@@ -24,9 +24,15 @@ class SettingsActivity : AppCompatActivity() {
         const val KEY_DEFAULT_SOURCE = "default_source"
         const val KEY_DOWNLOAD_PATH = "download_path"
         const val KEY_LYRIC_COLOR = "lyric_color"
+        const val KEY_CONCURRENT_DOWNLOADS = "concurrent_downloads"
 
         // 默认歌词颜色（青色）
         const val DEFAULT_LYRIC_COLOR = 0xFF00CED1.toInt()
+
+        // 默认同时下载个数
+        const val DEFAULT_CONCURRENT_DOWNLOADS = 3
+        const val MIN_CONCURRENT_DOWNLOADS = 1
+        const val MAX_CONCURRENT_DOWNLOADS = 5
 
         // 预设歌词颜色列表
         val PRESET_LYRIC_COLORS = listOf(
@@ -79,6 +85,18 @@ class SettingsActivity : AppCompatActivity() {
             prefs.edit().putInt(KEY_LYRIC_COLOR, color).apply()
         }
 
+        fun getConcurrentDownloads(context: Context): Int {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getInt(KEY_CONCURRENT_DOWNLOADS, DEFAULT_CONCURRENT_DOWNLOADS)
+                .coerceIn(MIN_CONCURRENT_DOWNLOADS, MAX_CONCURRENT_DOWNLOADS)
+        }
+
+        fun setConcurrentDownloads(context: Context, count: Int) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val validCount = count.coerceIn(MIN_CONCURRENT_DOWNLOADS, MAX_CONCURRENT_DOWNLOADS)
+            prefs.edit().putInt(KEY_CONCURRENT_DOWNLOADS, validCount).apply()
+        }
+
         fun getDefaultDownloadPath(context: Context): String {
             return File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -128,6 +146,7 @@ class SettingsActivity : AppCompatActivity() {
         updateDefaultSourceText()
         updateDownloadPathText()
         updateLyricColorPreview()
+        updateConcurrentDownloadsText()
     }
 
     private fun setupClickListeners() {
@@ -154,6 +173,38 @@ class SettingsActivity : AppCompatActivity() {
         binding.layoutLogViewer.setOnClickListener {
             startActivity(Intent(this, LogViewerActivity::class.java))
         }
+
+        binding.layoutConcurrentDownloads.setOnClickListener {
+            showConcurrentDownloadsDialog()
+        }
+    }
+
+    private fun updateConcurrentDownloadsText() {
+        val currentCount = getConcurrentDownloads(this)
+        binding.tvConcurrentDownloadsValue.text = currentCount.toString()
+    }
+
+    private fun showConcurrentDownloadsDialog() {
+        val currentCount = getConcurrentDownloads(this)
+        val options = (MIN_CONCURRENT_DOWNLOADS..MAX_CONCURRENT_DOWNLOADS).map { "$it 个" }.toTypedArray()
+        val currentIndex = currentCount - MIN_CONCURRENT_DOWNLOADS
+
+        AlertDialog.Builder(this)
+            .setTitle("选择同时下载个数")
+            .setSingleChoiceItems(options, currentIndex) { dialog, which ->
+                val selectedCount = which + MIN_CONCURRENT_DOWNLOADS
+                setConcurrentDownloads(this, selectedCount)
+                updateConcurrentDownloadsText()
+
+                // 通知 DownloadManager 更新并发限制
+                val downloadManager = com.tacke.music.download.DownloadManager.getInstance(this)
+                downloadManager.updateConcurrentLimit(selectedCount)
+
+                Toast.makeText(this, "同时下载个数已设置为: $selectedCount", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun updateLyricColorPreview() {

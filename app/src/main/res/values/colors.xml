@@ -58,4 +58,8 @@
     <color name="text_secondary_light">#FF757575</color>
     <color name="text_tertiary_light">#FF9E9E9E</color>
     <color name="surface_light_theme">#FFFFFFFF</color>
+    
+    <!-- 选中状态背景色 - 更柔和的蓝色 -->
+    <color name="selected_background">#FFE3F2FD</color>
+    <color name="selected_background_light">#FFF0F8FF</color>
 </resources>

@@ -30,6 +30,10 @@ class RecentPlayRepository(context: Context) {
         addRecentPlay(recentPlay)
     }
 
+    suspend fun deleteById(id: String) {
+        recentPlayDao.deleteById(id)
+    }
+
     suspend fun clearAll() {
         recentPlayDao.clearAll()
     }

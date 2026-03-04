@@ -136,10 +136,11 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:paddingHorizontal="16dp"
+        android:paddingBottom="80dp"
         android:clipToPadding="false"
         app:layout_constraintTop_toBottomOf="@id/songListHeader"
         app:layout_constraintBottom_toBottomOf="parent"
-        tools:listitem="@layout/item_playlist_song" />
+        tools:listitem="@layout/item_song_modern" />
 
     <!-- 空状态 -->
     <LinearLayout

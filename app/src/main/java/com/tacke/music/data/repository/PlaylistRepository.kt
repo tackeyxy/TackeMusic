@@ -8,6 +8,10 @@ import com.tacke.music.data.model.Playlist
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
 import com.tacke.music.utils.CoverImageManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -93,45 +97,73 @@ class PlaylistRepository(private val context: Context) {
     }
 
     suspend fun addSongToPlaylist(playlistId: String, song: Song, platform: String) {
-        // 下载并缓存封面图片
-        val localCoverPath = CoverImageManager.downloadAndCacheCover(
-            context,
-            song.id,
-            platform
-        )
-        
+        // 先使用原始封面URL快速添加到歌单，不等待封面下载
         val playlistSong = PlaylistSong(
             id = song.id,
             name = song.name,
             artists = song.artists,
-            coverUrl = localCoverPath ?: song.coverUrl,
+            coverUrl = song.coverUrl,
             platform = platform
         )
         playlistDao.addSongToPlaylist(playlistId, playlistSong, songEntityDao)
         
-        Log.d(TAG, "添加歌曲到歌单: ${song.name}, 封面路径: $localCoverPath")
+        Log.d(TAG, "添加歌曲到歌单: ${song.name}, 封面将在后台异步下载")
+        
+        // 后台异步下载封面
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val localCoverPath = CoverImageManager.downloadAndCacheCover(
+                    context,
+                    song.id,
+                    platform
+                )
+                if (localCoverPath != null) {
+                    // 下载成功，更新数据库中的封面路径
+                    playlistDao.updateSongCoverUrl(playlistId, song.id, localCoverPath)
+                    Log.d(TAG, "封面异步下载完成: ${song.name}, 路径: $localCoverPath")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "封面异步下载失败: ${song.name}, ${e.message}")
+            }
+        }
     }
 
     suspend fun addSongsToPlaylist(playlistId: String, songs: List<Song>, platform: String) {
-        // 批量下载封面图片
-        val coverPaths = CoverImageManager.downloadAndCacheCovers(
-            context,
-            songs.map { it.id to platform }
-        )
-        
+        // 先使用原始封面URL快速将所有歌曲添加到歌单，不等待封面下载
         val playlistSongs = songs.map { song ->
-            val localCoverPath = coverPaths[song.id]
             PlaylistSong(
                 id = song.id,
                 name = song.name,
                 artists = song.artists,
-                coverUrl = localCoverPath ?: song.coverUrl,
+                coverUrl = song.coverUrl,
                 platform = platform
             )
         }
         playlistDao.addSongsToPlaylist(playlistId, playlistSongs, songEntityDao)
         
-        Log.d(TAG, "批量添加 ${songs.size} 首歌曲到歌单，成功下载 ${coverPaths.size} 张封面")
+        Log.d(TAG, "批量添加 ${songs.size} 首歌曲到歌单，封面将在后台异步下载")
+        
+        // 后台异步批量下载封面
+        GlobalScope.launch(Dispatchers.IO) {
+            var successCount = 0
+            songs.forEach { song ->
+                try {
+                    val localCoverPath = CoverImageManager.downloadAndCacheCover(
+                        context,
+                        song.id,
+                        platform
+                    )
+                    if (localCoverPath != null) {
+                        // 下载成功，更新数据库中的封面路径
+                        playlistDao.updateSongCoverUrl(playlistId, song.id, localCoverPath)
+                        successCount++
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "封面异步下载失败: ${song.name}, ${e.message}")
+                }
+            }
+            Log.d(TAG, "批量封面异步下载完成: $successCount/${songs.size}")
+        }
     }
 
     suspend fun removeSongFromPlaylist(playlistId: String, songId: String) {

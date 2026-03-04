@@ -129,6 +129,51 @@
 
         </LinearLayout>
 
+        <!-- 同时下载个数设置 -->
+        <LinearLayout
+            android:id="@+id/layoutConcurrentDownloads"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_card_rounded"
+            android:paddingHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_download"
+                android:tint="@color/primary" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:text="同时下载个数"
+                android:textSize="15sp"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                android:id="@+id/tvConcurrentDownloadsValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="3"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary" />
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_chevron_right"
+                android:tint="@color/text_hint" />
+
+        </LinearLayout>
+
         <!-- 下载位置设置 -->
         <LinearLayout
             android:id="@+id/layoutDownloadPath"
@@ -145,7 +190,7 @@
             <ImageView
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:src="@drawable/ic_download"
+                android:src="@drawable/ic_download_white"
                 android:tint="@color/primary" />
 
             <TextView

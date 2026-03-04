@@ -1,13 +1,15 @@
 package com.tacke.music.ui.adapter
 
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
-import androidx.core.content.ContextCompat
+import androidx.cardview.widget.CardView
 import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
@@ -53,17 +55,22 @@ class PlaylistSongAdapter(
     fun getAllSongs(): List<PlaylistSong> = songs
 
     inner class SongViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val itemContainer: FrameLayout = itemView.findViewById(R.id.itemContainer)
         private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
         private val ivSource: ImageView = itemView.findViewById(R.id.ivSource)
         private val ivCover: ImageView = itemView.findViewById(R.id.ivCover)
-        private val btnMore: ImageButton = itemView.findViewById(R.id.btnMore)
-        private val checkBox: CheckBox = itemView.findViewById(R.id.checkBox)
-        private val flIndex: View = itemView.findViewById(R.id.flIndex)
+        private val cvCover: CardView = itemView.findViewById(R.id.cvCover)
+        private val btnMore: ImageButton = itemView.findViewById(R.id.btnAction)
+        private val flCheckbox: FrameLayout = itemView.findViewById(R.id.flCheckbox)
+        private val ivCheckbox: ImageView = itemView.findViewById(R.id.ivCheckbox)
+        private val tvIndex: TextView = itemView.findViewById(R.id.tvIndex)
+        private val coverOverlay: View = itemView.findViewById(R.id.coverOverlay)
 
-        fun bind(song: PlaylistSong) {
+        fun bind(song: PlaylistSong, position: Int) {
             tvSongName.text = song.name
             tvArtist.text = song.artists
+            tvIndex.text = (position + 1).toString()
 
             // 设置音源图标
             setupSourceIcon(song.platform)
@@ -75,46 +82,40 @@ class PlaylistSongAdapter(
             val isSelected = selectedItems.contains(song.id)
 
             if (isMultiSelectMode) {
-                // 显示复选框区域
-                flIndex.visibility = View.VISIBLE
-                checkBox.visibility = View.VISIBLE
+                // 显示圆形复选框，隐藏序号
+                flCheckbox.visibility = View.VISIBLE
+                tvIndex.visibility = View.GONE
                 btnMore.visibility = View.GONE
-                ivSource.visibility = View.GONE
 
-                // 设置复选框状态（先移除监听器避免循环触发）
-                checkBox.setOnCheckedChangeListener(null)
-                checkBox.isChecked = isSelected
+                // 设置复选框状态
+                updateCheckboxState(isSelected)
 
                 // 设置选中状态的视觉反馈
-                updateSelectedBackground(isSelected)
+                updateSelectedVisuals(isSelected)
 
-                // 添加新的监听器
-                checkBox.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
-                        selectedItems.add(song.id)
-                    } else {
-                        selectedItems.remove(song.id)
-                    }
-                    // 更新当前项的背景
-                    updateSelectedBackground(isChecked)
-                    // 通知外部选中状态变化
+                // 点击切换选中状态
+                itemView.setOnClickListener {
+                    toggleSelection(song.id)
+                    updateCheckboxState(selectedItems.contains(song.id))
+                    updateSelectedVisuals(selectedItems.contains(song.id))
                     onItemClick(song)
                 }
 
-                itemView.setOnClickListener {
-                    // 切换选中状态
-                    val newCheckedState = !checkBox.isChecked
-                    checkBox.isChecked = newCheckedState
+                // 点击复选框区域也切换
+                flCheckbox.setOnClickListener {
+                    toggleSelection(song.id)
+                    updateCheckboxState(selectedItems.contains(song.id))
+                    updateSelectedVisuals(selectedItems.contains(song.id))
+                    onItemClick(song)
                 }
             } else {
                 // 非多选模式
-                flIndex.visibility = View.GONE
-                checkBox.visibility = View.GONE
+                flCheckbox.visibility = View.GONE
+                tvIndex.visibility = View.VISIBLE
                 btnMore.visibility = View.VISIBLE
-                ivSource.visibility = View.VISIBLE
 
-                // 重置背景
-                itemView.setBackgroundResource(android.R.color.transparent)
+                // 重置视觉状态
+                resetVisuals()
 
                 itemView.setOnClickListener { onItemClick(song) }
                 btnMore.setOnClickListener { onMoreClick(song) }
@@ -123,13 +124,44 @@ class PlaylistSongAdapter(
             itemView.setOnLongClickListener { onLongClick(song) }
         }
 
-        private fun updateSelectedBackground(isSelected: Boolean) {
-            if (isSelected) {
-                // 使用浅色主题的主色调作为选中背景
-                itemView.setBackgroundColor(ContextCompat.getColor(itemView.context, R.color.light_blue_cyan))
+        private fun toggleSelection(songId: String) {
+            if (selectedItems.contains(songId)) {
+                selectedItems.remove(songId)
             } else {
-                itemView.setBackgroundResource(android.R.color.transparent)
+                selectedItems.add(songId)
             }
+        }
+
+        private fun updateCheckboxState(isSelected: Boolean) {
+            ivCheckbox.isSelected = isSelected
+        }
+
+        private fun updateSelectedVisuals(isSelected: Boolean) {
+            if (isSelected) {
+                // 选中状态：背景变柔和蓝色，封面添加遮罩
+                itemContainer.setBackgroundResource(R.drawable.bg_item_selected)
+                coverOverlay.visibility = View.VISIBLE
+                coverOverlay.alpha = 0.3f
+                
+                // 封面轻微缩小动画
+                cvCover.scaleX = 0.95f
+                cvCover.scaleY = 0.95f
+            } else {
+                // 未选中状态
+                itemContainer.setBackgroundResource(android.R.color.transparent)
+                coverOverlay.visibility = View.GONE
+                
+                // 封面恢复原始大小
+                cvCover.scaleX = 1f
+                cvCover.scaleY = 1f
+            }
+        }
+
+        private fun resetVisuals() {
+            itemContainer.setBackgroundResource(android.R.color.transparent)
+            coverOverlay.visibility = View.GONE
+            cvCover.scaleX = 1f
+            cvCover.scaleY = 1f
         }
 
         private fun setupSourceIcon(platform: String) {
@@ -213,12 +245,12 @@ class PlaylistSongAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SongViewHolder {
         val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_playlist_song, parent, false)
+            .inflate(R.layout.item_song_modern, parent, false)
         return SongViewHolder(view)
     }
 
     override fun onBindViewHolder(holder: SongViewHolder, position: Int) {
-        holder.bind(songs[position])
+        holder.bind(songs[position], position)
     }
 
     override fun getItemCount(): Int = songs.size

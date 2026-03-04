@@ -850,6 +850,8 @@
         android:layout_height="0dp"
         android:layout_marginTop="16dp"
         android:paddingHorizontal="16dp"
+        android:paddingBottom="160dp"
+        android:clipToPadding="false"
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/searchLayout"
         app:layout_constraintBottom_toTopOf="@id/bottomNav" />
@@ -944,79 +946,6 @@
 
     </LinearLayout>
 
-    <!-- 批量操作栏 -->
-    <LinearLayout
-        android:id="@+id/batchActionBar"
-        android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@color/surface"
-        android:elevation="8dp"
-        android:visibility="gone"
-        android:paddingHorizontal="16dp"
-        app:layout_constraintBottom_toTopOf="@id/bottomNav">
-
-        <TextView
-            android:id="@+id/tvSelectedCount"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="已选择 0 项"
-            android:textSize="14sp"
-            android:textColor="@color/text_primary" />
-
-        <TextView
-            android:id="@+id/btnSelectAll"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:padding="8dp"
-            android:text="全选"
-            android:textSize="14sp"
-            android:textColor="@color/primary" />
-
-        <TextView
-            android:id="@+id/btnBatchDownload"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:padding="8dp"
-            android:text="下载"
-            android:textSize="14sp"
-            android:textColor="@color/primary" />
-
-        <TextView
-            android:id="@+id/btnAddToPlaylist"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:padding="8dp"
-            android:text="添加到"
-            android:textSize="14sp"
-            android:textColor="@color/primary" />
-
-        <TextView
-            android:id="@+id/btnAddToNowPlaying"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:padding="8dp"
-            android:text="播放列表"
-            android:textSize="14sp"
-            android:textColor="@color/primary" />
-
-        <TextView
-            android:id="@+id/btnCancelBatch"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:padding="8dp"
-            android:text="取消"
-            android:textSize="14sp"
-            android:textColor="@color/text_secondary" />
-
-    </LinearLayout>
-
     <!-- 加载进度条 -->
     <ProgressBar
         android:id="@+id/progressBar"
@@ -1028,6 +957,16 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- 批量操作栏 - 位于底部导航栏上方 -->
+    <include
+        android:id="@+id/batchActionBarContainer"
+        layout="@layout/layout_batch_action_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="8dp"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintBottom_toTopOf="@id/bottomNav" />
+
     <!-- 底部加载更多进度条 -->
     <ProgressBar
         android:id="@+id/progressBarLoadMore"
@@ -1035,7 +974,7 @@
         android:layout_height="32dp"
         android:visibility="gone"
         android:layout_marginBottom="8dp"
-        app:layout_constraintBottom_toTopOf="@id/bottomNav"
+        app:layout_constraintBottom_toTopOf="@id/batchActionBarContainer"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 

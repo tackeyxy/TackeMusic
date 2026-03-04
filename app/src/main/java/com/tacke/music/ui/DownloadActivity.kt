@@ -16,19 +16,16 @@ import com.tacke.music.data.model.DownloadTask
 import com.tacke.music.databinding.ActivityDownloadBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
-import com.tacke.music.ui.adapter.DownloadHistoryAdapter
-import com.tacke.music.ui.adapter.DownloadingAdapter
-import kotlinx.coroutines.Dispatchers
+import com.tacke.music.ui.adapter.DownloadTaskAdapter
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class DownloadActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityDownloadBinding
     private lateinit var downloadManager: DownloadManager
     private lateinit var playbackManager: PlaybackManager
-    private lateinit var downloadingAdapter: DownloadingAdapter
-    private lateinit var historyAdapter: DownloadHistoryAdapter
+    private lateinit var downloadingAdapter: DownloadTaskAdapter
+    private lateinit var historyAdapter: DownloadTaskAdapter
     private var isMultiSelectMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,11 +51,6 @@ class DownloadActivity : AppCompatActivity() {
                 finish()
             }
         }
-
-        // 列表顶部的批量操作入口按钮
-        binding.btnEnterBatchMode.setOnClickListener {
-            enterMultiSelectMode()
-        }
     }
 
     private fun setupTabLayout() {
@@ -82,40 +74,57 @@ class DownloadActivity : AppCompatActivity() {
     }
 
     private fun setupRecyclerViews() {
-        downloadingAdapter = DownloadingAdapter(
-            onPauseClick = { task ->
-                downloadManager.pauseDownload(task.id)
+        // 正在下载适配器
+        downloadingAdapter = DownloadTaskAdapter(
+            isHistory = false,
+            onControlClick = { task ->
+                when {
+                    task.isPaused || task.isFailed -> downloadManager.resumeDownload(task)
+                    task.isDownloading -> downloadManager.pauseDownload(task.id)
+                    else -> {}
+                }
             },
-            onResumeClick = { task ->
-                downloadManager.resumeDownload(task)
+            onItemClick = { task ->
+                if (isMultiSelectMode) {
+                    downloadingAdapter.toggleSelection(task.id)
+                    updateSelectedCount(downloadingAdapter.getSelectedTasks().size)
+                }
             },
-            onDeleteClick = { task, deleteFile ->
-                downloadManager.deleteDownload(task, deleteFile)
-            },
-            onSelectionChanged = { count ->
-                updateSelectedCount(count)
-            },
-            onEnterMultiSelectMode = { task ->
-                enterMultiSelectMode()
-                // 自动选中长按的项
-                downloadingAdapter.toggleSelection(task.id)
+            onLongClick = { task ->
+                if (!isMultiSelectMode) {
+                    enterMultiSelectMode()
+                    downloadingAdapter.toggleSelection(task.id)
+                    updateSelectedCount(1)
+                    true
+                } else {
+                    false
+                }
             }
         )
 
-        historyAdapter = DownloadHistoryAdapter(
-            onDeleteClick = { task, deleteFile ->
-                downloadManager.deleteDownload(task, deleteFile)
-            },
-            onItemClick = { task ->
+        // 下载历史适配器
+        historyAdapter = DownloadTaskAdapter(
+            isHistory = true,
+            onControlClick = { task ->
                 playDownloadedSong(task)
             },
-            onSelectionChanged = { count ->
-                updateSelectedCount(count)
+            onItemClick = { task ->
+                if (isMultiSelectMode) {
+                    historyAdapter.toggleSelection(task.id)
+                    updateSelectedCount(historyAdapter.getSelectedTasks().size)
+                } else {
+                    playDownloadedSong(task)
+                }
             },
-            onEnterMultiSelectMode = { task ->
-                enterMultiSelectMode()
-                // 自动选中长按的项
-                historyAdapter.toggleSelection(task.id)
+            onLongClick = { task ->
+                if (!isMultiSelectMode) {
+                    enterMultiSelectMode()
+                    historyAdapter.toggleSelection(task.id)
+                    updateSelectedCount(1)
+                    true
+                } else {
+                    false
+                }
             }
         )
 
@@ -126,18 +135,29 @@ class DownloadActivity : AppCompatActivity() {
     }
 
     private fun setupBatchActions() {
+        // 进入多选模式
+        binding.btnBatchManage.setOnClickListener {
+            enterMultiSelectMode()
+        }
+
         // 关闭批量操作
-        binding.btnCloseBatchBottom.setOnClickListener {
+        binding.btnCancelBatch.setOnClickListener {
             exitMultiSelectMode()
         }
 
-        // 正在下载标签页的全选按钮
-        binding.btnSelectAllBottom.setOnClickListener {
-            downloadingAdapter.selectAll()
+        // 全选按钮
+        binding.btnSelectAll.setOnClickListener {
+            if (binding.tabLayout.selectedTabPosition == 0) {
+                downloadingAdapter.selectAll()
+                updateSelectedCount(downloadingAdapter.getSelectedTasks().size)
+            } else {
+                historyAdapter.selectAll()
+                updateSelectedCount(historyAdapter.getSelectedTasks().size)
+            }
         }
 
         // 正在下载标签页的批量操作
-        binding.btnBatchStartBottom.setOnClickListener {
+        binding.btnBatchStart.setOnClickListener {
             val selectedTasks = downloadingAdapter.getSelectedTasks()
             val tasksToResume = selectedTasks.filter { it.isPaused || it.isFailed }
             if (tasksToResume.isNotEmpty()) {
@@ -147,7 +167,7 @@ class DownloadActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        binding.btnBatchPauseBottom.setOnClickListener {
+        binding.btnBatchPause.setOnClickListener {
             val selectedTasks = downloadingAdapter.getSelectedTasks()
             val taskIds = selectedTasks.map { it.id }
             if (taskIds.isNotEmpty()) {
@@ -157,7 +177,7 @@ class DownloadActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        binding.btnBatchDeleteBottom.setOnClickListener {
+        binding.btnBatchDelete.setOnClickListener {
             showBatchDeleteDialog { deleteFile ->
                 val selectedTasks = downloadingAdapter.getSelectedTasks()
                 if (selectedTasks.isNotEmpty()) {
@@ -168,13 +188,8 @@ class DownloadActivity : AppCompatActivity() {
             }
         }
 
-        // 下载历史标签页的全选按钮
-        binding.btnSelectAllHistoryBottom.setOnClickListener {
-            historyAdapter.selectAll()
-        }
-
-        // 下载历史标签页的批量添加到正在播放
-        binding.btnBatchAddToNowPlayingHistoryBottom.setOnClickListener {
+        // 下载历史标签页的批量操作
+        binding.btnBatchAddToNowPlaying.setOnClickListener {
             val selectedTasks = historyAdapter.getSelectedTasks()
             if (selectedTasks.isNotEmpty()) {
                 addTasksToNowPlaying(selectedTasks)
@@ -182,8 +197,7 @@ class DownloadActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        // 下载历史标签页的批量操作
-        binding.btnBatchDeleteHistoryBottom.setOnClickListener {
+        binding.btnBatchDeleteHistory.setOnClickListener {
             showBatchDeleteDialog { deleteFile ->
                 val selectedTasks = historyAdapter.getSelectedTasks()
                 if (selectedTasks.isNotEmpty()) {
@@ -213,9 +227,8 @@ class DownloadActivity : AppCompatActivity() {
 
     private fun enterMultiSelectMode() {
         isMultiSelectMode = true
-        binding.bottomActionBar.visibility = View.VISIBLE
-        binding.listHeader.visibility = View.GONE
-        binding.btnEnterBatchMode.visibility = View.GONE
+        binding.batchActionBar.visibility = View.VISIBLE
+        binding.btnBatchManage.visibility = View.GONE
 
         // 根据当前标签页显示对应的操作按钮
         if (binding.tabLayout.selectedTabPosition == 0) {
@@ -233,16 +246,15 @@ class DownloadActivity : AppCompatActivity() {
 
     private fun exitMultiSelectMode() {
         isMultiSelectMode = false
-        binding.bottomActionBar.visibility = View.GONE
-        binding.listHeader.visibility = View.VISIBLE
-        binding.btnEnterBatchMode.visibility = View.VISIBLE
+        binding.batchActionBar.visibility = View.GONE
+        binding.btnBatchManage.visibility = View.VISIBLE
 
         downloadingAdapter.setMultiSelectMode(false)
         historyAdapter.setMultiSelectMode(false)
     }
 
     private fun updateSelectedCount(count: Int) {
-        binding.tvSelectedCountBottom.text = "已选择 $count 项"
+        binding.tvSelectedCount.text = "已选择 $count 项"
     }
 
     private fun observeDownloadData() {
@@ -251,7 +263,9 @@ class DownloadActivity : AppCompatActivity() {
                 launch {
                     downloadManager.downloadingTasks.collect { tasks ->
                         downloadingAdapter.submitList(tasks)
-                        updateEmptyState(tasks.isEmpty(), true)
+                        if (binding.tabLayout.selectedTabPosition == 0) {
+                            updateEmptyState(tasks.isEmpty())
+                        }
                     }
                 }
 
@@ -265,7 +279,7 @@ class DownloadActivity : AppCompatActivity() {
                     downloadManager.completedTasks.collect { tasks ->
                         historyAdapter.submitList(tasks)
                         if (binding.tabLayout.selectedTabPosition == 1) {
-                            updateEmptyState(tasks.isEmpty(), false)
+                            updateEmptyState(tasks.isEmpty())
                         }
                     }
                 }
@@ -276,7 +290,7 @@ class DownloadActivity : AppCompatActivity() {
     private fun showDownloadingTab() {
         binding.recyclerView.adapter = downloadingAdapter
         val tasks = downloadManager.downloadingTasks.value
-        updateEmptyState(tasks.isEmpty(), true)
+        updateEmptyState(tasks.isEmpty())
 
         if (isMultiSelectMode) {
             binding.layoutDownloadingActions.visibility = View.VISIBLE
@@ -287,7 +301,7 @@ class DownloadActivity : AppCompatActivity() {
     private fun showHistoryTab() {
         binding.recyclerView.adapter = historyAdapter
         val tasks = downloadManager.completedTasks.value
-        updateEmptyState(tasks.isEmpty(), false)
+        updateEmptyState(tasks.isEmpty())
 
         if (isMultiSelectMode) {
             binding.layoutDownloadingActions.visibility = View.GONE
@@ -295,11 +309,11 @@ class DownloadActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateEmptyState(isEmpty: Boolean, isDownloadingTab: Boolean) {
+    private fun updateEmptyState(isEmpty: Boolean) {
         if (isEmpty && !isMultiSelectMode) {
             binding.recyclerView.visibility = View.GONE
             binding.emptyView.visibility = View.VISIBLE
-            binding.tvEmpty.text = if (isDownloadingTab) "暂无下载任务" else "暂无下载记录"
+            binding.tvEmpty.text = if (binding.tabLayout.selectedTabPosition == 0) "暂无下载任务" else "暂无下载记录"
         } else {
             binding.recyclerView.visibility = View.VISIBLE
             binding.emptyView.visibility = View.GONE
@@ -339,7 +353,7 @@ class DownloadActivity : AppCompatActivity() {
                 val platform = playbackManager.getValidPlatform(task.platform)
 
                 // 获取歌曲详情（用于歌词和封面）
-                val detail = withContext(Dispatchers.IO) {
+                val detail = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     com.tacke.music.data.repository.MusicRepository().getSongDetail(platform, task.songId, "320k")
                 }
 

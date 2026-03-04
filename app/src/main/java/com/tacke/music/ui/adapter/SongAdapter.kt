@@ -13,12 +13,15 @@ import com.tacke.music.data.model.Song
 class SongAdapter(
     private val onItemClick: (Song) -> Unit,
     private val onMoreClick: (Song) -> Unit,
-    private val onLongClick: ((Song) -> Boolean)? = null
+    private val onLongClick: ((Song) -> Boolean)? = null,
+    private val onSelectionChange: ((String, Boolean) -> Unit)? = null
 ) : RecyclerView.Adapter<SongAdapter.SongViewHolder>() {
 
     private var songs: List<Song> = emptyList()
     private var isMultiSelectMode = false
-    private val selectedItems = mutableSetOf<String>()
+    
+    // 选择状态由外部管理，解决跨页选择丢失问题
+    private var selectedItems: Set<String> = emptySet()
 
     fun submitList(newSongs: List<Song>) {
         songs = newSongs
@@ -32,37 +35,31 @@ class SongAdapter(
     }
 
     fun setMultiSelectMode(enabled: Boolean) {
+        val wasEnabled = isMultiSelectMode
         isMultiSelectMode = enabled
-        if (!enabled) {
-            selectedItems.clear()
+        if (wasEnabled != enabled) {
+            notifyDataSetChanged()
         }
-        notifyDataSetChanged()
     }
 
     fun isMultiSelectMode(): Boolean = isMultiSelectMode
 
+    /**
+     * 设置选中的歌曲ID集合
+     * 由外部（Activity）管理选择状态，解决跨页选择丢失问题
+     */
     fun setSelectedItems(selected: Set<String>) {
-        selectedItems.clear()
-        selectedItems.addAll(selected)
+        selectedItems = selected
         notifyDataSetChanged()
     }
+
+    fun getSelectedItems(): Set<String> = selectedItems
 
     fun getSelectedSongs(): List<Song> {
         return songs.filter { selectedItems.contains(it.id) }
     }
 
     fun getAllSongs(): List<Song> = songs
-
-    fun selectAll() {
-        selectedItems.clear()
-        selectedItems.addAll(songs.map { it.id })
-        notifyDataSetChanged()
-    }
-
-    fun clearSelection() {
-        selectedItems.clear()
-        notifyDataSetChanged()
-    }
 
     inner class SongViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
@@ -82,24 +79,19 @@ class SongAdapter(
                 checkBox.visibility = View.VISIBLE
                 btnMore.visibility = View.GONE
                 tvSource.visibility = View.GONE
-                checkBox.isChecked = selectedItems.contains(song.id)
+                
+                // 移除监听器避免循环触发
                 checkBox.setOnCheckedChangeListener(null)
+                checkBox.isChecked = selectedItems.contains(song.id)
+                
                 checkBox.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
-                        selectedItems.add(song.id)
-                    } else {
-                        selectedItems.remove(song.id)
-                    }
+                    onSelectionChange?.invoke(song.id, isChecked)
                 }
 
                 itemView.setOnClickListener {
-                    checkBox.isChecked = !checkBox.isChecked
-                    if (checkBox.isChecked) {
-                        selectedItems.add(song.id)
-                    } else {
-                        selectedItems.remove(song.id)
-                    }
-                    onItemClick(song)
+                    val newCheckedState = !checkBox.isChecked
+                    checkBox.isChecked = newCheckedState
+                    onSelectionChange?.invoke(song.id, newCheckedState)
                 }
             } else {
                 checkBox.visibility = View.GONE

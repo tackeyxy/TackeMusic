@@ -27,4 +27,14 @@ data class RecentPlay(
             )
         }
     }
+
+    fun toPlaylistSong(): PlaylistSong {
+        return PlaylistSong(
+            id = id,
+            name = name,
+            artists = artists,
+            coverUrl = coverUrl,
+            platform = platform
+        )
+    }
 }

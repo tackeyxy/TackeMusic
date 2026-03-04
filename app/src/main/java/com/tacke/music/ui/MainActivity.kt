@@ -49,6 +49,9 @@ class MainActivity : AppCompatActivity() {
     private var isLoadingMore = false
     private var hasMoreData = true
 
+    // 多选状态管理 - 移到Activity中，解决跨页选择丢失问题
+    private val selectedSongIds = mutableSetOf<String>()
+
     // 音乐源映射
     private val platformNames = mapOf(
         MusicRepository.Platform.KUWO to "酷我",
@@ -91,7 +94,6 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         setupPlaylistRecyclerView()
         setupClickListeners()
-        setupBatchActionListeners()
         setupBottomNavigation()
         setupChartCards()
         updateSourceSelectorText()
@@ -136,9 +138,10 @@ class MainActivity : AppCompatActivity() {
         adapter = SongAdapter(
             onItemClick = { song ->
                 if (isMultiSelectMode) {
-                    updateBatchActionBar()
+                    // 多选模式下点击切换选择状态
+                    toggleSongSelection(song.id)
                 } else {
-                    // 搜索列表点击歌曲：添加到播放列表并播放
+                    // 普通模式下点击播放
                     addToNowPlayingAndPlay(song)
                 }
             },
@@ -150,9 +153,23 @@ class MainActivity : AppCompatActivity() {
             onLongClick = { song ->
                 if (!isMultiSelectMode) {
                     enterMultiSelectMode()
+                    // 长按时自动选中当前歌曲
+                    toggleSongSelection(song.id)
                     true
                 } else {
                     false
+                }
+            },
+            onSelectionChange = { songId, isSelected ->
+                if (isMultiSelectMode) {
+                    if (isSelected) {
+                        selectedSongIds.add(songId)
+                    } else {
+                        selectedSongIds.remove(songId)
+                    }
+                    // 更新Adapter中的选择状态
+                    adapter.setSelectedItems(selectedSongIds.toSet())
+                    updateBatchActionBar()
                 }
             }
         )
@@ -179,40 +196,67 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    /**
+     * 切换歌曲选择状态
+     */
+    private fun toggleSongSelection(songId: String) {
+        if (selectedSongIds.contains(songId)) {
+            selectedSongIds.remove(songId)
+        } else {
+            selectedSongIds.add(songId)
+        }
+        // 更新Adapter中的选择状态
+        adapter.setSelectedItems(selectedSongIds.toSet())
+        updateBatchActionBar()
+    }
+
     private fun enterMultiSelectMode() {
         isMultiSelectMode = true
         adapter.setMultiSelectMode(true)
+        adapter.setSelectedItems(selectedSongIds.toSet())
         showBatchActionBar()
     }
 
     private fun exitMultiSelectMode() {
         isMultiSelectMode = false
+        selectedSongIds.clear()
         adapter.setMultiSelectMode(false)
+        adapter.setSelectedItems(emptySet())
         hideBatchActionBar()
     }
 
+    /**
+     * 显示批量操作栏
+     */
     private fun showBatchActionBar() {
-        binding.batchActionBar.visibility = View.VISIBLE
+        binding.batchActionBarContainer.root.visibility = View.VISIBLE
         updateBatchActionBar()
+        setupBatchActionListeners()
     }
 
     private fun hideBatchActionBar() {
-        binding.batchActionBar.visibility = View.GONE
+        binding.batchActionBarContainer.root.visibility = View.GONE
     }
 
     private fun updateBatchActionBar() {
-        val selectedCount = adapter.getSelectedSongs().size
-        binding.tvSelectedCount.text = "已选择 $selectedCount 项"
+        // 更新选中数量
+        binding.batchActionBarContainer.tvSelectedCount.text = "已选择 ${selectedSongIds.size} 首"
     }
 
     private fun setupBatchActionListeners() {
-        binding.btnSelectAll.setOnClickListener {
-            adapter.selectAll()
-            updateBatchActionBar()
+        // 关闭按钮
+        binding.batchActionBarContainer.btnCloseBatch.setOnClickListener {
+            exitMultiSelectMode()
         }
 
-        binding.btnBatchDownload.setOnClickListener {
-            val selectedSongs = adapter.getSelectedSongs()
+        // 全选按钮
+        binding.batchActionBarContainer.btnSelectAll.setOnClickListener {
+            selectAllSongs()
+        }
+
+        // 下载按钮
+        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
+            val selectedSongs = getSelectedSongsFromAllPages()
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
@@ -220,8 +264,9 @@ class MainActivity : AppCompatActivity() {
             showBatchDownloadQualityDialog(selectedSongs)
         }
 
-        binding.btnAddToPlaylist.setOnClickListener {
-            val selectedSongs = adapter.getSelectedSongs()
+        // 添加到歌单按钮
+        binding.batchActionBarContainer.btnAddToPlaylist.setOnClickListener {
+            val selectedSongs = getSelectedSongsFromAllPages()
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
@@ -229,18 +274,34 @@ class MainActivity : AppCompatActivity() {
             showPlaylistSelectionDialog(selectedSongs)
         }
 
-        binding.btnAddToNowPlaying.setOnClickListener {
-            val selectedSongs = adapter.getSelectedSongs()
+        // 添加到播放列表按钮
+        binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
+            val selectedSongs = getSelectedSongsFromAllPages()
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             addSongsToNowPlaying(selectedSongs)
         }
+    }
 
-        binding.btnCancelBatch.setOnClickListener {
-            exitMultiSelectMode()
-        }
+    /**
+     * 从所有页面中获取选中的歌曲
+     * 解决跨页选择丢失问题
+     */
+    private fun getSelectedSongsFromAllPages(): List<Song> {
+        return currentSongList.filter { selectedSongIds.contains(it.id) }
+    }
+
+    /**
+     * 全选当前所有歌曲
+     */
+    private fun selectAllSongs() {
+        val allIds = currentSongList.map { it.id }.toSet()
+        selectedSongIds.clear()
+        selectedSongIds.addAll(allIds)
+        adapter.setSelectedItems(selectedSongIds.toSet())
+        updateBatchActionBar()
     }
 
     private fun setupClickListeners() {
@@ -700,6 +761,11 @@ class MainActivity : AppCompatActivity() {
             currentKeyword = keyword
             hasMoreData = true
             currentSongList.clear()
+            
+            // 退出多选模式
+            if (isMultiSelectMode) {
+                exitMultiSelectMode()
+            }
 
             // 隐藏软键盘
             hideKeyboard()

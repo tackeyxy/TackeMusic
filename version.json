@@ -1,0 +1,11 @@
+{
+  "status": 200,
+  "data": {
+    "versionCode": 2,
+    "versionName": "1.0.1",
+    "download_url": "https://cdn.example.com/app/v1.2.5_release.apk",
+    "file_size": "10.45 MB",
+    "release_notes": "1. 优化加载速度\n2. 修复了跨页多选失效的问题\n3. 优化歌单列表UI显示",
+    "publish_time": "2026-03-04 18:00:00"
+  }
+}
