@@ -31,7 +31,7 @@ class PlaylistDialogAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_playlist_song, parent, false)
+            .inflate(R.layout.item_playlist_dialog_song, parent, false)
         return ViewHolder(view)
     }
 
@@ -47,7 +47,7 @@ class PlaylistDialogAdapter(
         private val ivPlaying: ImageView = itemView.findViewById(R.id.ivPlaying)
         private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
-        private val btnRemove: ImageButton = itemView.findViewById(R.id.btnRemove)
+        private val btnMore: ImageButton = itemView.findViewById(R.id.btnMore)
 
         fun bind(song: PlaylistSong, position: Int, isPlaying: Boolean) {
             tvSongName.text = song.name
@@ -66,7 +66,7 @@ class PlaylistDialogAdapter(
                 onItemClick(adapterPosition)
             }
 
-            btnRemove.setOnClickListener {
+            btnMore.setOnClickListener {
                 onRemoveClick(adapterPosition, song)
             }
         }

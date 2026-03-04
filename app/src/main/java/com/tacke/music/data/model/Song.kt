@@ -5,5 +5,6 @@ data class Song(
     val id: String,
     val name: String,
     val artists: String,
-    var coverUrl: String? = null
+    var coverUrl: String? = null,
+    val platform: String = "KUWO"  // 歌曲所属平台，默认为酷我
 )

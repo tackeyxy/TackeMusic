@@ -25,6 +25,7 @@ import com.tacke.music.ui.adapter.PlaylistTagAdapter
 import com.tacke.music.ui.adapter.RecommendPlaylistAdapter
 import com.tacke.music.ui.adapter.SongAdapter
 import com.tacke.music.download.DownloadManager
+import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     private val repository = MusicRepository()
     private lateinit var playlistRepository: PlaylistRepository
     private lateinit var playlistManager: PlaylistManager
+    private lateinit var playbackManager: PlaybackManager
     private lateinit var currentPlatform: MusicRepository.Platform
     private var currentSongList: MutableList<Song> = mutableListOf()
     private var isMultiSelectMode = false
@@ -85,6 +87,7 @@ class MainActivity : AppCompatActivity() {
         currentPlatform = SettingsActivity.getDefaultSource(this)
         playlistRepository = PlaylistRepository(this)
         playlistManager = PlaylistManager.getInstance(this)
+        playbackManager = PlaybackManager.getInstance(this)
         setupRecyclerView()
         setupPlaylistRecyclerView()
         setupClickListeners()
@@ -115,6 +118,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateSourceSelectorText() {
         binding.tvSourceSelector.text = platformNames[currentPlatform] ?: "酷我"
+        updateSourceSelectorBackground()
+    }
+
+    private fun updateSourceSelectorBackground() {
+        when (currentPlatform) {
+            MusicRepository.Platform.KUWO -> {
+                binding.layoutSourceSelector.setBackgroundResource(R.drawable.bg_source_kuwo)
+            }
+            MusicRepository.Platform.NETEASE -> {
+                binding.layoutSourceSelector.setBackgroundResource(R.drawable.bg_source_netease)
+            }
+        }
     }
 
     private fun setupRecyclerView() {
@@ -123,7 +138,8 @@ class MainActivity : AppCompatActivity() {
                 if (isMultiSelectMode) {
                     updateBatchActionBar()
                 } else {
-                    playSong(song)
+                    // 搜索列表点击歌曲：添加到播放列表并播放
+                    addToNowPlayingAndPlay(song)
                 }
             },
             onMoreClick = { song ->
@@ -239,7 +255,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // 音乐源选择器点击
-        binding.tvSourceSelector.setOnClickListener {
+        binding.layoutSourceSelector.setOnClickListener {
             showSourceSelectorDialog()
         }
     }
@@ -310,6 +326,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 首页榜单卡片歌曲点击：添加到播放列表并播放
+     */
     private fun playChartSong(chartType: ChartType, index: Int) {
         val songs = chartSongsMap[chartType]
         if (songs.isNullOrEmpty() || index >= songs.size) {
@@ -317,31 +336,34 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val song = songs[index]
+        val chartSong = songs[index]
         lifecycleScope.launch {
             binding.progressBar.visibility = View.VISIBLE
             try {
-                val platform = when (song.source.lowercase()) {
+                val platform = when (chartSong.source.lowercase()) {
                     "kuwo" -> MusicRepository.Platform.KUWO
                     "netease" -> MusicRepository.Platform.NETEASE
                     else -> MusicRepository.Platform.KUWO
                 }
 
                 val detail = withContext(Dispatchers.IO) {
-                    repository.getSongDetail(platform, song.id, "320k")
+                    repository.getSongDetail(platform, chartSong.id, "320k")
                 }
 
                 if (detail != null) {
-                    PlayerActivity.start(
-                        context = this@MainActivity,
-                        songId = song.id,
-                        songName = song.name,
-                        songArtists = song.artist,
-                        platform = platform,
-                        songUrl = detail.url,
-                        songCover = detail.cover,
-                        songLyrics = detail.lyrics
+                    // 先添加到播放列表
+                    val song = Song(
+                        index = index,
+                        id = chartSong.id,
+                        name = chartSong.name,
+                        artists = chartSong.artist,
+                        coverUrl = chartSong.cover
                     )
+                    val playlistSong = playlistManager.convertToPlaylistSong(song, platform)
+                    playlistManager.addSong(playlistSong)
+
+                    // 然后播放
+                    playbackManager.playFromSearch(this@MainActivity, song, platform, detail)
                 } else {
                     Toast.makeText(this@MainActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
                 }
@@ -608,12 +630,14 @@ class MainActivity : AppCompatActivity() {
         cardKuwo.setOnClickListener {
             currentPlatform = MusicRepository.Platform.KUWO
             updateSourceSelectorText()
+            updateSourceSelectorBackground()
             dialog.dismiss()
         }
 
         cardNetease.setOnClickListener {
             currentPlatform = MusicRepository.Platform.NETEASE
             updateSourceSelectorText()
+            updateSourceSelectorBackground()
             dialog.dismiss()
         }
 
@@ -749,8 +773,10 @@ class MainActivity : AppCompatActivity() {
         searchMusic(currentKeyword, isLoadMore = true)
     }
 
-    private fun playSong(song: Song) {
-        // 先获取歌曲详情，成功后再跳转
+    /**
+     * 添加歌曲到播放列表并播放（搜索列表使用）
+     */
+    private fun addToNowPlayingAndPlay(song: Song) {
         binding.progressBar.visibility = View.VISIBLE
 
         lifecycleScope.launch {
@@ -759,17 +785,11 @@ class MainActivity : AppCompatActivity() {
                     repository.getSongDetail(currentPlatform, song.id, "320k")
                 }
                 if (detail != null) {
-                    // 获取详情成功，跳转到播放页
-                    PlayerActivity.start(
-                        context = this@MainActivity,
-                        songId = song.id,
-                        songName = song.name,
-                        songArtists = song.artists,
-                        platform = currentPlatform,
-                        songUrl = detail.url,
-                        songCover = detail.cover,
-                        songLyrics = detail.lyrics
-                    )
+                    // 先添加到播放列表
+                    val playlistSong = playlistManager.convertToPlaylistSong(song, currentPlatform)
+                    playlistManager.addSong(playlistSong)
+                    // 然后播放
+                    playbackManager.playFromSearch(this@MainActivity, song, currentPlatform, detail)
                 } else {
                     Toast.makeText(this@MainActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
                 }
@@ -782,12 +802,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showOptionsDialog(song: Song) {
-        val options = arrayOf("播放", "下载", "添加到歌单", "添加到正在播放")
+        val options = arrayOf("添加到播放列表并播放", "下载", "添加到歌单", "仅添加到播放列表")
         AlertDialog.Builder(this)
             .setTitle("${song.name} - ${song.artists}")
             .setItems(options) { _, which ->
                 when (which) {
-                    0 -> playSong(song)
+                    0 -> addToNowPlayingAndPlay(song)
                     1 -> showQualityDialog(song)
                     2 -> showPlaylistSelectionDialog(listOf(song))
                     3 -> addToNowPlaying(song)
@@ -880,7 +900,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (detail != null) {
                     val downloadManager = DownloadManager.getInstance(this@MainActivity)
-                    val task = downloadManager.createDownloadTask(song, detail, quality)
+                    val task = downloadManager.createDownloadTask(song, detail, quality, currentPlatform.name)
                     downloadManager.startDownload(task)
                     Toast.makeText(this@MainActivity, "开始下载: ${task.fileName}", Toast.LENGTH_SHORT).show()
                 } else {
@@ -918,7 +938,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     if (detail != null) {
                         val downloadManager = DownloadManager.getInstance(this@MainActivity)
-                        val task = downloadManager.createDownloadTask(song, detail, quality)
+                        val task = downloadManager.createDownloadTask(song, detail, quality, currentPlatform.name)
                         downloadManager.startDownload(task)
                         successCount++
                     } else {

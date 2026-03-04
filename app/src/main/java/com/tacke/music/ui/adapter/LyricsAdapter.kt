@@ -1,11 +1,13 @@
 package com.tacke.music.ui.adapter
 
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.tacke.music.R
+import com.tacke.music.ui.SettingsActivity
 
 /**
  * 歌词列表适配器
@@ -40,9 +42,12 @@ class LyricsAdapter(
         fun bind(lyric: String, position: Int) {
             tvLyricLine.text = lyric
 
-            // 当前播放的歌词高亮显示
+            // 获取用户设置的歌词颜色
+            val lyricColor = SettingsActivity.getLyricColor(itemView.context)
+
+            // 当前播放的歌词高亮显示（使用自定义颜色）
             if (position == currentPosition) {
-                tvLyricLine.setTextColor(itemView.context.getColor(R.color.white))
+                tvLyricLine.setTextColor(lyricColor)
                 tvLyricLine.textSize = 22f
                 tvLyricLine.alpha = 1.0f
                 tvLyricLine.paint.isFakeBoldText = true
@@ -50,12 +55,12 @@ class LyricsAdapter(
                 itemView.scaleX = 1.08f
                 itemView.scaleY = 1.08f
             } else {
-                // 非当前歌词淡化显示
-                val distance = kotlin.math.abs(position - currentPosition)
-                tvLyricLine.setTextColor(itemView.context.getColor(R.color.white))
+                // 非当前歌词使用白色显示
+                tvLyricLine.setTextColor(Color.WHITE)
                 tvLyricLine.textSize = 16f
                 tvLyricLine.paint.isFakeBoldText = false
                 // 根据距离当前歌词的远近设置透明度
+                val distance = kotlin.math.abs(position - currentPosition)
                 tvLyricLine.alpha = when {
                     distance == 1 -> 0.6f
                     distance == 2 -> 0.4f

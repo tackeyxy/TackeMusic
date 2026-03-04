@@ -13,6 +13,7 @@ import com.tacke.music.data.model.RecentPlay
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.RecentPlayRepository
 import com.tacke.music.databinding.ActivityRecentPlayBinding
+import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.ui.adapter.RecentPlayAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -22,6 +23,7 @@ class RecentPlayActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityRecentPlayBinding
     private lateinit var recentPlayRepository: RecentPlayRepository
+    private lateinit var playbackManager: PlaybackManager
     private lateinit var adapter: RecentPlayAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,6 +32,7 @@ class RecentPlayActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         recentPlayRepository = RecentPlayRepository(this)
+        playbackManager = PlaybackManager.getInstance(this)
 
         setupRecyclerView()
         setupClickListeners()
@@ -81,41 +84,15 @@ class RecentPlayActivity : AppCompatActivity() {
     }
 
     private fun playSong(recentPlay: RecentPlay) {
-        val platform = try {
-            MusicRepository.Platform.valueOf(recentPlay.platform)
-        } catch (e: Exception) {
-            MusicRepository.Platform.KUWO
-        }
-
         lifecycleScope.launch {
             try {
-                // 获取歌曲详情（用于歌词和封面）
-                val detail = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    MusicRepository().getSongDetail(platform, recentPlay.id, "320k")
+                // 使用新的 playFromRecentPlay 方法，自动验证平台并获取歌曲详情
+                val success = playbackManager.playFromRecentPlay(this@RecentPlayActivity, recentPlay)
+                if (!success) {
+                    Toast.makeText(this@RecentPlayActivity, "获取歌曲信息失败，可能音源不可用", Toast.LENGTH_SHORT).show()
                 }
-
-                PlayerActivity.start(
-                    context = this@RecentPlayActivity,
-                    songId = recentPlay.id,
-                    songName = recentPlay.name,
-                    songArtists = recentPlay.artists,
-                    platform = platform,
-                    songUrl = detail?.url,
-                    songCover = detail?.cover ?: recentPlay.coverUrl,
-                    songLyrics = detail?.lyrics
-                )
             } catch (e: Exception) {
-                // 获取详情失败，仍然尝试播放
-                PlayerActivity.start(
-                    context = this@RecentPlayActivity,
-                    songId = recentPlay.id,
-                    songName = recentPlay.name,
-                    songArtists = recentPlay.artists,
-                    platform = platform,
-                    songUrl = null,
-                    songCover = recentPlay.coverUrl,
-                    songLyrics = null
-                )
+                Toast.makeText(this@RecentPlayActivity, "播放失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }

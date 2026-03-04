@@ -18,6 +18,7 @@ import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityChartDetailBinding
 import com.tacke.music.download.DownloadManager
+import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.ChartSongAdapter
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +30,7 @@ class ChartDetailActivity : AppCompatActivity() {
     private lateinit var binding: ActivityChartDetailBinding
     private lateinit var adapter: ChartSongAdapter
     private lateinit var playlistRepository: PlaylistRepository
+    private lateinit var playbackManager: PlaybackManager
     private var chartType: ChartType = ChartType.SOARING
     private var chartTitle: String = ""
     private var chartSubtitle: String = ""
@@ -67,6 +69,7 @@ class ChartDetailActivity : AppCompatActivity() {
         chartSubtitle = intent.getStringExtra(EXTRA_CHART_SUBTITLE) ?: ""
 
         playlistRepository = PlaylistRepository(this)
+        playbackManager = PlaybackManager.getInstance(this)
 
         setupToolbar()
         setupRecyclerView()
@@ -111,7 +114,8 @@ class ChartDetailActivity : AppCompatActivity() {
                 if (isMultiSelectMode) {
                     updateBatchActionBar()
                 } else {
-                    playSong(song)
+                    // 榜单列表点击歌曲：添加到播放列表并播放
+                    addToNowPlayingAndPlay(song)
                 }
             },
             onMoreClick = { song, view ->
@@ -231,7 +235,10 @@ class ChartDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun playSong(song: ChartSong) {
+    /**
+     * 添加歌曲到播放列表并播放（榜单列表使用）
+     */
+    private fun addToNowPlayingAndPlay(song: ChartSong) {
         lifecycleScope.launch {
             binding.progressBar.visibility = View.VISIBLE
             try {
@@ -247,16 +254,20 @@ class ChartDetailActivity : AppCompatActivity() {
                 }
 
                 if (detail != null) {
-                    PlayerActivity.start(
-                        context = this@ChartDetailActivity,
-                        songId = song.id,
-                        songName = song.name,
-                        songArtists = song.artist,
-                        platform = platform,
-                        songUrl = detail.url,
-                        songCover = detail.cover,
-                        songLyrics = detail.lyrics
+                    // 先添加到播放列表
+                    val playlistManager = PlaylistManager.getInstance(this@ChartDetailActivity)
+                    val songModel = com.tacke.music.data.model.Song(
+                        index = 0,
+                        id = song.id,
+                        name = song.name,
+                        artists = song.artist,
+                        coverUrl = song.cover
                     )
+                    val playlistSong = playlistManager.convertToPlaylistSong(songModel, platform)
+                    playlistManager.addSong(playlistSong)
+
+                    // 然后播放
+                    playbackManager.playFromSearch(this@ChartDetailActivity, songModel, platform, detail)
                 } else {
                     Toast.makeText(this@ChartDetailActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
                 }
@@ -302,29 +313,34 @@ class ChartDetailActivity : AppCompatActivity() {
             Toast.makeText(this@ChartDetailActivity, "已添加 $addedCount 首歌曲到播放列表", Toast.LENGTH_SHORT).show()
 
             // 播放第一首
-            playSong(songs.first())
+            addToNowPlayingAndPlay(songs.first())
         }
     }
 
     private fun showPopupMenu(song: ChartSong, anchorView: View) {
         val popupMenu = PopupMenu(this, anchorView)
         popupMenu.menu.apply {
-            add(0, 1, 0, "添加到播放列表")
-            add(0, 2, 1, "添加到歌单")
-            add(0, 3, 2, "下载")
+            add(0, 1, 0, "添加到播放列表并播放")
+            add(0, 2, 1, "仅添加到播放列表")
+            add(0, 3, 2, "添加到歌单")
+            add(0, 4, 3, "下载")
         }
 
         popupMenu.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> {
-                    addToNowPlaying(song)
+                    addToNowPlayingAndPlay(song)
                     true
                 }
                 2 -> {
-                    showPlaylistSelectionDialog(song)
+                    addToNowPlaying(song)
                     true
                 }
                 3 -> {
+                    showPlaylistSelectionDialog(song)
+                    true
+                }
+                4 -> {
                     showDownloadQualityDialog(song)
                     true
                 }
@@ -526,6 +542,11 @@ class ChartDetailActivity : AppCompatActivity() {
                     repository.getSongDetail(platform, song.id, quality)
                 }
                 if (detail != null) {
+                    val platform = when (song.source.lowercase()) {
+                        "kuwo" -> MusicRepository.Platform.KUWO
+                        "netease" -> MusicRepository.Platform.NETEASE
+                        else -> MusicRepository.Platform.KUWO
+                    }
                     val songModel = com.tacke.music.data.model.Song(
                         index = 0,
                         id = song.id,
@@ -534,7 +555,7 @@ class ChartDetailActivity : AppCompatActivity() {
                         coverUrl = song.cover
                     )
                     val downloadManager = DownloadManager.getInstance(this@ChartDetailActivity)
-                    val task = downloadManager.createDownloadTask(songModel, detail, quality)
+                    val task = downloadManager.createDownloadTask(songModel, detail, quality, platform.name)
                     downloadManager.startDownload(task)
                     Toast.makeText(this@ChartDetailActivity, "开始下载: ${task.fileName}", Toast.LENGTH_SHORT).show()
                 } else {
@@ -573,7 +594,7 @@ class ChartDetailActivity : AppCompatActivity() {
                             coverUrl = song.cover
                         )
                         val downloadManager = DownloadManager.getInstance(this@ChartDetailActivity)
-                        val task = downloadManager.createDownloadTask(songModel, detail, quality)
+                        val task = downloadManager.createDownloadTask(songModel, detail, quality, platform.name)
                         downloadManager.startDownload(task)
                         successCount++
                     } else {

@@ -67,6 +67,7 @@ class SongAdapter(
     inner class SongViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
+        private val tvSource: TextView = itemView.findViewById(R.id.tvSource)
         private val btnMore: ImageButton = itemView.findViewById(R.id.btnMore)
         private val checkBox: CheckBox = itemView.findViewById(R.id.checkBox)
 
@@ -74,9 +75,13 @@ class SongAdapter(
             tvSongName.text = song.name
             tvArtist.text = song.artists
 
+            // 设置音源标签 - 使用歌曲自己的平台信息
+            setupSourceTag(song.platform)
+
             if (isMultiSelectMode) {
                 checkBox.visibility = View.VISIBLE
                 btnMore.visibility = View.GONE
+                tvSource.visibility = View.GONE
                 checkBox.isChecked = selectedItems.contains(song.id)
                 checkBox.setOnCheckedChangeListener(null)
                 checkBox.setOnCheckedChangeListener { _, isChecked ->
@@ -99,6 +104,7 @@ class SongAdapter(
             } else {
                 checkBox.visibility = View.GONE
                 btnMore.visibility = View.VISIBLE
+                tvSource.visibility = View.VISIBLE
 
                 itemView.setOnClickListener { onItemClick(song) }
                 btnMore.setOnClickListener { onMoreClick(song) }
@@ -107,6 +113,16 @@ class SongAdapter(
             itemView.setOnLongClickListener {
                 onLongClick?.invoke(song) ?: false
             }
+        }
+
+        private fun setupSourceTag(platform: String) {
+            val (sourceName, backgroundRes) = when (platform.uppercase()) {
+                "KUWO" -> "酷我" to R.drawable.bg_source_kuwo
+                "NETEASE" -> "网易" to R.drawable.bg_source_netease
+                else -> "未知" to R.drawable.bg_source_default
+            }
+            tvSource.text = sourceName
+            tvSource.setBackgroundResource(backgroundRes)
         }
     }
 

@@ -86,6 +86,49 @@
 
         </LinearLayout>
 
+        <!-- 歌词颜色设置 -->
+        <LinearLayout
+            android:id="@+id/layoutLyricColor"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_card_rounded"
+            android:paddingHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_palette"
+                android:tint="@color/primary" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:text="歌词颜色"
+                android:textSize="15sp"
+                android:textColor="@color/text_primary" />
+
+            <View
+                android:id="@+id/viewLyricColorPreview"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:background="@drawable/bg_color_circle" />
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_chevron_right"
+                android:tint="@color/text_hint" />
+
+        </LinearLayout>
+
         <!-- 下载位置设置 -->
         <LinearLayout
             android:id="@+id/layoutDownloadPath"
@@ -124,6 +167,43 @@
                 android:text="默认位置"
                 android:textSize="14sp"
                 android:textColor="@color/text_secondary" />
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_chevron_right"
+                android:tint="@color/text_hint" />
+
+        </LinearLayout>
+
+        <!-- 日志管理 -->
+        <LinearLayout
+            android:id="@+id/layoutLogViewer"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_card_rounded"
+            android:paddingHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_log"
+                android:tint="@color/primary" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:text="日志管理"
+                android:textSize="15sp"
+                android:textColor="@color/text_primary" />
 
             <ImageView
                 android:layout_width="20dp"

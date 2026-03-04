@@ -20,13 +20,17 @@ class MusicRepository {
     }
 
     suspend fun searchMusic(platform: Platform, keyword: String, page: Int = 0): List<Song> {
+        val platformStr = when (platform) {
+            Platform.KUWO -> "KUWO"
+            Platform.NETEASE -> "NETEASE"
+        }
         return when (platform) {
-            Platform.KUWO -> searchKuwoMusic(keyword, page)
-            Platform.NETEASE -> searchNeteaseMusic(keyword, page)
+            Platform.KUWO -> searchKuwoMusic(keyword, page, platformStr)
+            Platform.NETEASE -> searchNeteaseMusic(keyword, page, platformStr)
         }
     }
 
-    private suspend fun searchKuwoMusic(keyword: String, page: Int = 0): List<Song> {
+    private suspend fun searchKuwoMusic(keyword: String, page: Int = 0, platformStr: String): List<Song> {
         return try {
             val responseBody = RetrofitClient.kuwoApi.searchMusic(
                 keywords = keyword,
@@ -70,7 +74,8 @@ class MusicRepository {
                         index = page * PAGE_SIZE + i + 1,
                         id = id,
                         name = name,
-                        artists = artist
+                        artists = artist,
+                        platform = platformStr
                     ))
                 }
             }
@@ -82,7 +87,7 @@ class MusicRepository {
         }
     }
 
-    private suspend fun searchNeteaseMusic(keyword: String, page: Int = 0): List<Song> {
+    private suspend fun searchNeteaseMusic(keyword: String, page: Int = 0, platformStr: String): List<Song> {
         return try {
             val apiPath = "/api/cloudsearch/pc"
             val data = JSONObject().apply {
@@ -106,7 +111,8 @@ class MusicRepository {
                     index = page * PAGE_SIZE + index + 1,
                     id = song.id.toString(),
                     name = song.name ?: "未知",
-                    artists = artistNames
+                    artists = artistNames,
+                    platform = platformStr
                 )
             }
         } catch (e: Exception) {

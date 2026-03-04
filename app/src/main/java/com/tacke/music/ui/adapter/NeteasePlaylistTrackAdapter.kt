@@ -3,6 +3,7 @@ package com.tacke.music.ui.adapter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -11,10 +12,13 @@ import com.tacke.music.data.api.PlaylistTrack
 
 class NeteasePlaylistTrackAdapter(
     private val onItemClick: (PlaylistTrack) -> Unit,
-    private val onMoreClick: (PlaylistTrack) -> Unit
+    private val onMoreClick: (PlaylistTrack, View) -> Unit,
+    private val onLongClick: ((PlaylistTrack) -> Boolean)? = null
 ) : RecyclerView.Adapter<NeteasePlaylistTrackAdapter.TrackViewHolder>() {
 
     private var tracks: List<PlaylistTrack> = emptyList()
+    private var isMultiSelectMode = false
+    private val selectedItems = mutableSetOf<Long>()
 
     fun submitList(newTracks: List<PlaylistTrack>) {
         tracks = newTracks
@@ -28,6 +32,37 @@ class NeteasePlaylistTrackAdapter(
     }
 
     fun getAllTracks(): List<PlaylistTrack> = tracks
+
+    fun setMultiSelectMode(enabled: Boolean) {
+        isMultiSelectMode = enabled
+        if (!enabled) {
+            selectedItems.clear()
+        }
+        notifyDataSetChanged()
+    }
+
+    fun isMultiSelectMode(): Boolean = isMultiSelectMode
+
+    fun getSelectedTracks(): List<PlaylistTrack> {
+        return tracks.filter { selectedItems.contains(it.id) }
+    }
+
+    fun setSelectedItems(selected: Set<Long>) {
+        selectedItems.clear()
+        selectedItems.addAll(selected)
+        notifyDataSetChanged()
+    }
+
+    fun selectAll() {
+        selectedItems.clear()
+        selectedItems.addAll(tracks.map { it.id })
+        notifyDataSetChanged()
+    }
+
+    fun clearSelection() {
+        selectedItems.clear()
+        notifyDataSetChanged()
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TrackViewHolder {
         val view = LayoutInflater.from(parent.context)
@@ -46,22 +81,51 @@ class NeteasePlaylistTrackAdapter(
         private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
         private val btnMore: ImageView = itemView.findViewById(R.id.btnMore)
+        private val checkBox: CheckBox = itemView.findViewById(R.id.checkBox)
 
         fun bind(track: PlaylistTrack, position: Int) {
             tvNumber.text = position.toString()
             tvSongName.text = track.name
             tvArtist.text = track.ar?.joinToString(",") { it.name } ?: "未知艺人"
 
-            itemView.setOnClickListener {
-                if (adapterPosition != RecyclerView.NO_POSITION) {
-                    onItemClick(tracks[adapterPosition])
+            if (isMultiSelectMode) {
+                checkBox.visibility = View.VISIBLE
+                btnMore.visibility = View.GONE
+                tvNumber.visibility = View.GONE
+                checkBox.isChecked = selectedItems.contains(track.id)
+                checkBox.setOnCheckedChangeListener(null)
+                checkBox.setOnCheckedChangeListener { _, isChecked ->
+                    if (isChecked) {
+                        selectedItems.add(track.id)
+                    } else {
+                        selectedItems.remove(track.id)
+                    }
+                }
+
+                itemView.setOnClickListener {
+                    checkBox.isChecked = !checkBox.isChecked
+                    if (checkBox.isChecked) {
+                        selectedItems.add(track.id)
+                    } else {
+                        selectedItems.remove(track.id)
+                    }
+                    onItemClick(track)
+                }
+            } else {
+                checkBox.visibility = View.GONE
+                btnMore.visibility = View.VISIBLE
+                tvNumber.visibility = View.VISIBLE
+
+                itemView.setOnClickListener {
+                    onItemClick(track)
+                }
+                btnMore.setOnClickListener {
+                    onMoreClick(track, it)
                 }
             }
 
-            btnMore.setOnClickListener {
-                if (adapterPosition != RecyclerView.NO_POSITION) {
-                    onMoreClick(tracks[adapterPosition])
-                }
+            itemView.setOnLongClickListener {
+                onLongClick?.invoke(track) ?: false
             }
         }
     }

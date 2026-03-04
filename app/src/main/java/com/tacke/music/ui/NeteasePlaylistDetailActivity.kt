@@ -4,19 +4,26 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.bumptech.glide.Glide
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.tacke.music.R
 import com.tacke.music.data.api.PlaylistTrack
 import com.tacke.music.data.api.RetrofitClient
 import com.tacke.music.data.api.SongDetailInfo
 import com.tacke.music.data.api.TrackArtist
 import com.tacke.music.data.api.TrackAlbum
+import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.MusicRepository
+import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityNeteasePlaylistDetailBinding
+import com.tacke.music.download.DownloadManager
+import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.NeteasePlaylistTrackAdapter
 import kotlinx.coroutines.Dispatchers
@@ -28,10 +35,13 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
     private lateinit var binding: ActivityNeteasePlaylistDetailBinding
     private lateinit var trackAdapter: NeteasePlaylistTrackAdapter
     private lateinit var playlistManager: PlaylistManager
+    private lateinit var playlistRepository: PlaylistRepository
+    private lateinit var playbackManager: PlaybackManager
 
     private var playlistId: Long = 0
     private var playlistName: String = ""
     private var playlistCover: String = ""
+    private var isMultiSelectMode = false
 
     // 分页加载相关
     private var allTrackIds: List<Long> = emptyList()
@@ -66,12 +76,23 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
         }
 
         playlistManager = PlaylistManager.getInstance(this)
+        playlistRepository = PlaylistRepository(this)
+        playbackManager = PlaybackManager.getInstance(this)
 
         setupUI()
         setupRecyclerView()
         setupClickListeners()
+        setupBatchActionListeners()
         setupScrollListener()
         loadPlaylistDetail()
+    }
+
+    override fun onBackPressed() {
+        if (isMultiSelectMode) {
+            exitMultiSelectMode()
+        } else {
+            super.onBackPressed()
+        }
     }
 
     private fun setupUI() {
@@ -89,10 +110,25 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
     private fun setupRecyclerView() {
         trackAdapter = NeteasePlaylistTrackAdapter(
             onItemClick = { track ->
-                playTrack(track)
+                if (isMultiSelectMode) {
+                    updateBatchActionBar()
+                } else {
+                    // 推荐歌单列表点击歌曲：添加到播放列表并播放
+                    addToNowPlayingAndPlay(track)
+                }
             },
-            onMoreClick = { track ->
-                showTrackOptions(track)
+            onMoreClick = { track, view ->
+                if (!isMultiSelectMode) {
+                    showTrackOptions(track, view)
+                }
+            },
+            onLongClick = { track ->
+                if (!isMultiSelectMode) {
+                    enterMultiSelectMode()
+                    true
+                } else {
+                    false
+                }
             }
         )
 
@@ -102,12 +138,88 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
 
     private fun setupClickListeners() {
         binding.btnBack.setOnClickListener {
-            finish()
+            if (isMultiSelectMode) {
+                exitMultiSelectMode()
+            } else {
+                finish()
+            }
         }
 
         binding.btnPlayAll.setOnClickListener {
-            playAllTracks()
+            if (!isMultiSelectMode) {
+                playAllTracks()
+            }
         }
+
+        binding.btnBatchManage.setOnClickListener {
+            enterMultiSelectMode()
+        }
+    }
+
+    private fun setupBatchActionListeners() {
+        binding.btnSelectAll.setOnClickListener {
+            trackAdapter.selectAll()
+            updateBatchActionBar()
+        }
+
+        binding.btnBatchDownload.setOnClickListener {
+            val selectedTracks = trackAdapter.getSelectedTracks()
+            if (selectedTracks.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showBatchDownloadQualityDialog(selectedTracks)
+        }
+
+        binding.btnAddToPlaylist.setOnClickListener {
+            val selectedTracks = trackAdapter.getSelectedTracks()
+            if (selectedTracks.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showBatchPlaylistSelectionDialog(selectedTracks)
+        }
+
+        binding.btnAddToNowPlaying.setOnClickListener {
+            val selectedTracks = trackAdapter.getSelectedTracks()
+            if (selectedTracks.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            addTracksToNowPlaying(selectedTracks)
+        }
+
+        binding.btnCancelBatch.setOnClickListener {
+            exitMultiSelectMode()
+        }
+    }
+
+    private fun enterMultiSelectMode() {
+        isMultiSelectMode = true
+        trackAdapter.setMultiSelectMode(true)
+        showBatchActionBar()
+    }
+
+    private fun exitMultiSelectMode() {
+        isMultiSelectMode = false
+        trackAdapter.setMultiSelectMode(false)
+        hideBatchActionBar()
+    }
+
+    private fun showBatchActionBar() {
+        binding.batchActionBar.visibility = View.VISIBLE
+        binding.btnBatchManage.visibility = View.GONE
+        updateBatchActionBar()
+    }
+
+    private fun hideBatchActionBar() {
+        binding.batchActionBar.visibility = View.GONE
+        binding.btnBatchManage.visibility = View.VISIBLE
+    }
+
+    private fun updateBatchActionBar() {
+        val selectedCount = trackAdapter.getSelectedTracks().size
+        binding.tvSelectedCount.text = "已选择 $selectedCount 项"
     }
 
     private fun setupScrollListener() {
@@ -217,7 +329,10 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
         binding.recyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
     }
 
-    private fun playTrack(track: PlaylistTrack) {
+    /**
+     * 添加歌曲到播放列表并播放（推荐歌单列表使用）
+     */
+    private fun addToNowPlayingAndPlay(track: PlaylistTrack) {
         lifecycleScope.launch {
             binding.progressBar.visibility = View.VISIBLE
             try {
@@ -229,17 +344,25 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                 }
 
                 if (detail != null) {
-                    // 跳转到播放页面
-                    PlayerActivity.start(
-                        context = this@NeteasePlaylistDetailActivity,
-                        songId = track.id.toString(),
-                        songName = track.name,
-                        songArtists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
-                        platform = platform,
-                        songUrl = detail.url,
-                        songCover = track.al?.picUrl ?: detail.cover,
-                        songLyrics = detail.lyrics
+                    // 先添加到播放列表
+                    val playlistSong = com.tacke.music.data.model.PlaylistSong(
+                        id = track.id.toString(),
+                        name = track.name,
+                        artists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
+                        coverUrl = track.al?.picUrl ?: "",
+                        platform = "netease"
                     )
+                    playlistManager.addSong(playlistSong)
+
+                    // 然后播放
+                    val song = Song(
+                        index = 0,
+                        id = track.id.toString(),
+                        name = track.name,
+                        artists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
+                        coverUrl = track.al?.picUrl ?: ""
+                    )
+                    playbackManager.playFromSearch(this@NeteasePlaylistDetailActivity, song, platform, detail)
                 } else {
                     Toast.makeText(this@NeteasePlaylistDetailActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
                 }
@@ -258,12 +381,9 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             return
         }
 
-        // 播放第一首
-        playTrack(tracks[0])
-
-        // 将剩余歌曲添加到播放列表
+        // 先将所有歌曲添加到播放列表
         lifecycleScope.launch {
-            tracks.drop(1).forEach { track ->
+            tracks.forEach { track ->
                 val playlistSong = com.tacke.music.data.model.PlaylistSong(
                     id = track.id.toString(),
                     name = track.name,
@@ -273,21 +393,43 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                 )
                 playlistManager.addSong(playlistSong)
             }
+
+            // 播放第一首
+            addToNowPlayingAndPlay(tracks[0])
         }
     }
 
-    private fun showTrackOptions(track: PlaylistTrack) {
-        val options = arrayOf("播放", "添加到播放列表")
+    private fun showTrackOptions(track: PlaylistTrack, anchorView: View) {
+        val popupMenu = PopupMenu(this, anchorView)
+        popupMenu.menu.apply {
+            add(0, 1, 0, "添加到播放列表并播放")
+            add(0, 2, 1, "仅添加到播放列表")
+            add(0, 3, 2, "添加到歌单")
+            add(0, 4, 3, "下载")
+        }
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle(track.name)
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> playTrack(track)
-                    1 -> addToNowPlaying(track)
+        popupMenu.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                1 -> {
+                    addToNowPlayingAndPlay(track)
+                    true
                 }
+                2 -> {
+                    addToNowPlaying(track)
+                    true
+                }
+                3 -> {
+                    showPlaylistSelectionDialog(track)
+                    true
+                }
+                4 -> {
+                    showDownloadQualityDialog(track)
+                    true
+                }
+                else -> false
             }
-            .show()
+        }
+        popupMenu.show()
     }
 
     private fun addToNowPlaying(track: PlaylistTrack) {
@@ -305,6 +447,254 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Toast.makeText(this@NeteasePlaylistDetailActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    private fun addTracksToNowPlaying(tracks: List<PlaylistTrack>) {
+        lifecycleScope.launch {
+            try {
+                var addedCount = 0
+                var duplicateCount = 0
+                tracks.forEach { track ->
+                    val playlistSong = com.tacke.music.data.model.PlaylistSong(
+                        id = track.id.toString(),
+                        name = track.name,
+                        artists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
+                        coverUrl = track.al?.picUrl ?: "",
+                        platform = "netease"
+                    )
+                    val currentList = playlistManager.currentPlaylist.value
+                    if (currentList.none { it.id == playlistSong.id }) {
+                        playlistManager.addSong(playlistSong)
+                        addedCount++
+                    } else {
+                        duplicateCount++
+                    }
+                }
+                val message = when {
+                    duplicateCount > 0 -> "已添加 $addedCount 首，$duplicateCount 首已存在"
+                    else -> "已添加 $addedCount 首歌曲到正在播放列表"
+                }
+                Toast.makeText(this@NeteasePlaylistDetailActivity, message, Toast.LENGTH_SHORT).show()
+                exitMultiSelectMode()
+            } catch (e: Exception) {
+                Toast.makeText(this@NeteasePlaylistDetailActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showPlaylistSelectionDialog(track: PlaylistTrack) {
+        lifecycleScope.launch {
+            val playlists = playlistRepository.getAllPlaylistsSync()
+
+            if (playlists.isEmpty()) {
+                MaterialAlertDialogBuilder(this@NeteasePlaylistDetailActivity)
+                    .setTitle("添加到歌单")
+                    .setMessage("暂无歌单，是否创建新歌单？")
+                    .setPositiveButton("创建") { _, _ ->
+                        showCreatePlaylistDialog(listOf(track))
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+                return@launch
+            }
+
+            val playlistNames = playlists.map { it.name }.toTypedArray()
+
+            MaterialAlertDialogBuilder(this@NeteasePlaylistDetailActivity)
+                .setTitle("添加到歌单")
+                .setItems(playlistNames) { _, which ->
+                    addTracksToPlaylist(playlists[which].id, listOf(track))
+                }
+                .setPositiveButton("新建歌单") { _, _ ->
+                    showCreatePlaylistDialog(listOf(track))
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
+    private fun showBatchPlaylistSelectionDialog(tracks: List<PlaylistTrack>) {
+        lifecycleScope.launch {
+            val playlists = playlistRepository.getAllPlaylistsSync()
+
+            if (playlists.isEmpty()) {
+                MaterialAlertDialogBuilder(this@NeteasePlaylistDetailActivity)
+                    .setTitle("添加到歌单")
+                    .setMessage("暂无歌单，是否创建新歌单？")
+                    .setPositiveButton("创建") { _, _ ->
+                        showCreatePlaylistDialog(tracks)
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+                return@launch
+            }
+
+            val playlistNames = playlists.map { it.name }.toTypedArray()
+
+            MaterialAlertDialogBuilder(this@NeteasePlaylistDetailActivity)
+                .setTitle("添加到歌单")
+                .setItems(playlistNames) { _, which ->
+                    addTracksToPlaylist(playlists[which].id, tracks)
+                }
+                .setPositiveButton("新建歌单") { _, _ ->
+                    showCreatePlaylistDialog(tracks)
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
+    private fun showCreatePlaylistDialog(tracks: List<PlaylistTrack>) {
+        val editText = android.widget.EditText(this).apply {
+            hint = "歌单名称"
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("新建歌单")
+            .setView(editText)
+            .setPositiveButton("创建") { _, _ ->
+                val name = editText.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    lifecycleScope.launch {
+                        val playlist = playlistRepository.createPlaylist(name)
+                        addTracksToPlaylist(playlist.id, tracks)
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun addTracksToPlaylist(playlistId: String, tracks: List<PlaylistTrack>) {
+        lifecycleScope.launch {
+            try {
+                val songList = tracks.map { track ->
+                    Song(
+                        index = 0,
+                        id = track.id.toString(),
+                        name = track.name,
+                        artists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
+                        coverUrl = track.al?.picUrl ?: ""
+                    )
+                }
+
+                playlistRepository.addSongsToPlaylist(playlistId, songList, "netease")
+
+                Toast.makeText(
+                    this@NeteasePlaylistDetailActivity,
+                    "已添加 ${tracks.size} 首歌曲到歌单",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                if (isMultiSelectMode) {
+                    exitMultiSelectMode()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@NeteasePlaylistDetailActivity,
+                    "添加失败: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private fun showDownloadQualityDialog(track: PlaylistTrack) {
+        val qualities = arrayOf("HR (24bit/96kHz)", "CDQ (16bit/44.1kHz)", "HQ (320kbps)", "LQ (128kbps)")
+        val qualityValues = arrayOf("flac24bit", "flac", "320k", "128k")
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("选择音质")
+            .setItems(qualities) { _, which ->
+                downloadTrack(track, qualityValues[which])
+            }
+            .show()
+    }
+
+    private fun showBatchDownloadQualityDialog(tracks: List<PlaylistTrack>) {
+        val qualities = arrayOf("HR (24bit/96kHz)", "CDQ (16bit/44.1kHz)", "HQ (320kbps)", "LQ (128kbps)")
+        val qualityValues = arrayOf("flac24bit", "flac", "320k", "128k")
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("批量下载")
+            .setItems(qualities) { _, which ->
+                batchDownloadTracks(tracks, qualityValues[which])
+            }
+            .show()
+    }
+
+    private fun downloadTrack(track: PlaylistTrack, quality: String) {
+        lifecycleScope.launch {
+            binding.progressBar.visibility = View.VISIBLE
+            try {
+                val platform = MusicRepository.Platform.NETEASE
+                val repository = MusicRepository()
+                val detail = withContext(Dispatchers.IO) {
+                    repository.getSongDetail(platform, track.id.toString(), quality)
+                }
+                if (detail != null) {
+                    val song = Song(
+                        index = 0,
+                        id = track.id.toString(),
+                        name = track.name,
+                        artists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
+                        coverUrl = track.al?.picUrl ?: ""
+                    )
+                    val downloadManager = DownloadManager.getInstance(this@NeteasePlaylistDetailActivity)
+                    val task = downloadManager.createDownloadTask(song, detail, quality, MusicRepository.Platform.NETEASE.name)
+                    downloadManager.startDownload(task)
+                    Toast.makeText(this@NeteasePlaylistDetailActivity, "开始下载: ${task.fileName}", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@NeteasePlaylistDetailActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@NeteasePlaylistDetailActivity, "下载失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                binding.progressBar.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun batchDownloadTracks(tracks: List<PlaylistTrack>, quality: String) {
+        lifecycleScope.launch {
+            var successCount = 0
+            var failCount = 0
+
+            tracks.forEach { track ->
+                try {
+                    val platform = MusicRepository.Platform.NETEASE
+                    val repository = MusicRepository()
+                    val detail = withContext(Dispatchers.IO) {
+                        repository.getSongDetail(platform, track.id.toString(), quality)
+                    }
+                    if (detail != null) {
+                        val song = Song(
+                            index = 0,
+                            id = track.id.toString(),
+                            name = track.name,
+                            artists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
+                            coverUrl = track.al?.picUrl ?: ""
+                        )
+                        val downloadManager = DownloadManager.getInstance(this@NeteasePlaylistDetailActivity)
+                        val task = downloadManager.createDownloadTask(song, detail, quality, MusicRepository.Platform.NETEASE.name)
+                        downloadManager.startDownload(task)
+                        successCount++
+                    } else {
+                        failCount++
+                    }
+                } catch (e: Exception) {
+                    failCount++
+                }
+            }
+
+            Toast.makeText(
+                this@NeteasePlaylistDetailActivity,
+                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
+                Toast.LENGTH_LONG
+            ).show()
+
+            exitMultiSelectMode()
         }
     }
 

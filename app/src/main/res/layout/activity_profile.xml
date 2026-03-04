@@ -7,32 +7,15 @@
     android:background="@color/background"
     tools:context=".ui.ProfileActivity">
 
-    <!-- 顶部背景 -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="200dp"
-        android:background="@drawable/bg_gradient_blue"
-        android:alpha="0.3"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <!-- 顶部工具栏 -->
+    <!-- 顶部标题栏 -->
     <LinearLayout
         android:id="@+id/headerLayout"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="56dp"
         android:orientation="horizontal"
-        android:padding="16dp"
-        android:gravity="center_vertical"
+        android:paddingHorizontal="20dp"
+        android:gravity="center_vertical|end"
         app:layout_constraintTop_toTopOf="parent">
-
-        <View
-            android:layout_width="40dp"
-            android:layout_height="40dp" />
-
-        <View
-            android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:layout_weight="1" />
 
         <ImageButton
             android:id="@+id/btnSettings"
@@ -40,83 +23,8 @@
             android:layout_height="40dp"
             android:src="@drawable/ic_settings"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:tint="@color/text_primary"
+            app:tint="@color/text_primary"
             android:contentDescription="设置" />
-
-    </LinearLayout>
-
-    <!-- 用户信息区域 -->
-    <LinearLayout
-        android:id="@+id/userInfoContainer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:paddingHorizontal="24dp"
-        android:layout_marginTop="8dp"
-        app:layout_constraintTop_toBottomOf="@id/headerLayout">
-
-        <!-- 头像 -->
-        <androidx.cardview.widget.CardView
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            app:cardCornerRadius="40dp"
-            app:cardElevation="0dp">
-
-            <ImageView
-                android:id="@+id/ivAvatar"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="centerCrop"
-                android:src="@android:drawable/ic_menu_gallery" />
-
-        </androidx.cardview.widget.CardView>
-
-        <!-- 用户信息 -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="16dp"
-            android:orientation="vertical">
-
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:id="@+id/tvUserName"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Alex Miller"
-                    android:textSize="20sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/text_primary" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:text="VIP"
-                    android:textSize="10sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/black"
-                    android:background="@drawable/bg_vip_badge"
-                    android:paddingHorizontal="6dp"
-                    android:paddingVertical="2dp" />
-
-            </LinearLayout>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="音乐爱好者"
-                android:textSize="14sp"
-                android:textColor="@color/text_secondary" />
-
-        </LinearLayout>
 
     </LinearLayout>
 
@@ -125,9 +33,8 @@
         android:id="@+id/scrollView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="24dp"
         android:layout_marginBottom="80dp"
-        app:layout_constraintTop_toBottomOf="@id/userInfoContainer"
+        app:layout_constraintTop_toBottomOf="@id/headerLayout"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <LinearLayout
@@ -136,136 +43,229 @@
             android:orientation="vertical"
             android:paddingHorizontal="16dp">
 
-            <!-- 下载管理 -->
-            <LinearLayout
-                android:id="@+id/btnDownloadManager"
+            <!-- 四个功能卡片网格 -->
+            <GridLayout
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
+                android:layout_height="wrap_content"
+                android:columnCount="2"
+                android:rowCount="2"
+                android:layout_marginTop="16dp">
+
+                <!-- 本地音乐 -->
+                <LinearLayout
+                    android:id="@+id/btnLocalMusic"
+                    android:layout_width="0dp"
+                    android:layout_height="100dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="6dp"
+                    android:orientation="vertical"
+                    android:gravity="center_vertical"
+                    android:padding="16dp"
+                    android:background="@drawable/bg_card_local_music"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackground">
+
+                    <ImageView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:src="@drawable/ic_local_music"
+                        app:tint="#FFFFFF" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="本地音乐"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="#FFFFFF" />
+
+                    <TextView
+                        android:id="@+id/tvLocalMusicCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="128首"
+                        android:textSize="12sp"
+                        android:textColor="#CCFFFFFF" />
+
+                </LinearLayout>
+
+                <!-- 下载管理 -->
+                <LinearLayout
+                    android:id="@+id/btnDownloadManager"
+                    android:layout_width="0dp"
+                    android:layout_height="100dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="6dp"
+                    android:orientation="vertical"
+                    android:gravity="center_vertical"
+                    android:padding="16dp"
+                    android:background="@drawable/bg_card_download"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackground">
+
+                    <ImageView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:src="@drawable/ic_download_white"
+                        app:tint="#FFFFFF" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="下载管理"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="#FFFFFF" />
+
+                    <TextView
+                        android:id="@+id/tvDownloadCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="96首"
+                        android:textSize="12sp"
+                        android:textColor="#CCFFFFFF" />
+
+                </LinearLayout>
+
+                <!-- 我喜欢的 -->
+                <LinearLayout
+                    android:id="@+id/btnFavorites"
+                    android:layout_width="0dp"
+                    android:layout_height="100dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="6dp"
+                    android:orientation="vertical"
+                    android:gravity="center_vertical"
+                    android:padding="16dp"
+                    android:background="@drawable/bg_card_favorite"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackground">
+
+                    <ImageView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:src="@drawable/ic_heart"
+                        app:tint="#FFFFFF" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="我喜欢的"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="#FFFFFF" />
+
+                    <TextView
+                        android:id="@+id/tvFavoriteCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="450首"
+                        android:textSize="12sp"
+                        android:textColor="#CCFFFFFF" />
+
+                </LinearLayout>
+
+                <!-- 播放历史 -->
+                <LinearLayout
+                    android:id="@+id/btnRecent"
+                    android:layout_width="0dp"
+                    android:layout_height="100dp"
+                    android:layout_columnWeight="1"
+                    android:layout_margin="6dp"
+                    android:orientation="vertical"
+                    android:gravity="center_vertical"
+                    android:padding="16dp"
+                    android:background="@drawable/bg_card_history"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackground">
+
+                    <ImageView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:src="@drawable/ic_history_white"
+                        app:tint="#FFFFFF" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="播放历史"
+                        android:textSize="15sp"
+                        android:textStyle="bold"
+                        android:textColor="#FFFFFF" />
+
+                    <TextView
+                        android:id="@+id/tvRecentCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="1500首"
+                        android:textSize="12sp"
+                        android:textColor="#CCFFFFFF" />
+
+                </LinearLayout>
+
+            </GridLayout>
+
+            <!-- 我的歌单标题 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:background="@drawable/bg_card_rounded"
-                android:paddingHorizontal="16dp"
+                android:layout_marginTop="28dp"
                 android:layout_marginBottom="12dp">
-
-                <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@drawable/ic_download"
-                    android:tint="@color/primary" />
 
                 <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:layout_marginStart="16dp"
-                    android:text="下载管理"
-                    android:textSize="15sp"
-                    android:textColor="@color/text_primary" />
-
-                <ImageView
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:src="@drawable/ic_chevron_right" />
-
-            </LinearLayout>
-
-            <!-- 我的歌单 -->
-            <LinearLayout
-                android:id="@+id/btnMyPlaylists"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:background="@drawable/bg_card_rounded"
-                android:paddingHorizontal="16dp"
-                android:layout_marginBottom="12dp">
-
-                <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@drawable/ic_playlist"
-                    android:tint="@color/primary" />
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="16dp"
                     android:text="我的歌单"
-                    android:textSize="15sp"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
                     android:textColor="@color/text_primary" />
 
-                <ImageView
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:src="@drawable/ic_chevron_right" />
+                <!-- 添加歌单按钮 -->
+                <ImageButton
+                    android:id="@+id/btnAddPlaylist"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:src="@drawable/ic_add"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    app:tint="@color/primary"
+                    android:contentDescription="添加歌单" />
+
+                <!-- 展开/收起全部歌单按钮 -->
+                <ImageButton
+                    android:id="@+id/btnExpandAllPlaylists"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:layout_marginStart="4dp"
+                    android:src="@drawable/ic_expand_more"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    app:tint="@color/text_secondary"
+                    android:contentDescription="展开全部歌单" />
 
             </LinearLayout>
 
-            <!-- 最近播放 -->
-            <LinearLayout
-                android:id="@+id/btnRecent"
+            <!-- 歌单列表 -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvPlaylists"
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:background="@drawable/bg_card_rounded"
-                android:paddingHorizontal="16dp"
-                android:layout_marginBottom="12dp">
-
-                <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@drawable/ic_history"
-                    android:tint="@color/primary" />
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="16dp"
-                    android:text="最近播放"
-                    android:textSize="15sp"
-                    android:textColor="@color/text_primary" />
-
-                <ImageView
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:src="@drawable/ic_chevron_right" />
-
-            </LinearLayout>
-
-            <!-- 设置 -->
-            <LinearLayout
-                android:id="@+id/btnSettingsMenu"
-                android:layout_width="match_parent"
-                android:layout_height="56dp"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:background="@drawable/bg_card_rounded"
-                android:paddingHorizontal="16dp">
-
-                <ImageView
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:src="@drawable/ic_settings"
-                    android:tint="@color/primary" />
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="16dp"
-                    android:text="设置"
-                    android:textSize="15sp"
-                    android:textColor="@color/text_primary" />
-
-                <ImageView
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:src="@drawable/ic_chevron_right" />
-
-            </LinearLayout>
+                android:layout_height="wrap_content"
+                android:clipToPadding="false"
+                android:paddingBottom="16dp"
+                tools:listitem="@layout/item_playlist_grid" />
 
         </LinearLayout>
 
@@ -294,7 +294,8 @@
                 android:id="@+id/ivNavHome"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:src="@drawable/selector_nav_home" />
+                android:src="@drawable/selector_nav_home"
+                app:tint="@color/text_secondary" />
 
             <TextView
                 android:id="@+id/tvNavHome"
@@ -320,7 +321,8 @@
                 android:id="@+id/ivNavDiscover"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:src="@drawable/selector_nav_discover" />
+                android:src="@drawable/selector_nav_discover"
+                app:tint="@color/text_secondary" />
 
             <TextView
                 android:id="@+id/tvNavDiscover"
@@ -346,7 +348,8 @@
                 android:id="@+id/ivNavProfile"
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:src="@drawable/selector_nav_profile" />
+                android:src="@drawable/ic_profile_filled"
+                app:tint="@color/primary" />
 
             <TextView
                 android:id="@+id/tvNavProfile"

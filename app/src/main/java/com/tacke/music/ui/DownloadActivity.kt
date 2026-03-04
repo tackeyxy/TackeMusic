@@ -15,6 +15,7 @@ import com.tacke.music.R
 import com.tacke.music.data.model.DownloadTask
 import com.tacke.music.databinding.ActivityDownloadBinding
 import com.tacke.music.download.DownloadManager
+import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.ui.adapter.DownloadHistoryAdapter
 import com.tacke.music.ui.adapter.DownloadingAdapter
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +26,7 @@ class DownloadActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityDownloadBinding
     private lateinit var downloadManager: DownloadManager
+    private lateinit var playbackManager: PlaybackManager
     private lateinit var downloadingAdapter: DownloadingAdapter
     private lateinit var historyAdapter: DownloadHistoryAdapter
     private var isMultiSelectMode = false
@@ -35,6 +37,7 @@ class DownloadActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         downloadManager = DownloadManager.getInstance(this)
+        playbackManager = PlaybackManager.getInstance(this)
 
         setupToolbar()
         setupTabLayout()
@@ -311,62 +314,48 @@ class DownloadActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 下载历史点击：添加到播放列表并播放
+     */
     private fun playDownloadedSong(task: DownloadTask) {
-        val playlistManager = com.tacke.music.playlist.PlaylistManager.getInstance(this)
-        // 下载任务没有保存平台信息，使用默认平台
-        val platform = com.tacke.music.data.repository.MusicRepository.Platform.KUWO
-
         lifecycleScope.launch {
             // 检查本地文件是否存在
             val localFile = java.io.File(task.filePath)
             val hasLocalFile = localFile.exists() && localFile.length() > 0
 
-            // 添加到播放列表
-            val playlistSong = com.tacke.music.data.model.PlaylistSong(
-                id = task.songId,
-                name = task.songName,
-                artists = task.artist,
-                coverUrl = task.coverUrl,
-                platform = platform.name
-            )
-            playlistManager.addSong(playlistSong)
-
             if (hasLocalFile) {
-                // 本地文件存在，直接播放本地文件
-                // 但仍需获取歌词和封面
-                val detail = withContext(Dispatchers.IO) {
-                    com.tacke.music.data.repository.MusicRepository().getSongDetail(platform, task.songId, "320k")
-                }
-
-                PlayerActivity.start(
+                // 本地文件存在，使用带平台信息的播放方法
+                playbackManager.playFromDownloadWithPlatform(
                     context = this@DownloadActivity,
                     songId = task.songId,
                     songName = task.songName,
-                    songArtists = task.artist,
-                    platform = platform,
-                    songUrl = task.filePath,
-                    songCover = detail?.cover ?: task.coverUrl,
-                    songLyrics = detail?.lyrics
+                    artist = task.artist,
+                    coverUrl = task.coverUrl,
+                    playUrl = task.filePath,
+                    platform = task.platform
                 )
             } else {
-                // 本地文件不存在，获取在线歌曲
+                // 本地文件不存在，使用平台信息获取在线歌曲
+                val platform = playbackManager.getValidPlatform(task.platform)
+
+                // 获取歌曲详情（用于歌词和封面）
                 val detail = withContext(Dispatchers.IO) {
                     com.tacke.music.data.repository.MusicRepository().getSongDetail(platform, task.songId, "320k")
                 }
 
                 if (detail != null) {
-                    PlayerActivity.start(
+                    playbackManager.playFromDownload(
                         context = this@DownloadActivity,
                         songId = task.songId,
                         songName = task.songName,
-                        songArtists = task.artist,
+                        artist = task.artist,
+                        coverUrl = task.coverUrl,
+                        playUrl = detail.url,
                         platform = platform,
-                        songUrl = detail.url,
-                        songCover = detail.cover ?: task.coverUrl,
-                        songLyrics = detail.lyrics
+                        songDetail = detail
                     )
                 } else {
-                    Toast.makeText(this@DownloadActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@DownloadActivity, "获取歌曲信息失败，可能音源不可用", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -380,18 +369,15 @@ class DownloadActivity : AppCompatActivity() {
             var duplicateCount = 0
 
             tasks.forEach { task ->
-                val platform = try {
-                    com.tacke.music.data.repository.MusicRepository.Platform.KUWO
-                } catch (e: Exception) {
-                    com.tacke.music.data.repository.MusicRepository.Platform.KUWO
-                }
+                // 使用任务中保存的平台信息
+                val validPlatform = playbackManager.getValidPlatform(task.platform)
 
                 val playlistSong = com.tacke.music.data.model.PlaylistSong(
                     id = task.songId,
                     name = task.songName,
                     artists = task.artist,
                     coverUrl = task.coverUrl,
-                    platform = platform.name
+                    platform = validPlatform.name
                 )
 
                 val currentList = playlistManager.currentPlaylist.value

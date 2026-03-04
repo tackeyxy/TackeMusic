@@ -10,6 +10,12 @@
     android:clickable="true"
     android:focusable="true">
 
+    <CheckBox
+        android:id="@+id/checkBox"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
+
     <TextView
         android:id="@+id/tvNumber"
         android:layout_width="32dp"

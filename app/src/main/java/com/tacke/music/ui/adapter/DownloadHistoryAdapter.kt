@@ -100,31 +100,6 @@ class DownloadHistoryAdapter(
         private val dateFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
 
         init {
-            contentLayout.setOnClickListener {
-                if (isMultiSelectMode) {
-                    currentTask?.let { task ->
-                        toggleSelection(task.id)
-                    }
-                } else if (isSwipeOpen) {
-                    closeSwipe()
-                } else {
-                    currentTask?.let { task ->
-                        onItemClick(task)
-                    }
-                }
-            }
-
-            contentLayout.setOnLongClickListener {
-                if (!isMultiSelectMode) {
-                    currentTask?.let { task ->
-                        onEnterMultiSelectMode(task)
-                    }
-                    true
-                } else {
-                    false
-                }
-            }
-
             deleteLayout.setOnClickListener {
                 showDeleteMenu()
             }
@@ -141,7 +116,7 @@ class DownloadHistoryAdapter(
                 }
             }
 
-            setupSwipe()
+            setupSwipeAndClick()
         }
 
         private fun showDeleteMenu() {
@@ -167,23 +142,38 @@ class DownloadHistoryAdapter(
             }
         }
 
-        private fun setupSwipe() {
+        private fun setupSwipeAndClick() {
             var startX = 0f
+            var startY = 0f
             var currentX = 0f
+            var currentY = 0f
+            var isDragging = false
             val deleteWidth = itemView.context.resources.getDimensionPixelSize(R.dimen.delete_button_width)
+            val touchSlop = android.view.ViewConfiguration.get(itemView.context).scaledTouchSlop
 
             contentLayout.setOnTouchListener { _, event ->
-                if (isMultiSelectMode) return@setOnTouchListener false
-
                 when (event.action) {
                     android.view.MotionEvent.ACTION_DOWN -> {
                         startX = event.rawX
+                        startY = event.rawY
+                        currentX = startX
+                        currentY = startY
+                        isDragging = false
                         true
                     }
                     android.view.MotionEvent.ACTION_MOVE -> {
                         currentX = event.rawX
+                        currentY = event.rawY
                         val deltaX = currentX - startX
-                        if (deltaX < 0) {
+                        val deltaY = currentY - startY
+
+                        // 判断是否开始滑动
+                        if (!isDragging && (kotlin.math.abs(deltaX) > touchSlop || kotlin.math.abs(deltaY) > touchSlop)) {
+                            isDragging = true
+                        }
+
+                        // 水平滑动处理
+                        if (isDragging && kotlin.math.abs(deltaX) > kotlin.math.abs(deltaY) && deltaX < 0 && !isMultiSelectMode) {
                             val translation = maxOf(deltaX, -deleteWidth.toFloat())
                             contentLayout.translationX = translation
                             true
@@ -191,16 +181,54 @@ class DownloadHistoryAdapter(
                             false
                         }
                     }
-                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    android.view.MotionEvent.ACTION_UP -> {
                         val deltaX = currentX - startX
-                        if (deltaX < -deleteWidth / 2) {
-                            openSwipe()
-                        } else {
+                        val deltaY = currentY - startY
+                        val absDeltaX = kotlin.math.abs(deltaX)
+                        val absDeltaY = kotlin.math.abs(deltaY)
+
+                        if (!isDragging || (absDeltaX <= touchSlop && absDeltaY <= touchSlop)) {
+                            // 点击事件处理
+                            if (isMultiSelectMode) {
+                                currentTask?.let { task ->
+                                    toggleSelection(task.id)
+                                }
+                            } else if (isSwipeOpen) {
+                                closeSwipe()
+                            } else {
+                                currentTask?.let { task ->
+                                    onItemClick(task)
+                                }
+                            }
+                        } else if (absDeltaX > absDeltaY && deltaX < 0) {
+                            // 滑动结束处理
+                            if (deltaX < -deleteWidth / 2) {
+                                openSwipe()
+                            } else {
+                                closeSwipe()
+                            }
+                        }
+                        true
+                    }
+                    android.view.MotionEvent.ACTION_CANCEL -> {
+                        if (isDragging) {
                             closeSwipe()
                         }
                         true
                     }
                     else -> false
+                }
+            }
+
+            // 长按进入多选模式
+            contentLayout.setOnLongClickListener {
+                if (!isMultiSelectMode && !isSwipeOpen) {
+                    currentTask?.let { task ->
+                        onEnterMultiSelectMode(task)
+                    }
+                    true
+                } else {
+                    false
                 }
             }
         }

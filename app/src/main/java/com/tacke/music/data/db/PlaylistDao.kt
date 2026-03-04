@@ -2,7 +2,9 @@ package com.tacke.music.data.db
 
 import androidx.room.*
 import com.tacke.music.data.model.PlaylistSong
+import com.tacke.music.data.model.PlaylistSongEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 @Dao
 interface PlaylistDao {
@@ -43,13 +45,22 @@ interface PlaylistDao {
     suspend fun insertPlaylistSongCrossRef(crossRef: PlaylistSongCrossRef)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertPlaylistSong(song: PlaylistSong)
+    suspend fun insertPlaylistSongEntity(song: PlaylistSongEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertPlaylistSongs(songs: List<PlaylistSong>)
+    suspend fun insertPlaylistSongEntities(songs: List<PlaylistSongEntity>)
 
     @Query("DELETE FROM playlist_song_cross_ref WHERE playlistId = :playlistId AND songId = :songId")
-    suspend fun removeSongFromPlaylist(playlistId: String, songId: String)
+    suspend fun removeSongFromPlaylistRef(playlistId: String, songId: String)
+
+    @Transaction
+    suspend fun removeSongFromPlaylist(playlistId: String, songId: String) {
+        removeSongFromPlaylistRef(playlistId, songId)
+        updatePlaylistSongCount(playlistId)
+        // 更新歌曲封面为第一首歌曲的封面
+        val firstCover = getFirstSongCover(playlistId)
+        updatePlaylistCover(playlistId, firstCover)
+    }
 
     @Query("DELETE FROM playlist_song_cross_ref WHERE playlistId = :playlistId")
     suspend fun removeAllSongsFromPlaylist(playlistId: String)
@@ -61,8 +72,17 @@ interface PlaylistDao {
     suspend fun getPlaylistSongCount(playlistId: String): Int
 
     @Transaction
-    suspend fun addSongToPlaylist(playlistId: String, song: PlaylistSong) {
-        insertPlaylistSong(song)
+    suspend fun addSongToPlaylist(playlistId: String, song: PlaylistSong, songEntityDao: PlaylistSongEntityDao) {
+        val songEntity = PlaylistSongEntity(
+            id = song.id,
+            name = song.name,
+            artists = song.artists,
+            coverUrl = song.coverUrl,
+            platform = song.platform,
+            addedTime = song.addedTime
+        )
+        songEntityDao.insertSong(songEntity)
+
         val orderIndex = getPlaylistSongCount(playlistId)
         insertPlaylistSongCrossRef(
             PlaylistSongCrossRef(
@@ -72,12 +92,28 @@ interface PlaylistDao {
             )
         )
         updatePlaylistSongCount(playlistId)
+        // 如果歌单为空（这是第一首歌）或 coverUrl 为空，设置封面
+        if (orderIndex == 0 || getPlaylistCover(playlistId).isNullOrEmpty()) {
+            updatePlaylistCover(playlistId, song.coverUrl)
+        }
     }
 
     @Transaction
-    suspend fun addSongsToPlaylist(playlistId: String, songs: List<PlaylistSong>) {
-        insertPlaylistSongs(songs)
-        var orderIndex = getPlaylistSongCount(playlistId)
+    suspend fun addSongsToPlaylist(playlistId: String, songs: List<PlaylistSong>, songEntityDao: PlaylistSongEntityDao) {
+        val songEntities = songs.map { song ->
+            PlaylistSongEntity(
+                id = song.id,
+                name = song.name,
+                artists = song.artists,
+                coverUrl = song.coverUrl,
+                platform = song.platform,
+                addedTime = song.addedTime
+            )
+        }
+        songEntityDao.insertSongs(songEntities)
+
+        val startIndex = getPlaylistSongCount(playlistId)
+        var orderIndex = startIndex
         songs.forEach { song ->
             insertPlaylistSongCrossRef(
                 PlaylistSongCrossRef(
@@ -88,14 +124,90 @@ interface PlaylistDao {
             )
         }
         updatePlaylistSongCount(playlistId)
+        // 如果歌单原本为空或 coverUrl 为空，设置封面（取第一首）
+        if (startIndex == 0 || getPlaylistCover(playlistId).isNullOrEmpty()) {
+            songs.firstOrNull()?.coverUrl?.let { coverUrl ->
+                updatePlaylistCover(playlistId, coverUrl)
+            }
+        }
     }
 
     @Query("UPDATE playlists SET songCount = (SELECT COUNT(*) FROM playlist_song_cross_ref WHERE playlistId = :playlistId), updateTime = :updateTime WHERE id = :playlistId")
     suspend fun updatePlaylistSongCount(playlistId: String, updateTime: Long = System.currentTimeMillis())
 
-    @Query("SELECT s.* FROM playlist_songs s INNER JOIN playlist_song_cross_ref ref ON s.id = ref.songId WHERE ref.playlistId = :playlistId ORDER BY ref.orderIndex ASC")
-    fun getSongsInPlaylist(playlistId: String): Flow<List<PlaylistSong>>
+    @Query("""
+        SELECT e.* FROM playlist_song_entities e
+        INNER JOIN playlist_song_cross_ref ref ON e.id = ref.songId
+        WHERE ref.playlistId = :playlistId
+        ORDER BY ref.orderIndex ASC
+    """)
+    fun getSongsInPlaylistEntities(playlistId: String): Flow<List<PlaylistSongEntity>>
 
-    @Query("SELECT s.* FROM playlist_songs s INNER JOIN playlist_song_cross_ref ref ON s.id = ref.songId WHERE ref.playlistId = :playlistId ORDER BY ref.orderIndex ASC")
-    suspend fun getSongsInPlaylistSync(playlistId: String): List<PlaylistSong>
+    @Query("""
+        SELECT e.* FROM playlist_song_entities e
+        INNER JOIN playlist_song_cross_ref ref ON e.id = ref.songId
+        WHERE ref.playlistId = :playlistId
+        ORDER BY ref.orderIndex ASC
+    """)
+    suspend fun getSongsInPlaylistEntitiesSync(playlistId: String): List<PlaylistSongEntity>
+
+    fun getSongsInPlaylist(playlistId: String): Flow<List<PlaylistSong>> {
+        return getSongsInPlaylistEntities(playlistId).map { entities ->
+            entities.mapIndexed { index, entity ->
+                PlaylistSong(
+                    id = entity.id,
+                    name = entity.name,
+                    artists = entity.artists,
+                    coverUrl = entity.coverUrl,
+                    platform = entity.platform,
+                    addedTime = entity.addedTime,
+                    orderIndex = index
+                )
+            }
+        }
+    }
+
+    suspend fun getSongsInPlaylistSync(playlistId: String): List<PlaylistSong> {
+        return getSongsInPlaylistEntitiesSync(playlistId).mapIndexed { index, entity ->
+            PlaylistSong(
+                id = entity.id,
+                name = entity.name,
+                artists = entity.artists,
+                coverUrl = entity.coverUrl,
+                platform = entity.platform,
+                addedTime = entity.addedTime,
+                orderIndex = index
+            )
+        }
+    }
+
+    @Query("""
+        SELECT e.coverUrl FROM playlist_song_entities e
+        INNER JOIN playlist_song_cross_ref ref ON e.id = ref.songId
+        WHERE ref.playlistId = :playlistId
+        ORDER BY ref.orderIndex DESC LIMIT 1
+    """)
+    suspend fun getLatestSongCover(playlistId: String): String?
+
+    @Query("""
+        SELECT e.coverUrl FROM playlist_song_entities e
+        INNER JOIN playlist_song_cross_ref ref ON e.id = ref.songId
+        WHERE ref.playlistId = :playlistId
+        ORDER BY ref.orderIndex ASC LIMIT 1
+    """)
+    suspend fun getFirstSongCover(playlistId: String): String?
+
+    @Query("UPDATE playlists SET coverUrl = :coverUrl, updateTime = :updateTime WHERE id = :playlistId")
+    suspend fun updatePlaylistCover(playlistId: String, coverUrl: String?, updateTime: Long = System.currentTimeMillis())
+
+    @Query("SELECT coverUrl FROM playlists WHERE id = :playlistId LIMIT 1")
+    suspend fun getPlaylistCover(playlistId: String): String?
+
+    @Query("UPDATE playlist_song_entities SET coverUrl = :coverUrl WHERE id = :songId")
+    suspend fun updateSongCoverUrlBySongId(songId: String, coverUrl: String?)
+
+    @Transaction
+    suspend fun updateSongCoverUrl(playlistId: String, songId: String, coverUrl: String?) {
+        updateSongCoverUrlBySongId(songId, coverUrl)
+    }
 }

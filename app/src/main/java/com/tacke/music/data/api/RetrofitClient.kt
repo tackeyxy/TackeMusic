@@ -1,7 +1,8 @@
 package com.tacke.music.data.api
 
+import com.tacke.music.MusicApplication
+import com.tacke.music.util.NetworkLogger
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
@@ -14,12 +15,12 @@ object RetrofitClient {
     private const val CHART_BASE_URL = "https://music.xcloudv.top/"
     private const val NETEASE_PLAYLIST_BASE_URL = "https://music.163.com/"
 
-    private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
+    private val networkLogger: NetworkLogger by lazy {
+        NetworkLogger.getInstance(MusicApplication.context)
     }
 
     private val okHttpClient = OkHttpClient.Builder()
-        .addInterceptor(loggingInterceptor)
+        .addInterceptor(networkLogger)
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)

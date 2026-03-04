@@ -15,29 +15,11 @@
         android:gravity="center_vertical"
         android:padding="16dp">
 
-        <!-- 歌单封面 -->
-        <FrameLayout
-            android:layout_width="60dp"
-            android:layout_height="60dp"
-            android:background="@drawable/bg_card_rounded">
-
-            <ImageView
-                android:id="@+id/ivCover"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="centerCrop"
-                android:src="@drawable/ic_playlist"
-                android:tint="@color/primary"
-                android:padding="12dp" />
-
-        </FrameLayout>
-
         <!-- 歌单信息 -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="16dp"
             android:orientation="vertical">
 
             <TextView

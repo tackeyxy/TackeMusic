@@ -9,10 +9,13 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.tacke.music.R
+import com.tacke.music.data.model.Playlist
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityPlaylistDetailBinding
+import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.PlaylistSongAdapter
 import kotlinx.coroutines.Dispatchers
@@ -24,10 +27,12 @@ class PlaylistDetailActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPlaylistDetailBinding
     private lateinit var playlistRepository: PlaylistRepository
     private lateinit var playlistManager: PlaylistManager
+    private lateinit var playbackManager: PlaybackManager
     private lateinit var songAdapter: PlaylistSongAdapter
 
     private var playlistId: String = ""
     private var playlistName: String = ""
+    private var currentPlaylist: Playlist? = null
     private var isMultiSelectMode = false
     private val selectedSongs = mutableSetOf<String>()
 
@@ -47,6 +52,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
 
         playlistRepository = PlaylistRepository(this)
         playlistManager = PlaylistManager.getInstance(this)
+        playbackManager = PlaybackManager.getInstance(this)
 
         setupUI()
         setupRecyclerView()
@@ -56,7 +62,21 @@ class PlaylistDetailActivity : AppCompatActivity() {
 
     private fun setupUI() {
         binding.tvTitle.text = playlistName
-        binding.tvPlaylistName.text = playlistName
+        loadPlaylistInfo()
+    }
+
+    private fun loadPlaylistInfo() {
+        lifecycleScope.launch {
+            try {
+                currentPlaylist = playlistRepository.getPlaylistById(playlistId)
+                currentPlaylist?.let { playlist ->
+                    playlistName = playlist.name
+                    binding.tvTitle.text = playlistName
+                }
+            } catch (e: Exception) {
+                // 加载失败使用默认显示
+            }
+        }
     }
 
     private fun setupRecyclerView() {
@@ -81,6 +101,13 @@ class PlaylistDetailActivity : AppCompatActivity() {
                 } else {
                     false
                 }
+            },
+            lifecycleScope = lifecycleScope,
+            onCoverLoaded = { songId, coverPath ->
+                // 封面下载完成后更新数据库
+                lifecycleScope.launch {
+                    playlistRepository.updateSongCover(playlistId, songId, coverPath)
+                }
             }
         )
 
@@ -102,7 +129,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
         }
 
         binding.btnPlayAll.setOnClickListener {
-            Toast.makeText(this, "播放全部", Toast.LENGTH_SHORT).show()
+            playAllSongs()
         }
 
         binding.btnBatchManage.setOnClickListener {
@@ -142,8 +169,8 @@ class PlaylistDetailActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 playlistRepository.getSongsInPlaylist(playlistId).collect { songs ->
                     songAdapter.submitList(songs)
-                    binding.tvSongCount.text = "歌曲列表"
                     updateEmptyState(songs.isEmpty())
+                    updateSongCount(songs.size)
 
                     if (isMultiSelectMode) {
                         val validSelections = selectedSongs.intersect(songs.map { it.id }.toSet())
@@ -164,10 +191,15 @@ class PlaylistDetailActivity : AppCompatActivity() {
         binding.recyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
     }
 
+    private fun updateSongCount(count: Int) {
+        binding.tvSongListTitle.text = "歌曲列表（共${count}首）"
+    }
+
     private fun enterMultiSelectMode() {
         isMultiSelectMode = true
         binding.batchActionBar.visibility = View.VISIBLE
         binding.btnBatchManage.visibility = View.GONE
+        binding.btnPlayAll.visibility = View.GONE
         songAdapter.setMultiSelectMode(true)
         selectedSongs.clear()
         updateSelectedCount()
@@ -177,6 +209,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
         isMultiSelectMode = false
         binding.batchActionBar.visibility = View.GONE
         binding.btnBatchManage.visibility = View.VISIBLE
+        binding.btnPlayAll.visibility = View.VISIBLE
         songAdapter.setMultiSelectMode(false)
         selectedSongs.clear()
     }
@@ -250,7 +283,6 @@ class PlaylistDetailActivity : AppCompatActivity() {
                     playlistRepository.updatePlaylist(it.copy(name = newName))
                     playlistName = newName
                     binding.tvTitle.text = newName
-                    binding.tvPlaylistName.text = newName
                     Toast.makeText(this@PlaylistDetailActivity, "重命名成功", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
@@ -326,13 +358,10 @@ class PlaylistDetailActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val platform = try {
-                    MusicRepository.Platform.valueOf(song.platform)
+                    MusicRepository.Platform.valueOf(song.platform.uppercase())
                 } catch (e: Exception) {
                     MusicRepository.Platform.KUWO
                 }
-
-                // 添加到播放列表
-                playlistManager.addSong(song)
 
                 // 检查本地文件是否存在
                 val downloadManager = com.tacke.music.download.DownloadManager.getInstance(this@PlaylistDetailActivity)
@@ -349,19 +378,53 @@ class PlaylistDetailActivity : AppCompatActivity() {
                     // 优先使用本地文件路径，如果没有则使用在线URL
                     val playUrl = localPath ?: detail.url
 
-                    // 跳转到播放页面
-                    PlayerActivity.start(
-                        context = this@PlaylistDetailActivity,
-                        songId = song.id,
-                        songName = song.name,
-                        songArtists = song.artists,
-                        platform = platform,
-                        songUrl = playUrl,
-                        songCover = detail.cover ?: song.coverUrl,
-                        songLyrics = detail.lyrics
-                    )
+                    // 使用统一播放管理器播放歌曲
+                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, song, playUrl, detail)
                 } else {
                     Toast.makeText(this@PlaylistDetailActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@PlaylistDetailActivity, "播放失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun playAllSongs() {
+        val songs = songAdapter.getAllSongs()
+        if (songs.isEmpty()) {
+            Toast.makeText(this, "歌单为空", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        lifecycleScope.launch {
+            try {
+                // 清空当前播放列表并添加所有歌曲
+                playlistManager.clearPlaylist()
+                songs.forEach { song ->
+                    playlistManager.addSong(song)
+                }
+
+                // 播放第一首
+                val firstSong = songs.first()
+                val platform = try {
+                    MusicRepository.Platform.valueOf(firstSong.platform.uppercase())
+                } catch (e: Exception) {
+                    MusicRepository.Platform.KUWO
+                }
+
+                val downloadManager = com.tacke.music.download.DownloadManager.getInstance(this@PlaylistDetailActivity)
+                val localPath = withContext(Dispatchers.IO) {
+                    downloadManager.getLocalSongPath(firstSong.id)
+                }
+
+                val detail = withContext(Dispatchers.IO) {
+                    MusicRepository().getSongDetail(platform, firstSong.id, "320k")
+                }
+
+                if (detail != null) {
+                    val playUrl = localPath ?: detail.url
+                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, firstSong, playUrl, detail)
+                    Toast.makeText(this@PlaylistDetailActivity, "开始播放全部", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 Toast.makeText(this@PlaylistDetailActivity, "播放失败: ${e.message}", Toast.LENGTH_SHORT).show()

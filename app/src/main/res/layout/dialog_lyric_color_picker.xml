@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <!-- 颜色预览 -->
+    <TextView
+        android:id="@+id/tvColorPreview"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="正在播放的歌词"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:paddingVertical="24dp"
+        android:textColor="@color/primary" />
+
+    <!-- 颜色网格 -->
+    <GridLayout
+        android:id="@+id/colorGrid"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:columnCount="4"
+        android:rowCount="3"
+        android:layout_marginTop="16dp" />
+
+    <!-- 确认按钮 -->
+    <Button
+        android:id="@+id/btnConfirm"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="确定"
+        android:textColor="@color/white"
+        android:backgroundTint="@color/primary" />
+
+</LinearLayout>

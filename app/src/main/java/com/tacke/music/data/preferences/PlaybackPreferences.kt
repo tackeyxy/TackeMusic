@@ -3,6 +3,8 @@ package com.tacke.music.data.preferences
 import android.content.Context
 import android.content.SharedPreferences
 import com.tacke.music.data.model.PlaylistSong
+import com.tacke.music.data.model.SongDetail
+import com.tacke.music.data.model.SongInfo
 
 class PlaybackPreferences(context: Context) {
 
@@ -23,6 +25,12 @@ class PlaybackPreferences(context: Context) {
 
         // 播放模式
         private const val KEY_PLAY_MODE = "play_mode"
+
+        // 歌曲详情缓存（用于恢复播放）
+        private const val KEY_SONG_DETAIL_PREFIX = "song_detail_"
+        private const val KEY_SONG_DETAIL_URL = "url"
+        private const val KEY_SONG_DETAIL_COVER = "cover"
+        private const val KEY_SONG_DETAIL_LYRICS = "lyrics"
 
         // 单例
         @Volatile
@@ -110,5 +118,44 @@ class PlaybackPreferences(context: Context) {
             apply()
         }
         savePlaylist(playlist)
+    }
+
+    // 保存歌曲详情（用于恢复播放）
+    fun saveSongDetail(songId: String, detail: SongDetail) {
+        prefs.edit().apply {
+            putString("${KEY_SONG_DETAIL_PREFIX}${songId}_$KEY_SONG_DETAIL_URL", detail.url)
+            putString("${KEY_SONG_DETAIL_PREFIX}${songId}_$KEY_SONG_DETAIL_COVER", detail.cover)
+            putString("${KEY_SONG_DETAIL_PREFIX}${songId}_$KEY_SONG_DETAIL_LYRICS", detail.lyrics)
+            putString("${KEY_SONG_DETAIL_PREFIX}${songId}_info_name", detail.info.name)
+            putString("${KEY_SONG_DETAIL_PREFIX}${songId}_info_artist", detail.info.artist)
+            apply()
+        }
+    }
+
+    // 获取歌曲详情（用于恢复播放）
+    fun getSongDetail(songId: String): SongDetail? {
+        val url = prefs.getString("${KEY_SONG_DETAIL_PREFIX}${songId}_$KEY_SONG_DETAIL_URL", null)
+        val infoName = prefs.getString("${KEY_SONG_DETAIL_PREFIX}${songId}_info_name", null)
+        val infoArtist = prefs.getString("${KEY_SONG_DETAIL_PREFIX}${songId}_info_artist", null)
+        return if (url != null && infoName != null && infoArtist != null) {
+            SongDetail(
+                url = url,
+                info = SongInfo(name = infoName, artist = infoArtist),
+                cover = prefs.getString("${KEY_SONG_DETAIL_PREFIX}${songId}_$KEY_SONG_DETAIL_COVER", null),
+                lyrics = prefs.getString("${KEY_SONG_DETAIL_PREFIX}${songId}_$KEY_SONG_DETAIL_LYRICS", null)
+            )
+        } else null
+    }
+
+    // 清除指定歌曲的详情缓存
+    fun clearSongDetail(songId: String) {
+        prefs.edit().apply {
+            remove("${KEY_SONG_DETAIL_PREFIX}${songId}_$KEY_SONG_DETAIL_URL")
+            remove("${KEY_SONG_DETAIL_PREFIX}${songId}_$KEY_SONG_DETAIL_COVER")
+            remove("${KEY_SONG_DETAIL_PREFIX}${songId}_$KEY_SONG_DETAIL_LYRICS")
+            remove("${KEY_SONG_DETAIL_PREFIX}${songId}_info_name")
+            remove("${KEY_SONG_DETAIL_PREFIX}${songId}_info_artist")
+            apply()
+        }
     }
 }

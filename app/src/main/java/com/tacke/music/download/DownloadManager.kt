@@ -81,7 +81,7 @@ class DownloadManager private constructor(private val context: Context) {
         }
     }
 
-    fun createDownloadTask(song: Song, detail: SongDetail, quality: String): DownloadTask {
+    fun createDownloadTask(song: Song, detail: SongDetail, quality: String, platform: String = "KUWO"): DownloadTask {
         val extension = getFileExtensionFromUrl(detail.url)
         val fileName = "${detail.info.name}-${detail.info.artist}$extension"
         val sanitizedFileName = sanitizeFileName(fileName)
@@ -99,7 +99,8 @@ class DownloadManager private constructor(private val context: Context) {
             coverUrl = song.coverUrl ?: detail.cover,
             url = detail.url,
             fileName = sanitizedFileName,
-            filePath = filePath
+            filePath = filePath,
+            platform = platform
         )
     }
 
@@ -119,7 +120,7 @@ class DownloadManager private constructor(private val context: Context) {
             File(customPath)
         } else {
             File(
-                context.getExternalFilesDir(Environment.DIRECTORY_MUSIC),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
                 DOWNLOAD_DIR
             )
         }

@@ -4,7 +4,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
-import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.tacke.music.R
@@ -23,7 +22,6 @@ class PlaylistAdapter(
     }
 
     inner class PlaylistViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val ivCover: ImageView = itemView.findViewById(R.id.ivCover)
         private val tvName: TextView = itemView.findViewById(R.id.tvName)
         private val tvCount: TextView = itemView.findViewById(R.id.tvCount)
         private val btnMore: ImageButton = itemView.findViewById(R.id.btnMore)

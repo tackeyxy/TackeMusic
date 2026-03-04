@@ -13,6 +13,7 @@ data class DownloadTask(
     val url: String,
     val fileName: String,
     val filePath: String,
+    val platform: String = "KUWO",  // 音源平台
     val totalBytes: Long = 0,
     val downloadedBytes: Long = 0,
     var status: DownloadStatus = DownloadStatus.PENDING,
