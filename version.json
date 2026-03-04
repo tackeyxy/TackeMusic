@@ -1,8 +1,8 @@
 {
   "status": 200,
   "data": {
-    "versionCode": 4,
-    "versionName": "1.0.3",
+    "versionCode": 5,
+    "versionName": "1.0.4",
     "download_url": "https://gh-proxy.org/https://github.com/tackeyxy/TackeMusic/blob/master/apk/app-debug.apk",
     "file_size": "10.84 MB",
     "release_notes": "1. 优化加载速度\n2. 修复了跨页多选失效的问题\n3. 优化歌单列表UI显示\n4. 新增检测更新功能",
