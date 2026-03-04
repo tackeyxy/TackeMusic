@@ -1,8 +1,8 @@
 {
   "status": 200,
   "data": {
-    "versionCode": 2,
-    "versionName": "1.0.1",
+    "versionCode": 3,
+    "versionName": "1.0.2",
     "download_url": "https://cdn.example.com/app/v1.2.5_release.apk",
     "file_size": "10.45 MB",
     "release_notes": "1. 优化加载速度\n2. 修复了跨页多选失效的问题\n3. 优化歌单列表UI显示",

@@ -9,10 +9,13 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.tacke.music.BuildConfig
 import com.tacke.music.R
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.databinding.ActivitySettingsBinding
 import com.tacke.music.databinding.DialogDownloadPathBinding
+import com.tacke.music.update.UpdateDialogManager
 import java.io.File
 
 class SettingsActivity : AppCompatActivity() {
@@ -110,6 +113,8 @@ class SettingsActivity : AppCompatActivity() {
         MusicRepository.Platform.NETEASE to "网易"
     )
 
+    private lateinit var updateDialogManager: UpdateDialogManager
+
     private var pendingCustomPath = false
 
     private val openDocumentTree = registerForActivityResult(
@@ -142,11 +147,14 @@ class SettingsActivity : AppCompatActivity() {
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        updateDialogManager = UpdateDialogManager(this, lifecycleScope)
+
         setupClickListeners()
         updateDefaultSourceText()
         updateDownloadPathText()
         updateLyricColorPreview()
         updateConcurrentDownloadsText()
+        updateCurrentVersionText()
     }
 
     private fun setupClickListeners() {
@@ -177,6 +185,24 @@ class SettingsActivity : AppCompatActivity() {
         binding.layoutConcurrentDownloads.setOnClickListener {
             showConcurrentDownloadsDialog()
         }
+
+        binding.layoutCheckUpdate.setOnClickListener {
+            checkForUpdate()
+        }
+    }
+
+    private fun updateCurrentVersionText() {
+        binding.tvCurrentVersion.text = "v${BuildConfig.VERSION_NAME}"
+    }
+
+    private fun checkForUpdate() {
+        Toast.makeText(this, "正在检查更新...", Toast.LENGTH_SHORT).show()
+        updateDialogManager.checkForUpdate(BuildConfig.VERSION_CODE, isManualCheck = true)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        updateDialogManager.release()
     }
 
     private fun updateConcurrentDownloadsText() {
