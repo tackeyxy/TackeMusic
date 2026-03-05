@@ -2,10 +2,16 @@ package com.tacke.music.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.tacke.music.BuildConfig
 import androidx.recyclerview.widget.GridLayoutManager
@@ -62,6 +68,12 @@ class MainActivity : AppCompatActivity() {
         MusicRepository.Platform.NETEASE to "网易"
     )
 
+    // 音乐源Logo资源映射
+    private val platformLogos = mapOf(
+        MusicRepository.Platform.KUWO to R.drawable.ic_kuwo_logo,
+        MusicRepository.Platform.NETEASE to R.drawable.ic_netease_logo
+    )
+
     // 榜单数据缓存
     private var chartSongsMap = mutableMapOf<ChartType, List<ChartSong>>()
     private val chartTitles = mapOf(
@@ -101,7 +113,7 @@ class MainActivity : AppCompatActivity() {
         setupClickListeners()
         setupBottomNavigation()
         setupChartCards()
-        updateSourceSelectorText()
+        updateSourceSelectorUI()
         loadAllChartData()
         loadPlaylistTags()
 
@@ -129,24 +141,14 @@ class MainActivity : AppCompatActivity() {
         val savedSource = SettingsActivity.getDefaultSource(this)
         if (savedSource != currentPlatform) {
             currentPlatform = savedSource
-            updateSourceSelectorText()
+            updateSourceSelectorUI()
         }
     }
 
-    private fun updateSourceSelectorText() {
-        binding.tvSourceSelector.text = platformNames[currentPlatform] ?: "酷我"
-        updateSourceSelectorBackground()
-    }
-
-    private fun updateSourceSelectorBackground() {
-        when (currentPlatform) {
-            MusicRepository.Platform.KUWO -> {
-                binding.layoutSourceSelector.setBackgroundResource(R.drawable.bg_source_kuwo)
-            }
-            MusicRepository.Platform.NETEASE -> {
-                binding.layoutSourceSelector.setBackgroundResource(R.drawable.bg_source_netease)
-            }
-        }
+    private fun updateSourceSelectorUI() {
+        // 更新音源Logo
+        val logoResId = platformLogos[currentPlatform] ?: R.drawable.ic_kuwo_logo
+        binding.ivSourceSelector.setImageResource(logoResId)
     }
 
     private fun setupRecyclerView() {
@@ -427,7 +429,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (detail != null) {
-                    // 先添加到播放列表
+                    // 创建播放列表歌曲
                     val song = Song(
                         index = index,
                         id = chartSong.id,
@@ -436,10 +438,17 @@ class MainActivity : AppCompatActivity() {
                         coverUrl = chartSong.cover
                     )
                     val playlistSong = playlistManager.convertToPlaylistSong(song, platform)
+
+                    // 添加到播放列表（不清空现有列表）
                     playlistManager.addSong(playlistSong)
 
-                    // 然后播放
-                    playbackManager.playFromSearch(this@MainActivity, song, platform, detail)
+                    // 播放歌曲（使用playFromPlaylist，不清空播放列表）
+                    playbackManager.playFromPlaylist(
+                        context = this@MainActivity,
+                        song = playlistSong,
+                        playUrl = detail.url,
+                        songDetail = detail
+                    )
                 } else {
                     Toast.makeText(this@MainActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
                 }
@@ -527,7 +536,7 @@ class MainActivity : AppCompatActivity() {
         for (i in 0 until minOf(3, songs.size)) {
             val songLayout = songListLayout.getChildAt(i) as? android.view.ViewGroup ?: continue
             val textView = songLayout.getChildAt(1) as? android.widget.TextView ?: continue
-            textView.text = "${i + 1}. ${songs[i].name}"
+            textView.text = songs[i].name
         }
     }
 
@@ -665,59 +674,79 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private var sourceSelectorPopup: PopupWindow? = null
+
     private fun showSourceSelectorDialog() {
-        val dialogView = layoutInflater.inflate(R.layout.dialog_source_selector, null)
-        val dialog = AlertDialog.Builder(this, android.R.style.Theme_Translucent_NoTitleBar)
-            .setView(dialogView)
-            .create()
+        // 如果已经显示，则关闭
+        sourceSelectorPopup?.dismiss()
 
-        // 设置对话框背景透明
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        // 创建PopupWindow实现下拉选择
+        val popupView = LayoutInflater.from(this).inflate(R.layout.layout_source_dropdown, null)
+        val container = popupView.findViewById<LinearLayout>(R.id.containerSourceOptions)
 
-        // 设置对话框宽度为屏幕宽度的80%
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels * 0.8).toInt(),
-            android.view.WindowManager.LayoutParams.WRAP_CONTENT
-        )
+        // 创建PopupWindow
+        sourceSelectorPopup = PopupWindow(
+            popupView,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        ).apply {
+            setBackgroundDrawable(ContextCompat.getDrawable(this@MainActivity, R.drawable.bg_card_rounded))
+            elevation = 16f
+            isOutsideTouchable = true
+            isFocusable = true
+        }
 
-        // 获取视图引用
-        val cardKuwo = dialogView.findViewById<com.google.android.material.card.MaterialCardView>(R.id.cardKuwo)
-        val cardNetease = dialogView.findViewById<com.google.android.material.card.MaterialCardView>(R.id.cardNetease)
-        val ivCheckKuwo = dialogView.findViewById<android.widget.ImageView>(R.id.ivCheckKuwo)
-        val ivCheckNetease = dialogView.findViewById<android.widget.ImageView>(R.id.ivCheckNetease)
+        // 为每个音源创建选项
+        MusicRepository.Platform.values().forEach { platform ->
+            val optionView = createSourceOptionView(platform)
+            container.addView(optionView)
+        }
 
-        // 根据当前选择显示选中状态
-        when (currentPlatform) {
-            MusicRepository.Platform.KUWO -> {
-                cardKuwo.setCardBackgroundColor(getColor(R.color.primary_light))
-                ivCheckKuwo.visibility = View.VISIBLE
-                cardNetease.setCardBackgroundColor(getColor(R.color.surface_light))
-                ivCheckNetease.visibility = View.GONE
+        // 显示在音源选择器下方
+        sourceSelectorPopup?.showAsDropDown(binding.layoutSourceSelector, 0, 8)
+    }
+
+    private fun createSourceOptionView(platform: MusicRepository.Platform): View {
+        val cardView = CardView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(8, 8, 8, 8)
             }
-            MusicRepository.Platform.NETEASE -> {
-                cardKuwo.setCardBackgroundColor(getColor(R.color.surface_light))
-                ivCheckKuwo.visibility = View.GONE
-                cardNetease.setCardBackgroundColor(getColor(R.color.primary_light))
-                ivCheckNetease.visibility = View.VISIBLE
+            radius = 12f
+            cardElevation = 4f
+            setContentPadding(12, 12, 12, 12)
+
+            // 根据是否选中设置背景色
+            if (platform == currentPlatform) {
+                setCardBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.primary_light))
+            } else {
+                setCardBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.surface))
+            }
+
+            setOnClickListener {
+                currentPlatform = platform
+                updateSourceSelectorUI()
+                // 关闭PopupWindow
+                sourceSelectorPopup?.dismiss()
+                sourceSelectorPopup = null
             }
         }
 
-        // 设置点击事件
-        cardKuwo.setOnClickListener {
-            currentPlatform = MusicRepository.Platform.KUWO
-            updateSourceSelectorText()
-            updateSourceSelectorBackground()
-            dialog.dismiss()
+        val imageView = ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(36.dpToPx(), 36.dpToPx())
+            setImageResource(platformLogos[platform] ?: R.drawable.ic_kuwo_logo)
+            scaleType = ImageView.ScaleType.FIT_CENTER
         }
 
-        cardNetease.setOnClickListener {
-            currentPlatform = MusicRepository.Platform.NETEASE
-            updateSourceSelectorText()
-            updateSourceSelectorBackground()
-            dialog.dismiss()
-        }
+        cardView.addView(imageView)
+        return cardView
+    }
 
-        dialog.show()
+    private fun Int.dpToPx(): Int {
+        return (this * resources.displayMetrics.density).toInt()
     }
 
     private fun setupBottomNavigation() {

@@ -5,6 +5,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.CheckBox
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.tacke.music.R
@@ -64,7 +65,7 @@ class SongAdapter(
     inner class SongViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
-        private val tvSource: TextView = itemView.findViewById(R.id.tvSource)
+        private val ivSource: ImageView = itemView.findViewById(R.id.ivSource)
         private val btnMore: ImageButton = itemView.findViewById(R.id.btnMore)
         private val checkBox: CheckBox = itemView.findViewById(R.id.checkBox)
 
@@ -78,7 +79,7 @@ class SongAdapter(
             if (isMultiSelectMode) {
                 checkBox.visibility = View.VISIBLE
                 btnMore.visibility = View.GONE
-                tvSource.visibility = View.GONE
+                ivSource.visibility = View.GONE
                 
                 // 移除监听器避免循环触发
                 checkBox.setOnCheckedChangeListener(null)
@@ -96,7 +97,7 @@ class SongAdapter(
             } else {
                 checkBox.visibility = View.GONE
                 btnMore.visibility = View.VISIBLE
-                tvSource.visibility = View.VISIBLE
+                ivSource.visibility = View.VISIBLE
 
                 itemView.setOnClickListener { onItemClick(song) }
                 btnMore.setOnClickListener { onMoreClick(song) }
@@ -108,13 +109,12 @@ class SongAdapter(
         }
 
         private fun setupSourceTag(platform: String) {
-            val (sourceName, backgroundRes) = when (platform.uppercase()) {
-                "KUWO" -> "酷我" to R.drawable.bg_source_kuwo
-                "NETEASE" -> "网易" to R.drawable.bg_source_netease
-                else -> "未知" to R.drawable.bg_source_default
+            val logoResId = when (platform.uppercase()) {
+                "KUWO" -> R.drawable.ic_kuwo_logo
+                "NETEASE" -> R.drawable.ic_netease_logo
+                else -> R.drawable.ic_kuwo_logo
             }
-            tvSource.text = sourceName
-            tvSource.setBackgroundResource(backgroundRes)
+            ivSource.setImageResource(logoResId)
         }
     }
 
