@@ -97,35 +97,6 @@
 
         </LinearLayout>
 
-        <!-- 多选模式按钮 -->
-        <LinearLayout
-            android:id="@+id/btnBatchManage"
-            android:layout_width="wrap_content"
-            android:layout_height="32dp"
-            android:layout_marginStart="8dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="12dp"
-            android:background="@drawable/bg_play_all_button"
-            android:clickable="true"
-            android:focusable="true">
-
-            <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
-                android:src="@drawable/ic_checklist"
-                android:tint="@color/primary" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:text="多选"
-                android:textSize="13sp"
-                android:textColor="@color/primary" />
-
-        </LinearLayout>
-
     </LinearLayout>
 
     <!-- 歌曲列表 -->
@@ -177,166 +148,15 @@
 
     </LinearLayout>
 
-    <!-- 批量操作栏 - 现代化悬浮式设计 -->
-    <LinearLayout
-        android:id="@+id/batchActionBar"
-        android:layout_width="match_parent"
+    <!-- 批量操作栏 - 右侧居中 -->
+    <include
+        android:id="@+id/batchActionBarContainer"
+        layout="@layout/layout_batch_action_bar"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:background="@drawable/bg_batch_action_bar"
-        android:elevation="16dp"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="parent">
-
-        <!-- 选中计数 -->
-        <TextView
-            android:id="@+id/tvSelectedCount"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingHorizontal="20dp"
-            android:paddingTop="12dp"
-            android:text="已选择 0 项"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:textColor="@color/text_primary" />
-
-        <!-- 操作按钮行1 - 每行3个按钮 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="4dp">
-
-            <LinearLayout
-                android:id="@+id/btnSelectAll"
-                android:layout_width="0dp"
-                android:layout_height="36dp"
-                android:layout_weight="1"
-                android:layout_marginEnd="8dp"
-                android:background="@drawable/bg_batch_action_button"
-                android:gravity="center"
-                android:clickable="true"
-                android:focusable="true">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="全选"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/primary" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/btnAddToFavorite"
-                android:layout_width="0dp"
-                android:layout_height="36dp"
-                android:layout_weight="1"
-                android:layout_marginHorizontal="8dp"
-                android:background="@drawable/bg_batch_action_button"
-                android:gravity="center"
-                android:clickable="true"
-                android:focusable="true">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="添加到喜欢"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/primary" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/btnAddToNowPlaying"
-                android:layout_width="0dp"
-                android:layout_height="36dp"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/bg_batch_action_button"
-                android:gravity="center"
-                android:clickable="true"
-                android:focusable="true">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="添加到播放"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/primary" />
-
-            </LinearLayout>
-
-        </LinearLayout>
-
-        <!-- 操作按钮行2 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="16dp"
-            android:paddingTop="4dp"
-            android:paddingBottom="8dp">
-
-            <LinearLayout
-                android:id="@+id/btnDelete"
-                android:layout_width="0dp"
-                android:layout_height="36dp"
-                android:layout_weight="1"
-                android:layout_marginEnd="8dp"
-                android:background="@drawable/bg_batch_action_button"
-                android:gravity="center"
-                android:clickable="true"
-                android:focusable="true">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="删除"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/error" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/btnCancel"
-                android:layout_width="0dp"
-                android:layout_height="36dp"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/bg_batch_action_button"
-                android:gravity="center"
-                android:clickable="true"
-                android:focusable="true">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="取消"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/text_secondary" />
-
-            </LinearLayout>
-
-            <!-- 占位符，保持3列布局 -->
-            <View
-                android:layout_width="0dp"
-                android:layout_height="36dp"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:visibility="invisible" />
-
-        </LinearLayout>
-
-    </LinearLayout>
+        android:layout_marginEnd="8dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

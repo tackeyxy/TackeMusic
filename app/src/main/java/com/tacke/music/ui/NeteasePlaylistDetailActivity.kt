@@ -148,18 +148,23 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             }
         }
 
-        binding.btnBatchManage.setOnClickListener {
-            enterMultiSelectMode()
-        }
+
     }
 
     private fun setupBatchActionListeners() {
-        binding.btnSelectAll.setOnClickListener {
+        // 关闭按钮
+        binding.batchActionBarContainer.btnCloseBatch?.setOnClickListener {
+            exitMultiSelectMode()
+        }
+
+        // 全选按钮
+        binding.batchActionBarContainer.btnSelectAll.setOnClickListener {
             trackAdapter.selectAll()
             updateBatchActionBar()
         }
 
-        binding.btnBatchDownload.setOnClickListener {
+        // 下载按钮
+        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             val selectedTracks = trackAdapter.getSelectedTracks()
             if (selectedTracks.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -168,7 +173,8 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             showBatchDownloadQualityDialog(selectedTracks)
         }
 
-        binding.btnAddToFavorite.setOnClickListener {
+        // 添加到喜欢按钮
+        binding.batchActionBarContainer.btnAddToFavorite.setOnClickListener {
             val selectedTracks = trackAdapter.getSelectedTracks()
             if (selectedTracks.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -177,7 +183,8 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             addTracksToFavorites(selectedTracks)
         }
 
-        binding.btnAddToPlaylist.setOnClickListener {
+        // 添加到歌单按钮
+        binding.batchActionBarContainer.btnAddToPlaylist.setOnClickListener {
             val selectedTracks = trackAdapter.getSelectedTracks()
             if (selectedTracks.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -186,17 +193,14 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             showBatchPlaylistSelectionDialog(selectedTracks)
         }
 
-        binding.btnAddToNowPlaying.setOnClickListener {
+        // 加入播放按钮
+        binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
             val selectedTracks = trackAdapter.getSelectedTracks()
             if (selectedTracks.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             addTracksToNowPlaying(selectedTracks)
-        }
-
-        binding.btnCancelBatch.setOnClickListener {
-            exitMultiSelectMode()
         }
     }
 
@@ -213,19 +217,18 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
     }
 
     private fun showBatchActionBar() {
-        binding.batchActionBar.visibility = View.VISIBLE
-        binding.btnBatchManage.visibility = View.GONE
+        binding.batchActionBarContainer.root.visibility = View.VISIBLE
         updateBatchActionBar()
+        setupBatchActionListeners()
     }
 
     private fun hideBatchActionBar() {
-        binding.batchActionBar.visibility = View.GONE
-        binding.btnBatchManage.visibility = View.VISIBLE
+        binding.batchActionBarContainer.root.visibility = View.GONE
     }
 
     private fun updateBatchActionBar() {
         val selectedCount = trackAdapter.getSelectedTracks().size
-        binding.tvSelectedCount.text = "已选择 $selectedCount 项"
+        binding.batchActionBarContainer.tvSelectedCount.text = selectedCount.toString()
     }
 
     private fun setupScrollListener() {

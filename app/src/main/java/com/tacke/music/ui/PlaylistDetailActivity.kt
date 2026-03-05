@@ -130,11 +130,17 @@ class PlaylistDetailActivity : AppCompatActivity() {
             playAllSongs()
         }
 
-        binding.btnBatchManage.setOnClickListener {
-            enterMultiSelectMode()
+        setupBatchActionListeners()
+    }
+
+    private fun setupBatchActionListeners() {
+        // 关闭按钮
+        binding.batchActionBarContainer.btnCloseBatch?.setOnClickListener {
+            exitMultiSelectMode()
         }
 
-        binding.btnSelectAll.setOnClickListener {
+        // 全选按钮
+        binding.batchActionBarContainer.btnSelectAll.setOnClickListener {
             if (selectedSongs.size == songAdapter.itemCount) {
                 selectedSongs.clear()
             } else {
@@ -145,7 +151,8 @@ class PlaylistDetailActivity : AppCompatActivity() {
             updateSelectedCount()
         }
 
-        binding.btnAddToFavorite.setOnClickListener {
+        // 添加到喜欢按钮
+        binding.batchActionBarContainer.btnAddToFavorite.setOnClickListener {
             val selectedSongList = songAdapter.getAllSongs().filter { selectedSongs.contains(it.id) }
             if (selectedSongList.isNotEmpty()) {
                 addSongsToFavorites(selectedSongList)
@@ -153,7 +160,8 @@ class PlaylistDetailActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        binding.btnAddToNowPlaying.setOnClickListener {
+        // 添加到播放按钮
+        binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
             val selectedSongList = songAdapter.getAllSongs().filter { selectedSongs.contains(it.id) }
             if (selectedSongList.isNotEmpty()) {
                 addSongsToNowPlaying(selectedSongList)
@@ -161,12 +169,9 @@ class PlaylistDetailActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        binding.btnDelete.setOnClickListener {
+        // 删除按钮 - 使用下载按钮的位置
+        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             showDeleteConfirm()
-        }
-
-        binding.btnCancel.setOnClickListener {
-            exitMultiSelectMode()
         }
     }
 
@@ -203,18 +208,19 @@ class PlaylistDetailActivity : AppCompatActivity() {
 
     private fun enterMultiSelectMode() {
         isMultiSelectMode = true
-        binding.batchActionBar.visibility = View.VISIBLE
-        binding.btnBatchManage.visibility = View.GONE
+        binding.batchActionBarContainer.root.visibility = View.VISIBLE
         binding.btnPlayAll.visibility = View.GONE
         songAdapter.setMultiSelectMode(true)
         selectedSongs.clear()
         updateSelectedCount()
+        // 隐藏"歌单"按钮（已经在歌单中）
+        binding.batchActionBarContainer.btnAddToPlaylist.visibility = View.GONE
+        setupBatchActionListeners()
     }
 
     private fun exitMultiSelectMode() {
         isMultiSelectMode = false
-        binding.batchActionBar.visibility = View.GONE
-        binding.btnBatchManage.visibility = View.VISIBLE
+        binding.batchActionBarContainer.root.visibility = View.GONE
         binding.btnPlayAll.visibility = View.VISIBLE
         songAdapter.setMultiSelectMode(false)
         selectedSongs.clear()
@@ -231,7 +237,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
     }
 
     private fun updateSelectedCount() {
-        binding.tvSelectedCount.text = "已选择 ${selectedSongs.size} 项"
+        binding.batchActionBarContainer.tvSelectedCount.text = selectedSongs.size.toString()
     }
 
     private fun toggleFavorite(song: PlaylistSong, isCurrentlyFavorite: Boolean) {

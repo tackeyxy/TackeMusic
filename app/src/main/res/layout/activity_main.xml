@@ -949,15 +949,16 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- 批量操作栏 - 位于底部导航栏上方 -->
+    <!-- 批量操作栏 - 位于右侧居中位置 -->
     <include
         android:id="@+id/batchActionBarContainer"
         layout="@layout/layout_batch_action_bar"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginHorizontal="8dp"
-        android:layout_marginBottom="8dp"
-        app:layout_constraintBottom_toTopOf="@id/bottomNav" />
+        android:layout_marginEnd="8dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" />
 
     <!-- 底部加载更多进度条 -->
     <ProgressBar

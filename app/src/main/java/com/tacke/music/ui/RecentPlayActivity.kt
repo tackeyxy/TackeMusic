@@ -95,11 +95,17 @@ class RecentPlayActivity : AppCompatActivity() {
             playAllSongs()
         }
 
-        binding.btnBatchManage.setOnClickListener {
-            enterMultiSelectMode()
+        setupBatchActionListeners()
+    }
+
+    private fun setupBatchActionListeners() {
+        // 关闭按钮
+        binding.batchActionBarContainer.btnCloseBatch?.setOnClickListener {
+            exitMultiSelectMode()
         }
 
-        binding.btnSelectAll.setOnClickListener {
+        // 全选按钮
+        binding.batchActionBarContainer.btnSelectAll.setOnClickListener {
             if (selectedItems.size == adapter.itemCount) {
                 selectedItems.clear()
             } else {
@@ -110,7 +116,8 @@ class RecentPlayActivity : AppCompatActivity() {
             updateSelectedCount()
         }
 
-        binding.btnAddToFavorite.setOnClickListener {
+        // 添加到喜欢按钮
+        binding.batchActionBarContainer.btnAddToFavorite.setOnClickListener {
             val selectedSongs = adapter.getAllRecentPlays().filter { selectedItems.contains(it.id) }
             if (selectedSongs.isNotEmpty()) {
                 addSongsToFavorites(selectedSongs)
@@ -118,7 +125,8 @@ class RecentPlayActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        binding.btnAddToNowPlaying.setOnClickListener {
+        // 添加到播放按钮
+        binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
             val selectedSongs = adapter.getAllRecentPlays().filter { selectedItems.contains(it.id) }
             if (selectedSongs.isNotEmpty()) {
                 addSongsToNowPlaying(selectedSongs)
@@ -126,12 +134,9 @@ class RecentPlayActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        binding.btnDelete.setOnClickListener {
+        // 删除按钮 - 使用下载按钮的位置
+        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             showDeleteConfirm()
-        }
-
-        binding.btnCancel.setOnClickListener {
-            exitMultiSelectMode()
         }
     }
 
@@ -168,18 +173,17 @@ class RecentPlayActivity : AppCompatActivity() {
 
     private fun enterMultiSelectMode() {
         isMultiSelectMode = true
-        binding.batchActionBar.visibility = View.VISIBLE
-        binding.btnBatchManage.visibility = View.GONE
+        binding.batchActionBarContainer.root.visibility = View.VISIBLE
         binding.btnPlayAll.visibility = View.GONE
         adapter.setMultiSelectMode(true)
         selectedItems.clear()
         updateSelectedCount()
+        setupBatchActionListeners()
     }
 
     private fun exitMultiSelectMode() {
         isMultiSelectMode = false
-        binding.batchActionBar.visibility = View.GONE
-        binding.btnBatchManage.visibility = View.VISIBLE
+        binding.batchActionBarContainer.root.visibility = View.GONE
         binding.btnPlayAll.visibility = View.VISIBLE
         adapter.setMultiSelectMode(false)
         selectedItems.clear()
@@ -196,7 +200,7 @@ class RecentPlayActivity : AppCompatActivity() {
     }
 
     private fun updateSelectedCount() {
-        binding.tvSelectedCount.text = "已选择 ${selectedItems.size} 项"
+        binding.batchActionBarContainer.tvSelectedCount.text = selectedItems.size.toString()
     }
 
     private fun showMoreOptions() {

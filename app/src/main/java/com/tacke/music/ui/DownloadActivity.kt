@@ -140,18 +140,17 @@ class DownloadActivity : AppCompatActivity() {
     }
 
     private fun setupBatchActions() {
-        // 进入多选模式
-        binding.btnBatchManage.setOnClickListener {
-            enterMultiSelectMode()
-        }
+        setupBatchActionListeners()
+    }
 
-        // 关闭批量操作
-        binding.btnCancelBatch.setOnClickListener {
+    private fun setupBatchActionListeners() {
+        // 关闭按钮
+        binding.batchActionBarContainer.btnCloseBatch?.setOnClickListener {
             exitMultiSelectMode()
         }
 
         // 全选按钮
-        binding.btnSelectAll.setOnClickListener {
+        binding.batchActionBarContainer.btnSelectAll.setOnClickListener {
             if (binding.tabLayout.selectedTabPosition == 0) {
                 downloadingAdapter.selectAll()
                 updateSelectedCount(downloadingAdapter.getSelectedTasks().size)
@@ -161,63 +160,63 @@ class DownloadActivity : AppCompatActivity() {
             }
         }
 
-        // 正在下载标签页的批量操作
-        binding.btnBatchStart.setOnClickListener {
-            val selectedTasks = downloadingAdapter.getSelectedTasks()
-            val tasksToResume = selectedTasks.filter { it.isPaused || it.isFailed }
-            if (tasksToResume.isNotEmpty()) {
-                downloadManager.resumeDownloads(tasksToResume)
-                Toast.makeText(this, "已开始 ${tasksToResume.size} 个任务", Toast.LENGTH_SHORT).show()
-            }
-            exitMultiSelectMode()
-        }
-
-        binding.btnBatchPause.setOnClickListener {
-            val selectedTasks = downloadingAdapter.getSelectedTasks()
-            val taskIds = selectedTasks.map { it.id }
-            if (taskIds.isNotEmpty()) {
-                downloadManager.pauseDownloads(taskIds)
-                Toast.makeText(this, "已暂停 ${taskIds.size} 个任务", Toast.LENGTH_SHORT).show()
-            }
-            exitMultiSelectMode()
-        }
-
-        binding.btnBatchDelete.setOnClickListener {
+        // 删除按钮 - 两个标签页都使用删除功能
+        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             showBatchDeleteDialog { deleteFile ->
-                val selectedTasks = downloadingAdapter.getSelectedTasks()
-                if (selectedTasks.isNotEmpty()) {
-                    downloadManager.deleteDownloads(selectedTasks, deleteFile)
-                    Toast.makeText(this, "已删除 ${selectedTasks.size} 个任务", Toast.LENGTH_SHORT).show()
+                if (binding.tabLayout.selectedTabPosition == 0) {
+                    val selectedTasks = downloadingAdapter.getSelectedTasks()
+                    if (selectedTasks.isNotEmpty()) {
+                        downloadManager.deleteDownloads(selectedTasks, deleteFile)
+                        Toast.makeText(this, "已删除 ${selectedTasks.size} 个任务", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    val selectedTasks = historyAdapter.getSelectedTasks()
+                    if (selectedTasks.isNotEmpty()) {
+                        downloadManager.deleteDownloads(selectedTasks, deleteFile)
+                        Toast.makeText(this, "已删除 ${selectedTasks.size} 个记录", Toast.LENGTH_SHORT).show()
+                    }
                 }
                 exitMultiSelectMode()
             }
         }
 
-        // 下载历史标签页的批量操作
-        binding.btnBatchAddToNowPlaying.setOnClickListener {
-            val selectedTasks = historyAdapter.getSelectedTasks()
-            if (selectedTasks.isNotEmpty()) {
-                addTasksToNowPlaying(selectedTasks)
-            }
-            exitMultiSelectMode()
-        }
-
-        binding.btnBatchAddToFavorites.setOnClickListener {
-            val selectedTasks = historyAdapter.getSelectedTasks()
-            if (selectedTasks.isNotEmpty()) {
-                addTasksToFavorites(selectedTasks)
-            }
-            exitMultiSelectMode()
-        }
-
-        binding.btnBatchDeleteHistory.setOnClickListener {
-            showBatchDeleteDialog { deleteFile ->
+        // 添加到喜欢按钮 - 仅在下载历史标签页有效
+        binding.batchActionBarContainer.btnAddToFavorite.setOnClickListener {
+            if (binding.tabLayout.selectedTabPosition == 1) {
                 val selectedTasks = historyAdapter.getSelectedTasks()
                 if (selectedTasks.isNotEmpty()) {
-                    downloadManager.deleteDownloads(selectedTasks, deleteFile)
-                    Toast.makeText(this, "已删除 ${selectedTasks.size} 个记录", Toast.LENGTH_SHORT).show()
+                    addTasksToFavorites(selectedTasks)
                 }
                 exitMultiSelectMode()
+            } else {
+                Toast.makeText(this, "此操作仅在下载历史页面可用", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // 添加到播放按钮 - 仅在下载历史标签页有效
+        binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
+            if (binding.tabLayout.selectedTabPosition == 1) {
+                val selectedTasks = historyAdapter.getSelectedTasks()
+                if (selectedTasks.isNotEmpty()) {
+                    addTasksToNowPlaying(selectedTasks)
+                }
+                exitMultiSelectMode()
+            } else {
+                Toast.makeText(this, "此操作仅在下载历史页面可用", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // 添加到歌单按钮 - 仅在下载历史标签页有效
+        binding.batchActionBarContainer.btnAddToPlaylist.setOnClickListener {
+            if (binding.tabLayout.selectedTabPosition == 1) {
+                val selectedTasks = historyAdapter.getSelectedTasks()
+                if (selectedTasks.isNotEmpty()) {
+                    // TODO: 实现添加到歌单功能
+                    Toast.makeText(this, "添加到歌单功能待实现", Toast.LENGTH_SHORT).show()
+                }
+                exitMultiSelectMode()
+            } else {
+                Toast.makeText(this, "此操作仅在下载历史页面可用", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -240,34 +239,29 @@ class DownloadActivity : AppCompatActivity() {
 
     private fun enterMultiSelectMode() {
         isMultiSelectMode = true
-        binding.batchActionBar.visibility = View.VISIBLE
-        binding.btnBatchManage.visibility = View.GONE
+        binding.batchActionBarContainer.root.visibility = View.VISIBLE
 
-        // 根据当前标签页显示对应的操作按钮
+        // 根据当前标签页设置适配器
         if (binding.tabLayout.selectedTabPosition == 0) {
-            binding.layoutDownloadingActions.visibility = View.VISIBLE
-            binding.layoutHistoryActions.visibility = View.GONE
             downloadingAdapter.setMultiSelectMode(true)
         } else {
-            binding.layoutDownloadingActions.visibility = View.GONE
-            binding.layoutHistoryActions.visibility = View.VISIBLE
             historyAdapter.setMultiSelectMode(true)
         }
 
         updateSelectedCount(0)
+        setupBatchActionListeners()
     }
 
     private fun exitMultiSelectMode() {
         isMultiSelectMode = false
-        binding.batchActionBar.visibility = View.GONE
-        binding.btnBatchManage.visibility = View.VISIBLE
+        binding.batchActionBarContainer.root.visibility = View.GONE
 
         downloadingAdapter.setMultiSelectMode(false)
         historyAdapter.setMultiSelectMode(false)
     }
 
     private fun updateSelectedCount(count: Int) {
-        binding.tvSelectedCount.text = "已选择 $count 项"
+        binding.batchActionBarContainer.tvSelectedCount.text = count.toString()
     }
 
     private fun observeDownloadData() {
@@ -304,22 +298,12 @@ class DownloadActivity : AppCompatActivity() {
         binding.recyclerView.adapter = downloadingAdapter
         val tasks = downloadManager.downloadingTasks.value
         updateEmptyState(tasks.isEmpty())
-
-        if (isMultiSelectMode) {
-            binding.layoutDownloadingActions.visibility = View.VISIBLE
-            binding.layoutHistoryActions.visibility = View.GONE
-        }
     }
 
     private fun showHistoryTab() {
         binding.recyclerView.adapter = historyAdapter
         val tasks = downloadManager.completedTasks.value
         updateEmptyState(tasks.isEmpty())
-
-        if (isMultiSelectMode) {
-            binding.layoutDownloadingActions.visibility = View.GONE
-            binding.layoutHistoryActions.visibility = View.VISIBLE
-        }
     }
 
     private fun updateEmptyState(isEmpty: Boolean) {

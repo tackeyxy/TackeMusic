@@ -154,28 +154,36 @@ class ChartDetailActivity : AppCompatActivity() {
     }
 
     private fun showBatchActionBar() {
-        binding.batchActionBar.visibility = View.VISIBLE
+        binding.batchActionBarContainer.root.visibility = View.VISIBLE
         binding.btnPlayAll.visibility = View.GONE
         updateBatchActionBar()
+        setupBatchActionListeners()
     }
 
     private fun hideBatchActionBar() {
-        binding.batchActionBar.visibility = View.GONE
+        binding.batchActionBarContainer.root.visibility = View.GONE
         binding.btnPlayAll.visibility = View.VISIBLE
     }
 
     private fun updateBatchActionBar() {
         val selectedCount = adapter.getSelectedSongs().size
-        binding.tvSelectedCount.text = "已选择 $selectedCount 项"
+        binding.batchActionBarContainer.tvSelectedCount.text = selectedCount.toString()
     }
 
     private fun setupBatchActionListeners() {
-        binding.btnSelectAll.setOnClickListener {
+        // 关闭按钮
+        binding.batchActionBarContainer.btnCloseBatch?.setOnClickListener {
+            exitMultiSelectMode()
+        }
+
+        // 全选按钮
+        binding.batchActionBarContainer.btnSelectAll.setOnClickListener {
             adapter.selectAll()
             updateBatchActionBar()
         }
 
-        binding.btnBatchDownload.setOnClickListener {
+        // 下载按钮
+        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             val selectedSongs = adapter.getSelectedSongs()
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -184,7 +192,8 @@ class ChartDetailActivity : AppCompatActivity() {
             showBatchDownloadQualityDialog(selectedSongs)
         }
 
-        binding.btnAddToFavorite.setOnClickListener {
+        // 添加到喜欢按钮
+        binding.batchActionBarContainer.btnAddToFavorite.setOnClickListener {
             val selectedSongs = adapter.getSelectedSongs()
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -193,7 +202,8 @@ class ChartDetailActivity : AppCompatActivity() {
             addSongsToFavorites(selectedSongs)
         }
 
-        binding.btnAddToPlaylist.setOnClickListener {
+        // 添加到歌单按钮
+        binding.batchActionBarContainer.btnAddToPlaylist.setOnClickListener {
             val selectedSongs = adapter.getSelectedSongs()
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -202,17 +212,14 @@ class ChartDetailActivity : AppCompatActivity() {
             showBatchPlaylistSelectionDialog(selectedSongs)
         }
 
-        binding.btnAddToNowPlaying.setOnClickListener {
+        // 加入播放按钮
+        binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
             val selectedSongs = adapter.getSelectedSongs()
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             addSongsToNowPlaying(selectedSongs)
-        }
-
-        binding.btnCancelBatch.setOnClickListener {
-            exitMultiSelectMode()
         }
     }
 

@@ -254,16 +254,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateBatchActionBar() {
-        // 更新选中数量
-        binding.batchActionBarContainer.tvSelectedCount.text = "已选择 ${selectedSongIds.size} 首"
+        // 更新选中数量 - 右侧边栏只显示数字
+        binding.batchActionBarContainer.tvSelectedCount.text = selectedSongIds.size.toString()
     }
 
     private fun setupBatchActionListeners() {
-        // 关闭按钮（支持两种关闭按钮ID）
+        // 关闭按钮
         binding.batchActionBarContainer.btnCloseBatch?.setOnClickListener {
-            exitMultiSelectMode()
-        }
-        binding.batchActionBarContainer.btnCloseBatchLayout?.setOnClickListener {
             exitMultiSelectMode()
         }
 
