@@ -95,6 +95,11 @@
             android:screenOrientation="portrait" />
 
         <activity
+            android:name=".ui.FavoriteSongsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
             android:name=".ui.LogViewerActivity"
             android:exported="false"
             android:screenOrientation="portrait"

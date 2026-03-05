@@ -3,7 +3,6 @@ package com.tacke.music.ui.adapter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.PopupMenu
@@ -117,7 +116,8 @@ class DownloadingAdapter(
         private val tvSpeed: TextView = itemView.findViewById(R.id.tvSpeed)
         private val tvSize: TextView = itemView.findViewById(R.id.tvSize)
         private val btnControl: ImageButton = itemView.findViewById(R.id.btnControl)
-        private val cbSelect: CheckBox = itemView.findViewById(R.id.cbSelect)
+        private val flCheckbox: View = itemView.findViewById(R.id.flCheckbox)
+        private val ivCheckbox: ImageView = itemView.findViewById(R.id.ivCheckbox)
         private val contentLayout: androidx.constraintlayout.widget.ConstraintLayout = itemView.findViewById(R.id.contentLayout)
         private val deleteLayout: androidx.constraintlayout.widget.ConstraintLayout = itemView.findViewById(R.id.deleteLayout)
 
@@ -153,22 +153,12 @@ class DownloadingAdapter(
                 if (!isMultiSelectMode) {
                     currentTask?.let { task ->
                         onEnterMultiSelectMode(task)
+                        // 长按时自动选中当前任务
+                        toggleSelection(task.id)
                     }
                     true
                 } else {
                     false
-                }
-            }
-
-            cbSelect.setOnCheckedChangeListener { _, isChecked ->
-                currentTask?.let { task ->
-                    if (isChecked && !selectedTasks.contains(task.id)) {
-                        selectedTasks.add(task.id)
-                        onSelectionChanged(selectedTasks.size)
-                    } else if (!isChecked && selectedTasks.contains(task.id)) {
-                        selectedTasks.remove(task.id)
-                        onSelectionChanged(selectedTasks.size)
-                    }
                 }
             }
 
@@ -273,8 +263,8 @@ class DownloadingAdapter(
                 .into(ivCover)
 
             // 多选模式显示复选框
-            cbSelect.visibility = if (isMultiSelectMode) View.VISIBLE else View.GONE
-            cbSelect.isChecked = selectedTasks.contains(task.id)
+            flCheckbox.visibility = if (isMultiSelectMode) View.VISIBLE else View.GONE
+            ivCheckbox.isSelected = selectedTasks.contains(task.id)
 
             // 控制按钮在多选模式下隐藏
             btnControl.visibility = if (isMultiSelectMode) View.GONE else View.VISIBLE

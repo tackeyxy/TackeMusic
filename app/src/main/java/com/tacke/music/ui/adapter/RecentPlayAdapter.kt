@@ -3,8 +3,6 @@ package com.tacke.music.ui.adapter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
-import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -24,7 +22,6 @@ import java.util.Locale
 
 class RecentPlayAdapter(
     private val onItemClick: (RecentPlay) -> Unit,
-    private val onMoreClick: (RecentPlay) -> Unit,
     private val onLongClick: (RecentPlay) -> Boolean,
     private val lifecycleScope: LifecycleCoroutineScope? = null,
     private val onCoverLoaded: ((String, String) -> Unit)? = null
@@ -60,8 +57,7 @@ class RecentPlayAdapter(
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
         private val ivSource: ImageView = itemView.findViewById(R.id.ivSource)
         private val ivCover: ImageView = itemView.findViewById(R.id.ivCover)
-        private val btnMore: ImageButton = itemView.findViewById(R.id.btnMore)
-        private val checkBox: CheckBox = itemView.findViewById(R.id.checkBox)
+        private val ivCheckbox: ImageView = itemView.findViewById(R.id.ivCheckbox)
         private val flIndex: View = itemView.findViewById(R.id.flIndex)
         private val tvPlayTime: TextView = itemView.findViewById(R.id.tvPlayTime)
 
@@ -82,41 +78,34 @@ class RecentPlayAdapter(
             if (isMultiSelectMode) {
                 // 显示复选框区域
                 flIndex.visibility = View.VISIBLE
-                checkBox.visibility = View.VISIBLE
-                btnMore.visibility = View.GONE
+                ivCheckbox.visibility = View.VISIBLE
                 ivSource.visibility = View.GONE
                 tvPlayTime.visibility = View.GONE
 
-                // 设置复选框状态（先移除监听器避免循环触发）
-                checkBox.setOnCheckedChangeListener(null)
-                checkBox.isChecked = isSelected
+                // 设置复选框状态
+                ivCheckbox.isSelected = isSelected
 
                 // 设置选中状态的视觉反馈
                 updateSelectedBackground(isSelected)
 
-                // 添加新的监听器
-                checkBox.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
+                itemView.setOnClickListener {
+                    // 切换选中状态
+                    val newSelectedState = !ivCheckbox.isSelected
+                    ivCheckbox.isSelected = newSelectedState
+                    if (newSelectedState) {
                         selectedItems.add(recentPlay.id)
                     } else {
                         selectedItems.remove(recentPlay.id)
                     }
                     // 更新当前项的背景
-                    updateSelectedBackground(isChecked)
+                    updateSelectedBackground(newSelectedState)
                     // 通知外部选中状态变化
                     onItemClick(recentPlay)
-                }
-
-                itemView.setOnClickListener {
-                    // 切换选中状态
-                    val newCheckedState = !checkBox.isChecked
-                    checkBox.isChecked = newCheckedState
                 }
             } else {
                 // 非多选模式
                 flIndex.visibility = View.GONE
-                checkBox.visibility = View.GONE
-                btnMore.visibility = View.VISIBLE
+                ivCheckbox.visibility = View.GONE
                 ivSource.visibility = View.VISIBLE
                 tvPlayTime.visibility = View.VISIBLE
 
@@ -124,7 +113,6 @@ class RecentPlayAdapter(
                 itemView.setBackgroundResource(android.R.color.transparent)
 
                 itemView.setOnClickListener { onItemClick(recentPlay) }
-                btnMore.setOnClickListener { onMoreClick(recentPlay) }
             }
 
             itemView.setOnLongClickListener { onLongClick(recentPlay) }

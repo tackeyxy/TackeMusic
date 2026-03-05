@@ -25,6 +25,7 @@ import com.tacke.music.data.api.PlaylistTag
 import com.tacke.music.data.api.RetrofitClient
 import com.tacke.music.data.model.ChartSong
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityMainBinding
@@ -46,6 +47,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: SongAdapter
     private val repository = MusicRepository()
     private lateinit var playlistRepository: PlaylistRepository
+    private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playlistManager: PlaylistManager
     private lateinit var playbackManager: PlaybackManager
     private lateinit var updateDialogManager: UpdateDialogManager
@@ -105,6 +107,7 @@ class MainActivity : AppCompatActivity() {
 
         currentPlatform = SettingsActivity.getDefaultSource(this)
         playlistRepository = PlaylistRepository(this)
+        favoriteRepository = FavoriteRepository(this)
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
         updateDialogManager = UpdateDialogManager(this, lifecycleScope)
@@ -160,11 +163,6 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     // 普通模式下点击播放
                     addToNowPlayingAndPlay(song)
-                }
-            },
-            onMoreClick = { song ->
-                if (!isMultiSelectMode) {
-                    showOptionsDialog(song)
                 }
             },
             onLongClick = { song ->
@@ -261,8 +259,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupBatchActionListeners() {
-        // 关闭按钮
-        binding.batchActionBarContainer.btnCloseBatch.setOnClickListener {
+        // 关闭按钮（支持两种关闭按钮ID）
+        binding.batchActionBarContainer.btnCloseBatch?.setOnClickListener {
+            exitMultiSelectMode()
+        }
+        binding.batchActionBarContainer.btnCloseBatchLayout?.setOnClickListener {
             exitMultiSelectMode()
         }
 
@@ -279,6 +280,16 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             showBatchDownloadQualityDialog(selectedSongs)
+        }
+
+        // 添加到喜欢按钮
+        binding.batchActionBarContainer.btnAddToFavorite.setOnClickListener {
+            val selectedSongs = getSelectedSongsFromAllPages()
+            if (selectedSongs.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            addSongsToFavorites(selectedSongs)
         }
 
         // 添加到歌单按钮
@@ -911,19 +922,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showOptionsDialog(song: Song) {
-        val options = arrayOf("添加到播放列表并播放", "下载", "添加到歌单", "仅添加到播放列表")
-        AlertDialog.Builder(this)
-            .setTitle("${song.name} - ${song.artists}")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> addToNowPlayingAndPlay(song)
-                    1 -> showQualityDialog(song)
-                    2 -> showPlaylistSelectionDialog(listOf(song))
-                    3 -> addToNowPlaying(song)
+    private fun toggleFavorite(song: Song, isCurrentlyFavorite: Boolean) {
+        lifecycleScope.launch {
+            try {
+                val platform = when (currentPlatform) {
+                    MusicRepository.Platform.KUWO -> "kuwo"
+                    MusicRepository.Platform.NETEASE -> "netease"
                 }
+
+                if (isCurrentlyFavorite) {
+                    favoriteRepository.removeFromFavorites(song.id)
+                    Toast.makeText(this@MainActivity, "已从我喜欢移除", Toast.LENGTH_SHORT).show()
+                } else {
+                    favoriteRepository.addToFavorites(song, platform)
+                    Toast.makeText(this@MainActivity, "已添加到我喜欢", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-            .show()
+        }
     }
 
     private fun addToNowPlaying(song: Song) {
@@ -1141,6 +1158,36 @@ class MainActivity : AppCompatActivity() {
                     "添加失败: ${e.message}",
                     Toast.LENGTH_SHORT
                 ).show()
+            }
+        }
+    }
+
+    private fun addSongsToFavorites(songs: List<Song>) {
+        lifecycleScope.launch {
+            try {
+                val platform = when (currentPlatform) {
+                    MusicRepository.Platform.KUWO -> "kuwo"
+                    MusicRepository.Platform.NETEASE -> "netease"
+                }
+                var addedCount = 0
+                var duplicateCount = 0
+                songs.forEach { song ->
+                    val isAlreadyFavorite = favoriteRepository.isFavorite(song.id)
+                    if (!isAlreadyFavorite) {
+                        favoriteRepository.addToFavorites(song, platform)
+                        addedCount++
+                    } else {
+                        duplicateCount++
+                    }
+                }
+                val message = when {
+                    duplicateCount > 0 -> "已添加 $addedCount 首到喜欢，$duplicateCount 首已存在"
+                    else -> "已添加 $addedCount 首歌曲到我喜欢"
+                }
+                Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+                exitMultiSelectMode()
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }

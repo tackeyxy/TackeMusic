@@ -103,36 +103,15 @@
 
         </LinearLayout>
 
-        <!-- 右侧：音源图标 + 更多选项 - 靠最右侧 -->
-        <LinearLayout
-            android:id="@+id/llRightArea"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+        <!-- 右侧：音源图标 - 靠最右侧 -->
+        <ImageView
+            android:id="@+id/ivSource"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <!-- 音源图标 -->
-            <ImageView
-                android:id="@+id/ivSource"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_marginEnd="4dp"
-                android:scaleType="fitCenter"
-                tools:src="@drawable/ic_netease_logo" />
-
-            <!-- 更多选项按钮（三个点） -->
-            <ImageButton
-                android:id="@+id/btnMore"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:src="@drawable/ic_more_vert"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:tint="@color/text_hint"
-                android:contentDescription="更多选项" />
-
-        </LinearLayout>
+            android:scaleType="fitCenter"
+            tools:src="@drawable/ic_netease_logo" />
 
     </RelativeLayout>
 

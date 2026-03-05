@@ -183,7 +183,7 @@
     <LinearLayout
         android:id="@+id/batchActionBar"
         android:layout_width="match_parent"
-        android:layout_height="72dp"
+        android:layout_height="wrap_content"
         android:orientation="vertical"
         android:background="@drawable/bg_batch_action_bar"
         android:elevation="16dp"
@@ -202,14 +202,15 @@
             android:textStyle="bold"
             android:textColor="@color/text_primary" />
 
-        <!-- 操作按钮行 -->
+        <!-- 操作按钮行1 - 每行3个按钮 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:paddingHorizontal="16dp"
-            android:paddingVertical="8dp">
+            android:paddingTop="8dp"
+            android:paddingBottom="4dp">
 
             <LinearLayout
                 android:id="@+id/btnSelectAll"
@@ -233,11 +234,32 @@
             </LinearLayout>
 
             <LinearLayout
-                android:id="@+id/btnAddToNowPlaying"
+                android:id="@+id/btnAddToFavorite"
                 android:layout_width="0dp"
                 android:layout_height="36dp"
                 android:layout_weight="1"
                 android:layout_marginHorizontal="8dp"
+                android:background="@drawable/bg_batch_action_button"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="添加到喜欢"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/primary" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/btnAddToNowPlaying"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
                 android:background="@drawable/bg_batch_action_button"
                 android:gravity="center"
                 android:clickable="true"
@@ -253,12 +275,24 @@
 
             </LinearLayout>
 
+        </LinearLayout>
+
+        <!-- 操作按钮行2 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="16dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="8dp">
+
             <LinearLayout
                 android:id="@+id/btnDelete"
                 android:layout_width="0dp"
                 android:layout_height="36dp"
                 android:layout_weight="1"
-                android:layout_marginHorizontal="8dp"
+                android:layout_marginEnd="8dp"
                 android:background="@drawable/bg_batch_action_button"
                 android:gravity="center"
                 android:clickable="true"
@@ -294,6 +328,14 @@
                     android:textColor="@color/text_secondary" />
 
             </LinearLayout>
+
+            <!-- 占位符，保持3列布局 -->
+            <View
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:visibility="invisible" />
 
         </LinearLayout>
 

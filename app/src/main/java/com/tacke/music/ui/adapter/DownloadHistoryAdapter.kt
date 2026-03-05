@@ -3,7 +3,6 @@ package com.tacke.music.ui.adapter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.PopupMenu
 import android.widget.TextView
@@ -91,7 +90,8 @@ class DownloadHistoryAdapter(
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
         private val tvSize: TextView = itemView.findViewById(R.id.tvSize)
         private val tvDate: TextView = itemView.findViewById(R.id.tvDate)
-        private val cbSelect: CheckBox = itemView.findViewById(R.id.cbSelect)
+        private val flCheckbox: View = itemView.findViewById(R.id.flCheckbox)
+        private val ivCheckbox: ImageView = itemView.findViewById(R.id.ivCheckbox)
         private val contentLayout: androidx.constraintlayout.widget.ConstraintLayout = itemView.findViewById(R.id.contentLayout)
         private val deleteLayout: androidx.constraintlayout.widget.ConstraintLayout = itemView.findViewById(R.id.deleteLayout)
 
@@ -102,18 +102,6 @@ class DownloadHistoryAdapter(
         init {
             deleteLayout.setOnClickListener {
                 showDeleteMenu()
-            }
-
-            cbSelect.setOnCheckedChangeListener { _, isChecked ->
-                currentTask?.let { task ->
-                    if (isChecked && !selectedTasks.contains(task.id)) {
-                        selectedTasks.add(task.id)
-                        onSelectionChanged(selectedTasks.size)
-                    } else if (!isChecked && selectedTasks.contains(task.id)) {
-                        selectedTasks.remove(task.id)
-                        onSelectionChanged(selectedTasks.size)
-                    }
-                }
             }
 
             setupSwipeAndClick()
@@ -225,6 +213,8 @@ class DownloadHistoryAdapter(
                 if (!isMultiSelectMode && !isSwipeOpen) {
                     currentTask?.let { task ->
                         onEnterMultiSelectMode(task)
+                        // 长按时自动选中当前任务
+                        toggleSelection(task.id)
                     }
                     true
                 } else {
@@ -266,8 +256,8 @@ class DownloadHistoryAdapter(
                 .into(ivCover)
 
             // 多选模式显示复选框
-            cbSelect.visibility = if (isMultiSelectMode) View.VISIBLE else View.GONE
-            cbSelect.isChecked = selectedTasks.contains(task.id)
+            flCheckbox.visibility = if (isMultiSelectMode) View.VISIBLE else View.GONE
+            ivCheckbox.isSelected = selectedTasks.contains(task.id)
 
             if (isSwipeOpen && isMultiSelectMode) {
                 closeSwipe()

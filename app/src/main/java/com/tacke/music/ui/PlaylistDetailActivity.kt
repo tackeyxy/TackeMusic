@@ -12,6 +12,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.model.Playlist
 import com.tacke.music.data.model.PlaylistSong
+import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityPlaylistDetailBinding
@@ -26,6 +27,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPlaylistDetailBinding
     private lateinit var playlistRepository: PlaylistRepository
+    private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playlistManager: PlaylistManager
     private lateinit var playbackManager: PlaybackManager
     private lateinit var songAdapter: PlaylistSongAdapter
@@ -51,6 +53,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
         }
 
         playlistRepository = PlaylistRepository(this)
+        favoriteRepository = FavoriteRepository(this)
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
 
@@ -86,11 +89,6 @@ class PlaylistDetailActivity : AppCompatActivity() {
                     toggleSelection(song.id)
                 } else {
                     playSong(song)
-                }
-            },
-            onMoreClick = { song ->
-                if (!isMultiSelectMode) {
-                    showSongOptions(song)
                 }
             },
             onLongClick = { song ->
@@ -145,6 +143,14 @@ class PlaylistDetailActivity : AppCompatActivity() {
             }
             songAdapter.setSelectedItems(selectedSongs)
             updateSelectedCount()
+        }
+
+        binding.btnAddToFavorite.setOnClickListener {
+            val selectedSongList = songAdapter.getAllSongs().filter { selectedSongs.contains(it.id) }
+            if (selectedSongList.isNotEmpty()) {
+                addSongsToFavorites(selectedSongList)
+            }
+            exitMultiSelectMode()
         }
 
         binding.btnAddToNowPlaying.setOnClickListener {
@@ -228,18 +234,27 @@ class PlaylistDetailActivity : AppCompatActivity() {
         binding.tvSelectedCount.text = "已选择 ${selectedSongs.size} 项"
     }
 
-    private fun showSongOptions(song: PlaylistSong) {
-        val options = arrayOf("播放", "从歌单中删除")
-
-        MaterialAlertDialogBuilder(this)
-            .setTitle(song.name)
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> playSong(song)
-                    1 -> removeSongFromPlaylist(song.id)
+    private fun toggleFavorite(song: PlaylistSong, isCurrentlyFavorite: Boolean) {
+        lifecycleScope.launch {
+            try {
+                if (isCurrentlyFavorite) {
+                    favoriteRepository.removeFromFavorites(song.id)
+                    Toast.makeText(this@PlaylistDetailActivity, "已从我喜欢移除", Toast.LENGTH_SHORT).show()
+                } else {
+                    val songModel = com.tacke.music.data.model.Song(
+                        index = 0,
+                        id = song.id,
+                        name = song.name,
+                        artists = song.artists,
+                        coverUrl = song.coverUrl
+                    )
+                    favoriteRepository.addToFavorites(songModel, song.platform)
+                    Toast.makeText(this@PlaylistDetailActivity, "已添加到我喜欢", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: Exception) {
+                Toast.makeText(this@PlaylistDetailActivity, "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-            .show()
+        }
     }
 
     private fun showPlaylistOptions() {
@@ -428,6 +443,38 @@ class PlaylistDetailActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 Toast.makeText(this@PlaylistDetailActivity, "播放失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun addSongsToFavorites(songs: List<PlaylistSong>) {
+        lifecycleScope.launch {
+            try {
+                var addedCount = 0
+                var duplicateCount = 0
+                songs.forEach { song ->
+                    val songModel = com.tacke.music.data.model.Song(
+                        index = 0,
+                        id = song.id,
+                        name = song.name,
+                        artists = song.artists,
+                        coverUrl = song.coverUrl
+                    )
+                    val isAlreadyFavorite = favoriteRepository.isFavorite(song.id)
+                    if (!isAlreadyFavorite) {
+                        favoriteRepository.addToFavorites(songModel, song.platform)
+                        addedCount++
+                    } else {
+                        duplicateCount++
+                    }
+                }
+                val message = when {
+                    duplicateCount > 0 -> "已添加 $addedCount 首到喜欢，$duplicateCount 首已存在"
+                    else -> "已添加 $addedCount 首歌曲到我喜欢"
+                }
+                Toast.makeText(this@PlaylistDetailActivity, message, Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@PlaylistDetailActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }

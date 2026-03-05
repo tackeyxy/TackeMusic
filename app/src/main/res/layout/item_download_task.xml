@@ -34,11 +34,13 @@
                 android:layout_height="56dp"
                 android:visibility="gone">
 
-                <CheckBox
-                    android:id="@+id/checkBox"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center" />
+                <ImageView
+                    android:id="@+id/ivCheckbox"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/selector_checkbox_circle"
+                    android:contentDescription="选择" />
 
             </FrameLayout>
 

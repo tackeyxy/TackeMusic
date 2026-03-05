@@ -11,6 +11,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.model.RecentPlay
+import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.RecentPlayRepository
 import com.tacke.music.databinding.ActivityRecentPlayBinding
@@ -25,6 +27,7 @@ class RecentPlayActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityRecentPlayBinding
     private lateinit var recentPlayRepository: RecentPlayRepository
+    private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playbackManager: PlaybackManager
     private lateinit var playlistManager: PlaylistManager
     private lateinit var adapter: RecentPlayAdapter
@@ -38,6 +41,7 @@ class RecentPlayActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         recentPlayRepository = RecentPlayRepository(this)
+        favoriteRepository = FavoriteRepository(this)
         playbackManager = PlaybackManager.getInstance(this)
         playlistManager = PlaylistManager.getInstance(this)
 
@@ -53,11 +57,6 @@ class RecentPlayActivity : AppCompatActivity() {
                     toggleSelection(recentPlay.id)
                 } else {
                     playSong(recentPlay)
-                }
-            },
-            onMoreClick = { recentPlay ->
-                if (!isMultiSelectMode) {
-                    showSongOptions(recentPlay)
                 }
             },
             onLongClick = { recentPlay ->
@@ -109,6 +108,14 @@ class RecentPlayActivity : AppCompatActivity() {
             }
             adapter.setSelectedItems(selectedItems)
             updateSelectedCount()
+        }
+
+        binding.btnAddToFavorite.setOnClickListener {
+            val selectedSongs = adapter.getAllRecentPlays().filter { selectedItems.contains(it.id) }
+            if (selectedSongs.isNotEmpty()) {
+                addSongsToFavorites(selectedSongs)
+            }
+            exitMultiSelectMode()
         }
 
         binding.btnAddToNowPlaying.setOnClickListener {
@@ -190,20 +197,6 @@ class RecentPlayActivity : AppCompatActivity() {
 
     private fun updateSelectedCount() {
         binding.tvSelectedCount.text = "已选择 ${selectedItems.size} 项"
-    }
-
-    private fun showSongOptions(recentPlay: RecentPlay) {
-        val options = arrayOf("播放", "删除记录")
-
-        MaterialAlertDialogBuilder(this)
-            .setTitle(recentPlay.name)
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> playSong(recentPlay)
-                    1 -> deleteSingleRecord(recentPlay.id)
-                }
-            }
-            .show()
     }
 
     private fun showMoreOptions() {
@@ -325,6 +318,38 @@ class RecentPlayActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 Toast.makeText(this@RecentPlayActivity, "播放失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun addSongsToFavorites(recentPlays: List<RecentPlay>) {
+        lifecycleScope.launch {
+            try {
+                var addedCount = 0
+                var duplicateCount = 0
+                recentPlays.forEach { recentPlay ->
+                    val song = Song(
+                        index = 0,
+                        id = recentPlay.id,
+                        name = recentPlay.name,
+                        artists = recentPlay.artists,
+                        coverUrl = recentPlay.coverUrl
+                    )
+                    val isAlreadyFavorite = favoriteRepository.isFavorite(recentPlay.id)
+                    if (!isAlreadyFavorite) {
+                        favoriteRepository.addToFavorites(song, recentPlay.platform)
+                        addedCount++
+                    } else {
+                        duplicateCount++
+                    }
+                }
+                val message = when {
+                    duplicateCount > 0 -> "已添加 $addedCount 首到喜欢，$duplicateCount 首已存在"
+                    else -> "已添加 $addedCount 首歌曲到我喜欢"
+                }
+                Toast.makeText(this@RecentPlayActivity, message, Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@RecentPlayActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
     }

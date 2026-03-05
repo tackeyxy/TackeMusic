@@ -3,7 +3,6 @@ package com.tacke.music.ui.adapter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -12,7 +11,6 @@ import com.tacke.music.data.model.ChartSong
 
 class ChartSongAdapter(
     private val onItemClick: (ChartSong, Int) -> Unit,
-    private val onMoreClick: (ChartSong, View) -> Unit,
     private val onLongClick: ((ChartSong) -> Boolean)? = null
 ) : RecyclerView.Adapter<ChartSongAdapter.ViewHolder>() {
 
@@ -65,11 +63,11 @@ class ChartSongAdapter(
     override fun getItemCount(): Int = songs.size
 
     inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        private val checkBox: CheckBox = itemView.findViewById(R.id.checkBox)
+        private val flIndex: View = itemView.findViewById(R.id.flIndex)
+        private val ivCheckbox: ImageView = itemView.findViewById(R.id.ivCheckbox)
         private val tvRank: TextView = itemView.findViewById(R.id.tvRank)
         private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
-        private val ivMore: ImageView = itemView.findViewById(R.id.ivMore)
 
         fun bind(song: ChartSong, rank: Int) {
             tvRank.text = rank.toString()
@@ -86,22 +84,15 @@ class ChartSongAdapter(
             }
 
             if (isMultiSelectMode) {
-                checkBox.visibility = View.VISIBLE
-                ivMore.visibility = View.GONE
+                flIndex.visibility = View.VISIBLE
                 tvRank.visibility = View.GONE
-                checkBox.isChecked = selectedItems.contains(song.id)
-                checkBox.setOnCheckedChangeListener(null)
-                checkBox.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
-                        selectedItems.add(song.id)
-                    } else {
-                        selectedItems.remove(song.id)
-                    }
-                }
+                val isSelected = selectedItems.contains(song.id)
+                ivCheckbox.isSelected = isSelected
 
                 itemView.setOnClickListener {
-                    checkBox.isChecked = !checkBox.isChecked
-                    if (checkBox.isChecked) {
+                    val newSelectedState = !ivCheckbox.isSelected
+                    ivCheckbox.isSelected = newSelectedState
+                    if (newSelectedState) {
                         selectedItems.add(song.id)
                     } else {
                         selectedItems.remove(song.id)
@@ -109,15 +100,11 @@ class ChartSongAdapter(
                     onItemClick(song, rank)
                 }
             } else {
-                checkBox.visibility = View.GONE
-                ivMore.visibility = View.VISIBLE
+                flIndex.visibility = View.GONE
                 tvRank.visibility = View.VISIBLE
 
                 itemView.setOnClickListener {
                     onItemClick(song, rank)
-                }
-                ivMore.setOnClickListener {
-                    onMoreClick(song, it)
                 }
             }
 

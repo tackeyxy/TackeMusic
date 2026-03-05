@@ -194,34 +194,15 @@
 
             </LinearLayout>
 
-            <!-- 右侧操作区 -->
-            <FrameLayout
+            <!-- 状态文字 -->
+            <TextView
+                android:id="@+id/tvStatus"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content">
-
-                <!-- 控制按钮（播放/暂停/更多） -->
-                <ImageButton
-                    android:id="@+id/btnAction"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:src="@drawable/ic_more_vert"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:tint="@color/text_hint"
-                    android:padding="6dp"
-                    android:contentDescription="操作" />
-
-                <!-- 状态文字 -->
-                <TextView
-                    android:id="@+id/tvStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:textSize="11sp"
-                    android:textColor="@color/text_tertiary"
-                    android:visibility="gone"
-                    tools:text="12-01 14:30" />
-
-            </FrameLayout>
+                android:layout_height="wrap_content"
+                android:textSize="11sp"
+                android:textColor="@color/text_tertiary"
+                android:visibility="gone"
+                tools:text="12-01 14:30" />
 
         </LinearLayout>
 

@@ -13,6 +13,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.model.Playlist
+import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityProfileBinding
 import com.tacke.music.download.DownloadManager
@@ -24,6 +25,7 @@ class ProfileActivity : AppCompatActivity() {
     private lateinit var binding: ActivityProfileBinding
     private lateinit var downloadManager: DownloadManager
     private lateinit var playlistRepository: PlaylistRepository
+    private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playlistAdapter: PlaylistListAdapter
     private var isShowingAllPlaylists = true
     private var allPlaylists: List<com.tacke.music.data.model.Playlist> = emptyList()
@@ -35,6 +37,7 @@ class ProfileActivity : AppCompatActivity() {
 
         downloadManager = DownloadManager.getInstance(this)
         playlistRepository = PlaylistRepository(this)
+        favoriteRepository = FavoriteRepository(this)
 
         setupClickListeners()
         setupBottomNavigation()
@@ -42,7 +45,7 @@ class ProfileActivity : AppCompatActivity() {
         observeDownloadCount()
         observePlaylistCount()
         observePlaylists()
-        observeRecentCount()
+        observeFavoriteCount()
     }
 
     override fun onResume() {
@@ -64,7 +67,7 @@ class ProfileActivity : AppCompatActivity() {
         }
 
         binding.btnFavorites.setOnClickListener {
-            Toast.makeText(this, "我喜欢的功能开发中", Toast.LENGTH_SHORT).show()
+            FavoriteSongsActivity.start(this)
         }
 
         binding.btnRecent.setOnClickListener {
@@ -276,8 +279,13 @@ class ProfileActivity : AppCompatActivity() {
         }
     }
 
-    private fun observeRecentCount() {
-        binding.tvRecentCount.text = "1500首"
-        binding.tvFavoriteCount.text = "450首"
+    private fun observeFavoriteCount() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                favoriteRepository.getFavoriteCount().collect { count ->
+                    binding.tvFavoriteCount.text = "${count}首"
+                }
+            }
+        }
     }
 }

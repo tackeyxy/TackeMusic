@@ -1,12 +1,9 @@
 package com.tacke.music.ui.adapter
 
-import android.animation.AnimatorSet
-import android.animation.ObjectAnimator
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.cardview.widget.CardView
@@ -23,7 +20,6 @@ import java.io.File
 
 class PlaylistSongAdapter(
     private val onItemClick: (PlaylistSong) -> Unit,
-    private val onMoreClick: (PlaylistSong) -> Unit,
     private val onLongClick: (PlaylistSong) -> Boolean,
     private val lifecycleScope: LifecycleCoroutineScope? = null,
     private val onCoverLoaded: ((String, String) -> Unit)? = null
@@ -61,7 +57,6 @@ class PlaylistSongAdapter(
         private val ivSource: ImageView = itemView.findViewById(R.id.ivSource)
         private val ivCover: ImageView = itemView.findViewById(R.id.ivCover)
         private val cvCover: CardView = itemView.findViewById(R.id.cvCover)
-        private val btnMore: ImageButton = itemView.findViewById(R.id.btnAction)
         private val flCheckbox: FrameLayout = itemView.findViewById(R.id.flCheckbox)
         private val ivCheckbox: ImageView = itemView.findViewById(R.id.ivCheckbox)
         private val tvIndex: TextView = itemView.findViewById(R.id.tvIndex)
@@ -85,7 +80,6 @@ class PlaylistSongAdapter(
                 // 显示圆形复选框，隐藏序号
                 flCheckbox.visibility = View.VISIBLE
                 tvIndex.visibility = View.GONE
-                btnMore.visibility = View.GONE
 
                 // 设置复选框状态
                 updateCheckboxState(isSelected)
@@ -112,13 +106,11 @@ class PlaylistSongAdapter(
                 // 非多选模式
                 flCheckbox.visibility = View.GONE
                 tvIndex.visibility = View.VISIBLE
-                btnMore.visibility = View.VISIBLE
 
                 // 重置视觉状态
                 resetVisuals()
 
                 itemView.setOnClickListener { onItemClick(song) }
-                btnMore.setOnClickListener { onMoreClick(song) }
             }
 
             itemView.setOnLongClickListener { onLongClick(song) }

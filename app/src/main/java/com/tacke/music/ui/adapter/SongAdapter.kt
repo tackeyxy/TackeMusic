@@ -3,8 +3,6 @@ package com.tacke.music.ui.adapter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
-import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -13,7 +11,6 @@ import com.tacke.music.data.model.Song
 
 class SongAdapter(
     private val onItemClick: (Song) -> Unit,
-    private val onMoreClick: (Song) -> Unit,
     private val onLongClick: ((Song) -> Boolean)? = null,
     private val onSelectionChange: ((String, Boolean) -> Unit)? = null
 ) : RecyclerView.Adapter<SongAdapter.SongViewHolder>() {
@@ -66,8 +63,8 @@ class SongAdapter(
         private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
         private val ivSource: ImageView = itemView.findViewById(R.id.ivSource)
-        private val btnMore: ImageButton = itemView.findViewById(R.id.btnMore)
-        private val checkBox: CheckBox = itemView.findViewById(R.id.checkBox)
+        private val flIndex: View = itemView.findViewById(R.id.flIndex)
+        private val ivCheckbox: ImageView = itemView.findViewById(R.id.ivCheckbox)
 
         fun bind(song: Song) {
             tvSongName.text = song.name
@@ -77,30 +74,22 @@ class SongAdapter(
             setupSourceTag(song.platform)
 
             if (isMultiSelectMode) {
-                checkBox.visibility = View.VISIBLE
-                btnMore.visibility = View.GONE
+                flIndex.visibility = View.VISIBLE
                 ivSource.visibility = View.GONE
-                
-                // 移除监听器避免循环触发
-                checkBox.setOnCheckedChangeListener(null)
-                checkBox.isChecked = selectedItems.contains(song.id)
-                
-                checkBox.setOnCheckedChangeListener { _, isChecked ->
-                    onSelectionChange?.invoke(song.id, isChecked)
-                }
+
+                val isSelected = selectedItems.contains(song.id)
+                ivCheckbox.isSelected = isSelected
 
                 itemView.setOnClickListener {
-                    val newCheckedState = !checkBox.isChecked
-                    checkBox.isChecked = newCheckedState
-                    onSelectionChange?.invoke(song.id, newCheckedState)
+                    val newSelectedState = !ivCheckbox.isSelected
+                    ivCheckbox.isSelected = newSelectedState
+                    onSelectionChange?.invoke(song.id, newSelectedState)
                 }
             } else {
-                checkBox.visibility = View.GONE
-                btnMore.visibility = View.VISIBLE
+                flIndex.visibility = View.GONE
                 ivSource.visibility = View.VISIBLE
 
                 itemView.setOnClickListener { onItemClick(song) }
-                btnMore.setOnClickListener { onMoreClick(song) }
             }
 
             itemView.setOnLongClickListener {

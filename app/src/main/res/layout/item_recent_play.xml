@@ -43,11 +43,13 @@
                     android:tint="@color/accent_color"
                     android:visibility="gone" />
 
-                <CheckBox
-                    android:id="@+id/checkBox"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center" />
+                <ImageView
+                    android:id="@+id/ivCheckbox"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/selector_checkbox_circle"
+                    android:contentDescription="选择" />
 
             </FrameLayout>
 
@@ -127,20 +129,9 @@
                 android:id="@+id/tvPlayTime"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginEnd="8dp"
                 android:text="12-01 10:30"
                 android:textSize="11sp"
                 android:textColor="@color/text_hint" />
-
-            <!-- 更多选项按钮（三个点） -->
-            <ImageButton
-                android:id="@+id/btnMore"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:src="@drawable/ic_more_vert"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:tint="@color/text_hint"
-                android:contentDescription="更多选项" />
 
         </LinearLayout>
 

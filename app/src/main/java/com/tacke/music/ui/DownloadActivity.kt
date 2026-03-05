@@ -11,8 +11,11 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.tabs.TabLayout
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.model.DownloadTask
+import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.databinding.ActivityDownloadBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
@@ -23,6 +26,7 @@ class DownloadActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityDownloadBinding
     private lateinit var downloadManager: DownloadManager
+    private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playbackManager: PlaybackManager
     private lateinit var downloadingAdapter: DownloadTaskAdapter
     private lateinit var historyAdapter: DownloadTaskAdapter
@@ -34,6 +38,7 @@ class DownloadActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         downloadManager = DownloadManager.getInstance(this)
+        favoriteRepository = FavoriteRepository(this)
         playbackManager = PlaybackManager.getInstance(this)
 
         setupToolbar()
@@ -193,6 +198,14 @@ class DownloadActivity : AppCompatActivity() {
             val selectedTasks = historyAdapter.getSelectedTasks()
             if (selectedTasks.isNotEmpty()) {
                 addTasksToNowPlaying(selectedTasks)
+            }
+            exitMultiSelectMode()
+        }
+
+        binding.btnBatchAddToFavorites.setOnClickListener {
+            val selectedTasks = historyAdapter.getSelectedTasks()
+            if (selectedTasks.isNotEmpty()) {
+                addTasksToFavorites(selectedTasks)
             }
             exitMultiSelectMode()
         }
@@ -408,6 +421,65 @@ class DownloadActivity : AppCompatActivity() {
                 else -> "已添加 $addedCount 首歌曲到正在播放列表"
             }
             Toast.makeText(this@DownloadActivity, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun addTasksToFavorites(tasks: List<DownloadTask>) {
+        lifecycleScope.launch {
+            try {
+                var addedCount = 0
+                var alreadyFavoriteCount = 0
+
+                tasks.forEach { task ->
+                    val isFavorite = favoriteRepository.isFavorite(task.songId)
+                    if (!isFavorite) {
+                        val song = Song(
+                            index = 0,
+                            id = task.songId,
+                            name = task.songName,
+                            artists = task.artist,
+                            coverUrl = task.coverUrl
+                        )
+                        val platform = playbackManager.getValidPlatform(task.platform).name
+                        favoriteRepository.addToFavorites(song, platform)
+                        addedCount++
+                    } else {
+                        alreadyFavoriteCount++
+                    }
+                }
+
+                val message = when {
+                    alreadyFavoriteCount > 0 -> "已添加 $addedCount 首，$alreadyFavoriteCount 首已在喜欢列表"
+                    else -> "已添加 $addedCount 首歌曲到我喜欢"
+                }
+                Toast.makeText(this@DownloadActivity, message, Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@DownloadActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun toggleFavoriteFromHistory(task: DownloadTask, isCurrentlyFavorite: Boolean) {
+        lifecycleScope.launch {
+            try {
+                if (isCurrentlyFavorite) {
+                    favoriteRepository.removeFromFavorites(task.songId)
+                    Toast.makeText(this@DownloadActivity, "已从我喜欢移除", Toast.LENGTH_SHORT).show()
+                } else {
+                    val song = Song(
+                        index = 0,
+                        id = task.songId,
+                        name = task.songName,
+                        artists = task.artist,
+                        coverUrl = task.coverUrl
+                    )
+                    val platform = playbackManager.getValidPlatform(task.platform).name
+                    favoriteRepository.addToFavorites(song, platform)
+                    Toast.makeText(this@DownloadActivity, "已添加到我喜欢", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@DownloadActivity, "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

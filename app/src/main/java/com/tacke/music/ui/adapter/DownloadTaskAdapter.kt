@@ -3,7 +3,6 @@ package com.tacke.music.ui.adapter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
@@ -89,7 +88,7 @@ class DownloadTaskAdapter(
     inner class TaskViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
 
         private val flIndex: FrameLayout = itemView.findViewById(R.id.flIndex)
-        private val checkBox: CheckBox = itemView.findViewById(R.id.checkBox)
+        private val ivCheckbox: ImageView = itemView.findViewById(R.id.ivCheckbox)
         private val ivCover: ImageView = itemView.findViewById(R.id.ivCover)
         private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
@@ -122,17 +121,6 @@ class DownloadTaskAdapter(
                     onLongClick(task)
                 } ?: false
             }
-
-            checkBox.setOnCheckedChangeListener { _, isChecked ->
-                currentTask?.let { task ->
-                    if (isChecked && !selectedTasks.contains(task.id)) {
-                        selectedTasks.add(task.id)
-                    } else if (!isChecked && selectedTasks.contains(task.id)) {
-                        selectedTasks.remove(task.id)
-                    }
-                    updateSelectedBackground(isChecked)
-                }
-            }
         }
 
         fun bind(task: DownloadTask) {
@@ -152,13 +140,13 @@ class DownloadTaskAdapter(
             // 多选模式处理
             if (isMultiSelectMode) {
                 flIndex.visibility = View.VISIBLE
-                checkBox.visibility = View.VISIBLE
-                checkBox.isChecked = selectedTasks.contains(task.id)
+                ivCheckbox.visibility = View.VISIBLE
+                ivCheckbox.isSelected = selectedTasks.contains(task.id)
                 btnControl.visibility = View.GONE
                 updateSelectedBackground(selectedTasks.contains(task.id))
             } else {
                 flIndex.visibility = View.GONE
-                checkBox.visibility = View.GONE
+                ivCheckbox.visibility = View.GONE
                 btnControl.visibility = View.VISIBLE
                 itemView.setBackgroundResource(android.R.color.transparent)
             }

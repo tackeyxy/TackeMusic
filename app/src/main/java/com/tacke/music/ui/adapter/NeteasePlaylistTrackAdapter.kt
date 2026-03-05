@@ -3,7 +3,6 @@ package com.tacke.music.ui.adapter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -12,7 +11,6 @@ import com.tacke.music.data.api.PlaylistTrack
 
 class NeteasePlaylistTrackAdapter(
     private val onItemClick: (PlaylistTrack) -> Unit,
-    private val onMoreClick: (PlaylistTrack, View) -> Unit,
     private val onLongClick: ((PlaylistTrack) -> Boolean)? = null
 ) : RecyclerView.Adapter<NeteasePlaylistTrackAdapter.TrackViewHolder>() {
 
@@ -80,8 +78,8 @@ class NeteasePlaylistTrackAdapter(
         private val tvNumber: TextView = itemView.findViewById(R.id.tvNumber)
         private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
-        private val btnMore: ImageView = itemView.findViewById(R.id.btnMore)
-        private val checkBox: CheckBox = itemView.findViewById(R.id.checkBox)
+        private val flIndex: View = itemView.findViewById(R.id.flIndex)
+        private val ivCheckbox: ImageView = itemView.findViewById(R.id.ivCheckbox)
 
         fun bind(track: PlaylistTrack, position: Int) {
             tvNumber.text = position.toString()
@@ -89,22 +87,15 @@ class NeteasePlaylistTrackAdapter(
             tvArtist.text = track.ar?.joinToString(",") { it.name } ?: "未知艺人"
 
             if (isMultiSelectMode) {
-                checkBox.visibility = View.VISIBLE
-                btnMore.visibility = View.GONE
+                flIndex.visibility = View.VISIBLE
                 tvNumber.visibility = View.GONE
-                checkBox.isChecked = selectedItems.contains(track.id)
-                checkBox.setOnCheckedChangeListener(null)
-                checkBox.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) {
-                        selectedItems.add(track.id)
-                    } else {
-                        selectedItems.remove(track.id)
-                    }
-                }
+                val isSelected = selectedItems.contains(track.id)
+                ivCheckbox.isSelected = isSelected
 
                 itemView.setOnClickListener {
-                    checkBox.isChecked = !checkBox.isChecked
-                    if (checkBox.isChecked) {
+                    val newSelectedState = !ivCheckbox.isSelected
+                    ivCheckbox.isSelected = newSelectedState
+                    if (newSelectedState) {
                         selectedItems.add(track.id)
                     } else {
                         selectedItems.remove(track.id)
@@ -112,15 +103,11 @@ class NeteasePlaylistTrackAdapter(
                     onItemClick(track)
                 }
             } else {
-                checkBox.visibility = View.GONE
-                btnMore.visibility = View.VISIBLE
+                flIndex.visibility = View.GONE
                 tvNumber.visibility = View.VISIBLE
 
                 itemView.setOnClickListener {
                     onItemClick(track)
-                }
-                btnMore.setOnClickListener {
-                    onMoreClick(track, it)
                 }
             }
 

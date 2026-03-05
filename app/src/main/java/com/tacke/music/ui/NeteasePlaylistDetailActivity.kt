@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
-import android.widget.PopupMenu
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.NestedScrollView
@@ -19,6 +18,7 @@ import com.tacke.music.data.api.SongDetailInfo
 import com.tacke.music.data.api.TrackArtist
 import com.tacke.music.data.api.TrackAlbum
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityNeteasePlaylistDetailBinding
@@ -36,6 +36,7 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
     private lateinit var trackAdapter: NeteasePlaylistTrackAdapter
     private lateinit var playlistManager: PlaylistManager
     private lateinit var playlistRepository: PlaylistRepository
+    private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playbackManager: PlaybackManager
 
     private var playlistId: Long = 0
@@ -77,6 +78,7 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
 
         playlistManager = PlaylistManager.getInstance(this)
         playlistRepository = PlaylistRepository(this)
+        favoriteRepository = FavoriteRepository(this)
         playbackManager = PlaybackManager.getInstance(this)
 
         setupUI()
@@ -115,11 +117,6 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                 } else {
                     // 推荐歌单列表点击歌曲：添加到播放列表并播放
                     addToNowPlayingAndPlay(track)
-                }
-            },
-            onMoreClick = { track, view ->
-                if (!isMultiSelectMode) {
-                    showTrackOptions(track, view)
                 }
             },
             onLongClick = { track ->
@@ -169,6 +166,15 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             showBatchDownloadQualityDialog(selectedTracks)
+        }
+
+        binding.btnAddToFavorite.setOnClickListener {
+            val selectedTracks = trackAdapter.getSelectedTracks()
+            if (selectedTracks.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            addTracksToFavorites(selectedTracks)
         }
 
         binding.btnAddToPlaylist.setOnClickListener {
@@ -399,37 +405,27 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
         }
     }
 
-    private fun showTrackOptions(track: PlaylistTrack, anchorView: View) {
-        val popupMenu = PopupMenu(this, anchorView)
-        popupMenu.menu.apply {
-            add(0, 1, 0, "添加到播放列表并播放")
-            add(0, 2, 1, "仅添加到播放列表")
-            add(0, 3, 2, "添加到歌单")
-            add(0, 4, 3, "下载")
-        }
-
-        popupMenu.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                1 -> {
-                    addToNowPlayingAndPlay(track)
-                    true
+    private fun toggleFavorite(track: PlaylistTrack, isCurrentlyFavorite: Boolean) {
+        lifecycleScope.launch {
+            try {
+                if (isCurrentlyFavorite) {
+                    favoriteRepository.removeFromFavorites(track.id.toString())
+                    Toast.makeText(this@NeteasePlaylistDetailActivity, "已从我喜欢移除", Toast.LENGTH_SHORT).show()
+                } else {
+                    val song = Song(
+                        index = 0,
+                        id = track.id.toString(),
+                        name = track.name,
+                        artists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
+                        coverUrl = track.al?.picUrl ?: ""
+                    )
+                    favoriteRepository.addToFavorites(song, "netease")
+                    Toast.makeText(this@NeteasePlaylistDetailActivity, "已添加到我喜欢", Toast.LENGTH_SHORT).show()
                 }
-                2 -> {
-                    addToNowPlaying(track)
-                    true
-                }
-                3 -> {
-                    showPlaylistSelectionDialog(track)
-                    true
-                }
-                4 -> {
-                    showDownloadQualityDialog(track)
-                    true
-                }
-                else -> false
+            } catch (e: Exception) {
+                Toast.makeText(this@NeteasePlaylistDetailActivity, "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
-        popupMenu.show()
     }
 
     private fun addToNowPlaying(track: PlaylistTrack) {
@@ -444,6 +440,39 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                 )
                 playlistManager.addSong(playlistSong)
                 Toast.makeText(this@NeteasePlaylistDetailActivity, "已添加到播放列表", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@NeteasePlaylistDetailActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun addTracksToFavorites(tracks: List<PlaylistTrack>) {
+        lifecycleScope.launch {
+            try {
+                var addedCount = 0
+                var duplicateCount = 0
+                tracks.forEach { track ->
+                    val song = Song(
+                        index = 0,
+                        id = track.id.toString(),
+                        name = track.name,
+                        artists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
+                        coverUrl = track.al?.picUrl ?: ""
+                    )
+                    val isAlreadyFavorite = favoriteRepository.isFavorite(track.id.toString())
+                    if (!isAlreadyFavorite) {
+                        favoriteRepository.addToFavorites(song, "netease")
+                        addedCount++
+                    } else {
+                        duplicateCount++
+                    }
+                }
+                val message = when {
+                    duplicateCount > 0 -> "已添加 $addedCount 首到喜欢，$duplicateCount 首已存在"
+                    else -> "已添加 $addedCount 首歌曲到我喜欢"
+                }
+                Toast.makeText(this@NeteasePlaylistDetailActivity, message, Toast.LENGTH_SHORT).show()
+                exitMultiSelectMode()
             } catch (e: Exception) {
                 Toast.makeText(this@NeteasePlaylistDetailActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
