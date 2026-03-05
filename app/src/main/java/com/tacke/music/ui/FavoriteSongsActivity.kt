@@ -20,8 +20,10 @@ import com.bumptech.glide.Glide
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.db.FavoriteSongEntity
+import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
+import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityPlaylistDetailBinding
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
@@ -32,6 +34,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityPlaylistDetailBinding
     private lateinit var favoriteRepository: FavoriteRepository
+    private lateinit var playlistRepository: PlaylistRepository
     private lateinit var playlistManager: PlaylistManager
     private lateinit var playbackManager: PlaybackManager
     private lateinit var songAdapter: FavoriteSongAdapter
@@ -52,6 +55,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         favoriteRepository = FavoriteRepository(this)
+        playlistRepository = PlaylistRepository(this)
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
 
@@ -134,6 +138,16 @@ class FavoriteSongsActivity : AppCompatActivity() {
             updateSelectedCount()
         }
 
+        // 添加到歌单按钮
+        binding.batchActionBarContainer.btnAddToPlaylist.setOnClickListener {
+            val selectedSongList = favoriteSongs.filter { selectedSongs.contains(it.id) }
+            if (selectedSongList.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showBatchPlaylistSelectionDialog(selectedSongList)
+        }
+
         // 添加到播放按钮
         binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
             val selectedSongList = favoriteSongs.filter { selectedSongs.contains(it.id) }
@@ -146,6 +160,41 @@ class FavoriteSongsActivity : AppCompatActivity() {
         // 删除按钮 - 使用下载按钮的位置作为删除按钮
         binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             showDeleteConfirm()
+        }
+
+        // 清空列表按钮
+        binding.batchActionBarContainer.btnClearAll.setOnClickListener {
+            showClearAllConfirmDialog()
+        }
+    }
+
+    private fun showClearAllConfirmDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("清空我喜欢")
+            .setMessage("确定要清空所有喜欢的歌曲吗？")
+            .setPositiveButton("清空") { _, _ ->
+                clearAllFavorites()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun clearAllFavorites() {
+        lifecycleScope.launch {
+            try {
+                if (favoriteSongs.isEmpty()) {
+                    Toast.makeText(this@FavoriteSongsActivity, "没有喜欢的歌曲", Toast.LENGTH_SHORT).show()
+                    exitMultiSelectMode()
+                    return@launch
+                }
+                favoriteSongs.forEach { song ->
+                    favoriteRepository.removeFromFavorites(song.id)
+                }
+                Toast.makeText(this@FavoriteSongsActivity, "已清空所有喜欢的歌曲", Toast.LENGTH_SHORT).show()
+                exitMultiSelectMode()
+            } catch (e: Exception) {
+                Toast.makeText(this@FavoriteSongsActivity, "清空失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -366,6 +415,89 @@ class FavoriteSongsActivity : AppCompatActivity() {
                 Toast.makeText(this@FavoriteSongsActivity, message, Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this@FavoriteSongsActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showBatchPlaylistSelectionDialog(songs: List<FavoriteSongEntity>) {
+        lifecycleScope.launch {
+            val playlists = playlistRepository.getAllPlaylistsSync()
+
+            if (playlists.isEmpty()) {
+                MaterialAlertDialogBuilder(this@FavoriteSongsActivity)
+                    .setTitle("添加到歌单")
+                    .setMessage("暂无歌单，是否创建新歌单？")
+                    .setPositiveButton("创建") { _, _ ->
+                        showCreatePlaylistDialog(songs)
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+                return@launch
+            }
+
+            val playlistNames = playlists.map { it.name }.toTypedArray()
+
+            MaterialAlertDialogBuilder(this@FavoriteSongsActivity)
+                .setTitle("添加到歌单")
+                .setItems(playlistNames) { _, which ->
+                    addSongsToPlaylist(playlists[which].id, songs)
+                }
+                .setPositiveButton("新建歌单") { _, _ ->
+                    showCreatePlaylistDialog(songs)
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
+    private fun showCreatePlaylistDialog(songs: List<FavoriteSongEntity>) {
+        val editText = android.widget.EditText(this).apply {
+            hint = "歌单名称"
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("新建歌单")
+            .setView(editText)
+            .setPositiveButton("创建") { _, _ ->
+                val name = editText.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    lifecycleScope.launch {
+                        val playlist = playlistRepository.createPlaylist(name)
+                        addSongsToPlaylist(playlist.id, songs)
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun addSongsToPlaylist(playlistId: String, songs: List<FavoriteSongEntity>) {
+        lifecycleScope.launch {
+            try {
+                val songList = songs.map { song ->
+                    Song(
+                        index = 0,
+                        id = song.id,
+                        name = song.name,
+                        artists = song.artists,
+                        coverUrl = song.coverUrl
+                    )
+                }
+
+                playlistRepository.addSongsToPlaylist(playlistId, songList, songs.firstOrNull()?.platform ?: "kuwo")
+
+                Toast.makeText(
+                    this@FavoriteSongsActivity,
+                    "已添加 ${songs.size} 首歌曲到歌单",
+                    Toast.LENGTH_SHORT
+                ).show()
+                exitMultiSelectMode()
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@FavoriteSongsActivity,
+                    "添加失败: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }

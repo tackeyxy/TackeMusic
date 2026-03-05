@@ -14,6 +14,7 @@ import com.tacke.music.data.model.RecentPlay
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
+import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.data.repository.RecentPlayRepository
 import com.tacke.music.databinding.ActivityRecentPlayBinding
 import com.tacke.music.playback.PlaybackManager
@@ -28,6 +29,7 @@ class RecentPlayActivity : AppCompatActivity() {
     private lateinit var binding: ActivityRecentPlayBinding
     private lateinit var recentPlayRepository: RecentPlayRepository
     private lateinit var favoriteRepository: FavoriteRepository
+    private lateinit var playlistRepository: PlaylistRepository
     private lateinit var playbackManager: PlaybackManager
     private lateinit var playlistManager: PlaylistManager
     private lateinit var adapter: RecentPlayAdapter
@@ -42,6 +44,7 @@ class RecentPlayActivity : AppCompatActivity() {
 
         recentPlayRepository = RecentPlayRepository(this)
         favoriteRepository = FavoriteRepository(this)
+        playlistRepository = PlaylistRepository(this)
         playbackManager = PlaybackManager.getInstance(this)
         playlistManager = PlaylistManager.getInstance(this)
 
@@ -125,6 +128,16 @@ class RecentPlayActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
+        // 添加到歌单按钮
+        binding.batchActionBarContainer.btnAddToPlaylist.setOnClickListener {
+            val selectedSongs = adapter.getAllRecentPlays().filter { selectedItems.contains(it.id) }
+            if (selectedSongs.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showBatchPlaylistSelectionDialog(selectedSongs)
+        }
+
         // 添加到播放按钮
         binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
             val selectedSongs = adapter.getAllRecentPlays().filter { selectedItems.contains(it.id) }
@@ -137,6 +150,40 @@ class RecentPlayActivity : AppCompatActivity() {
         // 删除按钮 - 使用下载按钮的位置
         binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             showDeleteConfirm()
+        }
+
+        // 清空列表按钮
+        binding.batchActionBarContainer.btnClearAll.setOnClickListener {
+            showClearAllConfirmDialog()
+        }
+    }
+
+    private fun showClearAllConfirmDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("清空播放记录")
+            .setMessage("确定要清空所有播放记录吗？")
+            .setPositiveButton("清空") { _, _ ->
+                clearAllRecentPlays()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun clearAllRecentPlays() {
+        lifecycleScope.launch {
+            try {
+                val allRecords = adapter.getAllRecentPlays()
+                if (allRecords.isEmpty()) {
+                    Toast.makeText(this@RecentPlayActivity, "没有播放记录", Toast.LENGTH_SHORT).show()
+                    exitMultiSelectMode()
+                    return@launch
+                }
+                recentPlayRepository.clearAll()
+                Toast.makeText(this@RecentPlayActivity, "已清空所有播放记录", Toast.LENGTH_SHORT).show()
+                exitMultiSelectMode()
+            } catch (e: Exception) {
+                Toast.makeText(this@RecentPlayActivity, "清空失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -379,6 +426,89 @@ class RecentPlayActivity : AppCompatActivity() {
                 Toast.makeText(this@RecentPlayActivity, message, Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this@RecentPlayActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showBatchPlaylistSelectionDialog(recentPlays: List<RecentPlay>) {
+        lifecycleScope.launch {
+            val playlists = playlistRepository.getAllPlaylistsSync()
+
+            if (playlists.isEmpty()) {
+                MaterialAlertDialogBuilder(this@RecentPlayActivity)
+                    .setTitle("添加到歌单")
+                    .setMessage("暂无歌单，是否创建新歌单？")
+                    .setPositiveButton("创建") { _, _ ->
+                        showCreatePlaylistDialog(recentPlays)
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+                return@launch
+            }
+
+            val playlistNames = playlists.map { it.name }.toTypedArray()
+
+            MaterialAlertDialogBuilder(this@RecentPlayActivity)
+                .setTitle("添加到歌单")
+                .setItems(playlistNames) { _, which ->
+                    addSongsToPlaylist(playlists[which].id, recentPlays)
+                }
+                .setPositiveButton("新建歌单") { _, _ ->
+                    showCreatePlaylistDialog(recentPlays)
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
+    private fun showCreatePlaylistDialog(recentPlays: List<RecentPlay>) {
+        val editText = android.widget.EditText(this).apply {
+            hint = "歌单名称"
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("新建歌单")
+            .setView(editText)
+            .setPositiveButton("创建") { _, _ ->
+                val name = editText.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    lifecycleScope.launch {
+                        val playlist = playlistRepository.createPlaylist(name)
+                        addSongsToPlaylist(playlist.id, recentPlays)
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun addSongsToPlaylist(playlistId: String, recentPlays: List<RecentPlay>) {
+        lifecycleScope.launch {
+            try {
+                val songList = recentPlays.map { recentPlay ->
+                    Song(
+                        index = 0,
+                        id = recentPlay.id,
+                        name = recentPlay.name,
+                        artists = recentPlay.artists,
+                        coverUrl = recentPlay.coverUrl
+                    )
+                }
+
+                playlistRepository.addSongsToPlaylist(playlistId, songList, recentPlays.firstOrNull()?.platform ?: "kuwo")
+
+                Toast.makeText(
+                    this@RecentPlayActivity,
+                    "已添加 ${recentPlays.size} 首歌曲到歌单",
+                    Toast.LENGTH_SHORT
+                ).show()
+                exitMultiSelectMode()
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@RecentPlayActivity,
+                    "添加失败: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }

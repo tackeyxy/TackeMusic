@@ -160,6 +160,16 @@ class PlaylistDetailActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
+        // 添加到歌单按钮
+        binding.batchActionBarContainer.btnAddToPlaylist.setOnClickListener {
+            val selectedSongList = songAdapter.getAllSongs().filter { selectedSongs.contains(it.id) }
+            if (selectedSongList.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showBatchPlaylistSelectionDialog(selectedSongList)
+        }
+
         // 添加到播放按钮
         binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
             val selectedSongList = songAdapter.getAllSongs().filter { selectedSongs.contains(it.id) }
@@ -172,6 +182,42 @@ class PlaylistDetailActivity : AppCompatActivity() {
         // 删除按钮 - 使用下载按钮的位置
         binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             showDeleteConfirm()
+        }
+
+        // 清空列表按钮
+        binding.batchActionBarContainer.btnClearAll.setOnClickListener {
+            showClearAllConfirmDialog()
+        }
+    }
+
+    private fun showClearAllConfirmDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("清空歌单")
+            .setMessage("确定要清空歌单中的所有歌曲吗？")
+            .setPositiveButton("清空") { _, _ ->
+                clearAllSongs()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun clearAllSongs() {
+        lifecycleScope.launch {
+            try {
+                val allSongs = songAdapter.getAllSongs()
+                if (allSongs.isEmpty()) {
+                    Toast.makeText(this@PlaylistDetailActivity, "歌单中没有歌曲", Toast.LENGTH_SHORT).show()
+                    exitMultiSelectMode()
+                    return@launch
+                }
+                allSongs.forEach { song ->
+                    playlistRepository.removeSongFromPlaylist(playlistId, song.id)
+                }
+                Toast.makeText(this@PlaylistDetailActivity, "已清空歌单中的所有歌曲", Toast.LENGTH_SHORT).show()
+                exitMultiSelectMode()
+            } catch (e: Exception) {
+                Toast.makeText(this@PlaylistDetailActivity, "清空失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -506,6 +552,89 @@ class PlaylistDetailActivity : AppCompatActivity() {
                 Toast.makeText(this@PlaylistDetailActivity, message, Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this@PlaylistDetailActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showBatchPlaylistSelectionDialog(songs: List<PlaylistSong>) {
+        lifecycleScope.launch {
+            val playlists = playlistRepository.getAllPlaylistsSync()
+
+            if (playlists.isEmpty()) {
+                MaterialAlertDialogBuilder(this@PlaylistDetailActivity)
+                    .setTitle("添加到歌单")
+                    .setMessage("暂无歌单，是否创建新歌单？")
+                    .setPositiveButton("创建") { _, _ ->
+                        showCreatePlaylistDialog(songs)
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+                return@launch
+            }
+
+            val playlistNames = playlists.map { it.name }.toTypedArray()
+
+            MaterialAlertDialogBuilder(this@PlaylistDetailActivity)
+                .setTitle("添加到歌单")
+                .setItems(playlistNames) { _, which ->
+                    addSongsToPlaylist(playlists[which].id, songs)
+                }
+                .setPositiveButton("新建歌单") { _, _ ->
+                    showCreatePlaylistDialog(songs)
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
+    private fun showCreatePlaylistDialog(songs: List<PlaylistSong>) {
+        val editText = android.widget.EditText(this).apply {
+            hint = "歌单名称"
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("新建歌单")
+            .setView(editText)
+            .setPositiveButton("创建") { _, _ ->
+                val name = editText.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    lifecycleScope.launch {
+                        val playlist = playlistRepository.createPlaylist(name)
+                        addSongsToPlaylist(playlist.id, songs)
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun addSongsToPlaylist(targetPlaylistId: String, songs: List<PlaylistSong>) {
+        lifecycleScope.launch {
+            try {
+                val songList = songs.map { song ->
+                    com.tacke.music.data.model.Song(
+                        index = 0,
+                        id = song.id,
+                        name = song.name,
+                        artists = song.artists,
+                        coverUrl = song.coverUrl
+                    )
+                }
+
+                playlistRepository.addSongsToPlaylist(targetPlaylistId, songList, songs.firstOrNull()?.platform ?: "kuwo")
+
+                Toast.makeText(
+                    this@PlaylistDetailActivity,
+                    "已添加 ${songs.size} 首歌曲到歌单",
+                    Toast.LENGTH_SHORT
+                ).show()
+                exitMultiSelectMode()
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@PlaylistDetailActivity,
+                    "添加失败: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }

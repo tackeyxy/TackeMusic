@@ -57,9 +57,9 @@ interface PlaylistDao {
     suspend fun removeSongFromPlaylist(playlistId: String, songId: String) {
         removeSongFromPlaylistRef(playlistId, songId)
         updatePlaylistSongCount(playlistId)
-        // 更新歌曲封面为第一首歌曲的封面
-        val firstCover = getFirstSongCover(playlistId)
-        updatePlaylistCover(playlistId, firstCover)
+        // 更新歌单封面为最晚添加的歌曲封面
+        val latestCover = getLatestValidSongCover(playlistId)
+        updatePlaylistCover(playlistId, latestCover)
     }
 
     @Query("DELETE FROM playlist_song_cross_ref WHERE playlistId = :playlistId")
@@ -92,8 +92,8 @@ interface PlaylistDao {
             )
         )
         updatePlaylistSongCount(playlistId)
-        // 如果歌单为空（这是第一首歌）或 coverUrl 为空，设置封面
-        if (orderIndex == 0 || getPlaylistCover(playlistId).isNullOrEmpty()) {
+        // 更新歌单封面为最晚添加的歌曲封面（即当前添加的这首歌）
+        if (!song.coverUrl.isNullOrEmpty()) {
             updatePlaylistCover(playlistId, song.coverUrl)
         }
     }
@@ -124,9 +124,9 @@ interface PlaylistDao {
             )
         }
         updatePlaylistSongCount(playlistId)
-        // 如果歌单原本为空或 coverUrl 为空，设置封面（取第一首）
-        if (startIndex == 0 || getPlaylistCover(playlistId).isNullOrEmpty()) {
-            songs.firstOrNull()?.coverUrl?.let { coverUrl ->
+        // 更新歌单封面为最晚添加的歌曲封面（即批量添加的最后一首）
+        songs.lastOrNull()?.coverUrl?.let { coverUrl ->
+            if (coverUrl.isNotEmpty()) {
                 updatePlaylistCover(playlistId, coverUrl)
             }
         }
@@ -185,9 +185,25 @@ interface PlaylistDao {
         SELECT e.coverUrl FROM playlist_song_entities e
         INNER JOIN playlist_song_cross_ref ref ON e.id = ref.songId
         WHERE ref.playlistId = :playlistId
+        ORDER BY ref.addedTime DESC LIMIT 1
+    """)
+    suspend fun getLatestAddedSongCover(playlistId: String): String?
+
+    @Query("""
+        SELECT e.coverUrl FROM playlist_song_entities e
+        INNER JOIN playlist_song_cross_ref ref ON e.id = ref.songId
+        WHERE ref.playlistId = :playlistId
         ORDER BY ref.orderIndex DESC LIMIT 1
     """)
     suspend fun getLatestSongCover(playlistId: String): String?
+
+    @Query("""
+        SELECT e.coverUrl FROM playlist_song_entities e
+        INNER JOIN playlist_song_cross_ref ref ON e.id = ref.songId
+        WHERE ref.playlistId = :playlistId AND e.coverUrl IS NOT NULL AND e.coverUrl != ''
+        ORDER BY ref.addedTime DESC LIMIT 1
+    """)
+    suspend fun getLatestValidSongCover(playlistId: String): String?
 
     @Query("""
         SELECT e.coverUrl FROM playlist_song_entities e

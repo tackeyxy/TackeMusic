@@ -16,6 +16,7 @@ import com.tacke.music.R
 import com.tacke.music.data.model.DownloadTask
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.FavoriteRepository
+import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityDownloadBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
@@ -27,6 +28,7 @@ class DownloadActivity : AppCompatActivity() {
     private lateinit var binding: ActivityDownloadBinding
     private lateinit var downloadManager: DownloadManager
     private lateinit var favoriteRepository: FavoriteRepository
+    private lateinit var playlistRepository: PlaylistRepository
     private lateinit var playbackManager: PlaybackManager
     private lateinit var downloadingAdapter: DownloadTaskAdapter
     private lateinit var historyAdapter: DownloadTaskAdapter
@@ -39,6 +41,7 @@ class DownloadActivity : AppCompatActivity() {
 
         downloadManager = DownloadManager.getInstance(this)
         favoriteRepository = FavoriteRepository(this)
+        playlistRepository = PlaylistRepository(this)
         playbackManager = PlaybackManager.getInstance(this)
 
         setupToolbar()
@@ -211,12 +214,148 @@ class DownloadActivity : AppCompatActivity() {
             if (binding.tabLayout.selectedTabPosition == 1) {
                 val selectedTasks = historyAdapter.getSelectedTasks()
                 if (selectedTasks.isNotEmpty()) {
-                    // TODO: 实现添加到歌单功能
-                    Toast.makeText(this, "添加到歌单功能待实现", Toast.LENGTH_SHORT).show()
+                    showBatchPlaylistSelectionDialog(selectedTasks)
                 }
                 exitMultiSelectMode()
             } else {
                 Toast.makeText(this, "此操作仅在下载历史页面可用", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // 清空列表按钮
+        binding.batchActionBarContainer.btnClearAll.setOnClickListener {
+            showClearAllConfirmDialog()
+        }
+    }
+
+    private fun showClearAllConfirmDialog() {
+        val isDownloadingTab = binding.tabLayout.selectedTabPosition == 0
+        val title = if (isDownloadingTab) "清空正在下载" else "清空下载历史"
+        val message = if (isDownloadingTab) {
+            "确定要清空所有正在下载的任务吗？"
+        } else {
+            "确定要清空所有下载历史记录吗？"
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("清空") { _, _ ->
+                if (isDownloadingTab) {
+                    clearAllDownloading()
+                } else {
+                    clearAllHistory()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun clearAllDownloading() {
+        val allTasks = downloadManager.downloadingTasks.value
+        if (allTasks.isEmpty()) {
+            Toast.makeText(this, "没有正在下载的任务", Toast.LENGTH_SHORT).show()
+            exitMultiSelectMode()
+            return
+        }
+        downloadManager.deleteDownloads(allTasks, deleteFile = false)
+        Toast.makeText(this, "已清空所有下载任务", Toast.LENGTH_SHORT).show()
+        exitMultiSelectMode()
+    }
+
+    private fun clearAllHistory() {
+        val allTasks = downloadManager.completedTasks.value
+        if (allTasks.isEmpty()) {
+            Toast.makeText(this, "没有下载历史记录", Toast.LENGTH_SHORT).show()
+            exitMultiSelectMode()
+            return
+        }
+        showBatchDeleteDialog { deleteFile ->
+            downloadManager.deleteDownloads(allTasks, deleteFile)
+            Toast.makeText(this, "已清空所有下载历史", Toast.LENGTH_SHORT).show()
+            exitMultiSelectMode()
+        }
+    }
+
+    private fun showBatchPlaylistSelectionDialog(tasks: List<DownloadTask>) {
+        lifecycleScope.launch {
+            val playlists = playlistRepository.getAllPlaylistsSync()
+
+            if (playlists.isEmpty()) {
+                MaterialAlertDialogBuilder(this@DownloadActivity)
+                    .setTitle("添加到歌单")
+                    .setMessage("暂无歌单，是否创建新歌单？")
+                    .setPositiveButton("创建") { _, _ ->
+                        showCreatePlaylistDialog(tasks)
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+                return@launch
+            }
+
+            val playlistNames = playlists.map { it.name }.toTypedArray()
+
+            MaterialAlertDialogBuilder(this@DownloadActivity)
+                .setTitle("添加到歌单")
+                .setItems(playlistNames) { _, which ->
+                    addTasksToPlaylist(playlists[which].id, tasks)
+                }
+                .setPositiveButton("新建歌单") { _, _ ->
+                    showCreatePlaylistDialog(tasks)
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+    }
+
+    private fun showCreatePlaylistDialog(tasks: List<DownloadTask>) {
+        val editText = android.widget.EditText(this).apply {
+            hint = "歌单名称"
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("新建歌单")
+            .setView(editText)
+            .setPositiveButton("创建") { _, _ ->
+                val name = editText.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    lifecycleScope.launch {
+                        val playlist = playlistRepository.createPlaylist(name)
+                        addTasksToPlaylist(playlist.id, tasks)
+                    }
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun addTasksToPlaylist(playlistId: String, tasks: List<DownloadTask>) {
+        lifecycleScope.launch {
+            try {
+                val songList = tasks.map { task ->
+                    Song(
+                        index = 0,
+                        id = task.songId,
+                        name = task.songName,
+                        artists = task.artist,
+                        coverUrl = task.coverUrl
+                    )
+                }
+
+                playlistRepository.addSongsToPlaylist(playlistId, songList, tasks.firstOrNull()?.platform ?: "kuwo")
+
+                Toast.makeText(
+                    this@DownloadActivity,
+                    "已添加 ${tasks.size} 首歌曲到歌单",
+                    Toast.LENGTH_SHORT
+                ).show()
+                exitMultiSelectMode()
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this@DownloadActivity,
+                    "添加失败: ${e.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }

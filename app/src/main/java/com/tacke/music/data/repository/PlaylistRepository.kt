@@ -187,6 +187,34 @@ class PlaylistRepository(private val context: Context) {
     }
 
     /**
+     * 获取歌单封面
+     * 逻辑：默认以歌单列表内添加最晚的一首歌的歌曲图片作为歌单封面
+     * （若无法获取该歌曲封面则使用比该歌曲稍早的歌曲的图片）
+     * 除非歌单无歌曲或无法获取歌单内符合要求的歌曲的图片
+     * @param playlistId 歌单ID
+     * @return 封面路径，null表示无有效封面
+     */
+    suspend fun getPlaylistCoverWithFallback(playlistId: String): String? {
+        // 首先尝试获取最晚添加且有有效封面的歌曲
+        val latestValidCover = playlistDao.getLatestValidSongCover(playlistId)
+        if (!latestValidCover.isNullOrEmpty()) {
+            return latestValidCover
+        }
+
+        // 如果没有有效封面，返回null
+        return null
+    }
+
+    /**
+     * 更新歌单封面为最晚添加的歌曲封面
+     * @param playlistId 歌单ID
+     */
+    suspend fun updatePlaylistCoverToLatest(playlistId: String) {
+        val latestCover = getPlaylistCoverWithFallback(playlistId)
+        playlistDao.updatePlaylistCover(playlistId, latestCover)
+    }
+
+    /**
      * 更新歌曲封面路径
      * @param playlistId 歌单ID
      * @param songId 歌曲ID

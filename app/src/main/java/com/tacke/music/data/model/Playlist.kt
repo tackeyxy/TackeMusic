@@ -4,7 +4,7 @@ data class Playlist(
     val id: String,
     val name: String,
     val description: String = "",
-    val coverUrl: String? = null, // 歌曲封面（最早加入的歌曲封面）
+    val coverUrl: String? = null, // 歌单封面（最晚加入的歌曲封面）
     val iconColor: String? = null, // 歌单图标随机颜色
     val createTime: Long = System.currentTimeMillis(),
     val updateTime: Long = System.currentTimeMillis(),
@@ -24,5 +24,13 @@ data class Playlist(
      */
     fun getIconBackgroundColor(): String? {
         return iconColor
+    }
+
+    /**
+     * 检查是否有有效的封面
+     * @return true表示有封面可显示
+     */
+    fun hasValidCover(): Boolean {
+        return !coverUrl.isNullOrEmpty()
     }
 }

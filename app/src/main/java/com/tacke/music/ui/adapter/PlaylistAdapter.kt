@@ -1,11 +1,15 @@
 package com.tacke.music.ui.adapter
 
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.TextView
+import androidx.cardview.widget.CardView
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
 import com.tacke.music.R
 import com.tacke.music.data.model.Playlist
 
@@ -22,6 +26,10 @@ class PlaylistAdapter(
     }
 
     inner class PlaylistViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val cvCoverContainer: CardView = itemView.findViewById(R.id.cvCoverContainer)
+        private val ivCover: ImageView = itemView.findViewById(R.id.ivCover)
+        private val vDefaultCover: View = itemView.findViewById(R.id.vDefaultCover)
+        private val ivDefaultIcon: ImageView = itemView.findViewById(R.id.ivDefaultIcon)
         private val tvName: TextView = itemView.findViewById(R.id.tvName)
         private val tvCount: TextView = itemView.findViewById(R.id.tvCount)
         private val btnMore: ImageButton = itemView.findViewById(R.id.btnMore)
@@ -30,8 +38,74 @@ class PlaylistAdapter(
             tvName.text = playlist.name
             tvCount.visibility = View.GONE
 
+            // 加载歌单封面
+            loadCoverImage(playlist)
+
             itemView.setOnClickListener { onItemClick(playlist) }
             btnMore.setOnClickListener { onMoreClick(playlist) }
+        }
+
+        private fun loadCoverImage(playlist: Playlist) {
+            val coverPath = playlist.coverUrl
+
+            when {
+                coverPath.isNullOrEmpty() -> {
+                    // 无封面，显示默认背景和图标
+                    showDefaultCover(playlist)
+                }
+                coverPath.startsWith("http") -> {
+                    // 网络图片 - 使用 Glide
+                    showCoverImage()
+                    Glide.with(itemView.context)
+                        .load(coverPath)
+                        .placeholder(R.drawable.ic_music_note)
+                        .into(ivCover)
+                }
+                else -> {
+                    // 本地文件 - 直接使用 BitmapFactory 加载
+                    showCoverImage()
+                    try {
+                        val file = java.io.File(coverPath)
+                        if (file.exists()) {
+                            val bitmap = android.graphics.BitmapFactory.decodeFile(coverPath)
+                            if (bitmap != null) {
+                                ivCover.setImageBitmap(bitmap)
+                            } else {
+                                showDefaultCover(playlist)
+                            }
+                        } else {
+                            showDefaultCover(playlist)
+                        }
+                    } catch (e: Exception) {
+                        showDefaultCover(playlist)
+                    }
+                }
+            }
+        }
+
+        private fun showCoverImage() {
+            ivCover.visibility = View.VISIBLE
+            vDefaultCover.visibility = View.GONE
+            ivDefaultIcon.visibility = View.GONE
+        }
+
+        private fun showDefaultCover(playlist: Playlist) {
+            ivCover.visibility = View.GONE
+            vDefaultCover.visibility = View.VISIBLE
+            ivDefaultIcon.visibility = View.VISIBLE
+
+            // 设置默认背景颜色
+            val colorString = playlist.iconColor
+            if (!colorString.isNullOrEmpty()) {
+                try {
+                    val color = Color.parseColor(colorString)
+                    vDefaultCover.setBackgroundColor(color)
+                } catch (e: IllegalArgumentException) {
+                    vDefaultCover.setBackgroundColor(Color.parseColor("#2D2D4A"))
+                }
+            } else {
+                vDefaultCover.setBackgroundColor(Color.parseColor("#2D2D4A"))
+            }
         }
     }
 

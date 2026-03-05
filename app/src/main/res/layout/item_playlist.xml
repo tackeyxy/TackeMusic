@@ -15,11 +15,46 @@
         android:gravity="center_vertical"
         android:padding="16dp">
 
+        <!-- 歌单封面 -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/cvCoverContainer"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="0dp">
+
+            <ImageView
+                android:id="@+id/ivCover"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:contentDescription="歌单封面" />
+
+            <!-- 默认封面背景（当没有封面时显示） -->
+            <View
+                android:id="@+id/vDefaultCover"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
+            <!-- 默认图标（当没有封面时显示） -->
+            <ImageView
+                android:id="@+id/ivDefaultIcon"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_music_note"
+                android:visibility="gone"
+                android:contentDescription="默认图标" />
+
+        </androidx.cardview.widget.CardView>
+
         <!-- 歌单信息 -->
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:layout_marginStart="16dp"
             android:orientation="vertical">
 
             <TextView
