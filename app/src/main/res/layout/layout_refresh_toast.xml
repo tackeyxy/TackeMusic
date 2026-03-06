@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/toastContainer"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_toast_blur"
+    android:elevation="8dp">
+
+    <!-- 内容区域 -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="14dp">
+
+        <!-- 成功图标 -->
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="22dp"
+            android:src="@drawable/ic_check"
+            android:tint="@color/primary"
+            android:layout_marginEnd="10dp" />
+
+        <!-- 提示文字 -->
+        <TextView
+            android:id="@+id/tvToastMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="刷新成功"
+            android:textSize="15sp"
+            android:textColor="@color/text_primary"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+</FrameLayout>

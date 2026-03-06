@@ -1,15 +1,24 @@
 package com.tacke.music.ui
 
+import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -24,6 +33,7 @@ import com.tacke.music.data.api.HighQualityPlaylist
 import com.tacke.music.data.api.PlaylistTag
 import com.tacke.music.data.api.RetrofitClient
 import com.tacke.music.data.model.ChartSong
+import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
@@ -35,6 +45,7 @@ import com.tacke.music.ui.adapter.SongAdapter
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
+import com.tacke.music.service.MusicPlaybackService
 import com.tacke.music.update.UpdateDialogManager
 import com.tacke.music.util.StatusBarUtil
 import kotlinx.coroutines.Dispatchers
@@ -101,6 +112,47 @@ class MainActivity : AppCompatActivity() {
     private var isLoadingPlaylists = false
     private var hasMorePlaylists = true
 
+    // 退出应用广播接收器
+    private val exitAppReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.tacke.music.ACTION_EXIT_APPLICATION") {
+                // 强制退出应用
+                finishAffinity()
+                android.os.Process.killProcess(android.os.Process.myPid())
+            }
+        }
+    }
+
+    // 播放控制广播接收器（用于接收通知栏的上一曲/下一曲命令）
+    private val playbackControlReceiver = object : BroadcastReceiver() {
+        private var lastTriggerTime = 0L
+
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val DEBOUNCE_INTERVAL = 800L // 800ms 防抖动间隔，防止快速重复触发
+            val currentTime = System.currentTimeMillis()
+            if (currentTime - lastTriggerTime < DEBOUNCE_INTERVAL) {
+                // 忽略过快的重复触发
+                return
+            }
+            lastTriggerTime = currentTime
+
+            when (intent?.action) {
+                MusicPlaybackService.ACTION_NEXT -> {
+                    // 播放下一首
+                    playNextSong()
+                }
+                MusicPlaybackService.ACTION_PREVIOUS -> {
+                    // 播放上一首
+                    playPreviousSong()
+                }
+            }
+        }
+    }
+
+    companion object {
+        private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1001
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -110,9 +162,12 @@ class MainActivity : AppCompatActivity() {
         StatusBarUtil.setImmersiveStatusBar(this)
         StatusBarUtil.setLightStatusBar(this, true)
         StatusBarUtil.setLightNavigationBar(this, true)
-        
+
         // 设置状态栏占位View高度
         StatusBarUtil.setStatusBarHeight(binding.statusBarBackground)
+
+        // 请求通知权限（Android 13+）
+        requestNotificationPermission()
 
         currentPlatform = SettingsActivity.getDefaultSource(this)
         playlistRepository = PlaylistRepository(this)
@@ -125,6 +180,7 @@ class MainActivity : AppCompatActivity() {
         setupClickListeners()
         setupBottomNavigation()
         setupChartCards()
+        setupSwipeRefresh()
         updateSourceSelectorUI()
         loadAllChartData()
         loadPlaylistTags()
@@ -133,6 +189,214 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             delay(3000) // 延迟3秒后检查更新
             checkForUpdateAuto()
+        }
+
+        // 注册退出应用广播接收器
+        registerExitAppReceiver()
+
+        // 注册播放控制广播接收器（用于接收通知栏的上一曲/下一曲命令）
+        registerPlaybackControlReceiver()
+    }
+
+    /**
+     * 请求通知权限（Android 13+）
+     */
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            when {
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED -> {
+                    // 权限已授予
+                }
+                shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) -> {
+                    // 显示权限说明对话框
+                    AlertDialog.Builder(this)
+                        .setTitle("需要通知权限")
+                        .setMessage("为了显示音乐播放控制通知，需要授予通知权限。")
+                        .setPositiveButton("确定") { _, _ ->
+                            ActivityCompat.requestPermissions(
+                                this,
+                                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                                NOTIFICATION_PERMISSION_REQUEST_CODE
+                            )
+                        }
+                        .setNegativeButton("取消", null)
+                        .show()
+                }
+                else -> {
+                    // 直接请求权限
+                    ActivityCompat.requestPermissions(
+                        this,
+                        arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                        NOTIFICATION_PERMISSION_REQUEST_CODE
+                    )
+                }
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            NOTIFICATION_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // 权限已授予
+                    Toast.makeText(this, "通知权限已授予", Toast.LENGTH_SHORT).show()
+                } else {
+                    // 权限被拒绝
+                    Toast.makeText(this, "未授予通知权限，播放控制通知将无法显示", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun setupSwipeRefresh() {
+        binding.swipeRefreshLayout.setColorSchemeResources(
+            R.color.primary,
+            R.color.primary_dark,
+            R.color.accent
+        )
+        binding.swipeRefreshLayout.setOnRefreshListener {
+            refreshAllData()
+        }
+    }
+
+    private fun refreshAllData() {
+        lifecycleScope.launch {
+            try {
+                // 重置所有数据状态
+                chartSongsMap.clear()
+                playlistLastTime = 0
+                hasMorePlaylists = true
+
+                // 并行加载所有数据
+                val chartJob = launch { loadAllChartDataWithFeedback() }
+                val playlistJob = launch { refreshPlaylistData() }
+
+                // 等待所有任务完成
+                chartJob.join()
+                playlistJob.join()
+
+                // 显示刷新成功提示
+                showRefreshSuccessFeedback()
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "刷新失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                binding.swipeRefreshLayout.isRefreshing = false
+            }
+        }
+    }
+
+    private suspend fun loadAllChartDataWithFeedback() {
+        ChartType.values().forEach { chartType ->
+            lifecycleScope.launch {
+                try {
+                    val response = withContext(Dispatchers.IO) {
+                        RetrofitClient.chartApi.getChartList(chartType.value)
+                    }
+                    if (response.code == 200 && response.data != null) {
+                        chartSongsMap[chartType] = response.data
+                        updateChartCardPreview(chartType, response.data)
+                    }
+                } catch (e: Exception) {
+                    // 单个榜单加载失败不影响其他
+                }
+            }
+        }
+    }
+
+    private suspend fun refreshPlaylistData() {
+        try {
+            val response = withContext(Dispatchers.IO) {
+                RetrofitClient.playlistApi.getHighQualityPlaylists(
+                    category = currentPlaylistCategory,
+                    limit = 10,
+                    before = 0
+                )
+            }
+            if (response.code == 200 && response.playlists != null) {
+                withContext(Dispatchers.Main) {
+                    recommendPlaylistAdapter.submitList(response.playlists)
+                    playlistLastTime = response.lasttime
+                    hasMorePlaylists = response.more
+                }
+            }
+        } catch (e: Exception) {
+            // 歌单加载失败不影响刷新结果
+        }
+    }
+
+    private var refreshToastPopup: PopupWindow? = null
+
+    private fun showRefreshSuccessFeedback() {
+        // 创建自定义Toast视图
+        val toastView = LayoutInflater.from(this).inflate(R.layout.layout_refresh_toast, null)
+
+        // 创建PopupWindow
+        refreshToastPopup = PopupWindow(
+            toastView,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            false
+        ).apply {
+            isOutsideTouchable = false
+            isFocusable = false
+            // 设置动画效果
+            animationStyle = android.R.style.Animation_Dialog
+        }
+
+        // 获取搜索框位置，在搜索框下方显示
+        val searchLayoutLocation = IntArray(2)
+        binding.searchLayout.getLocationOnScreen(searchLayoutLocation)
+        val searchLayoutBottom = searchLayoutLocation[1] + binding.searchLayout.height
+
+        // 显示在搜索框下方，水平居中
+        refreshToastPopup?.showAtLocation(
+            binding.root,
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL,
+            0,
+            searchLayoutBottom + 16.dpToPx()
+        )
+
+        // 2秒后自动消失
+        lifecycleScope.launch {
+            delay(2000)
+            refreshToastPopup?.dismiss()
+            refreshToastPopup = null
+        }
+    }
+
+    private fun registerExitAppReceiver() {
+        val filter = IntentFilter("com.tacke.music.ACTION_EXIT_APPLICATION")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ContextCompat.registerReceiver(
+                this,
+                exitAppReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            registerReceiver(exitAppReceiver, filter)
+        }
+    }
+
+    private fun registerPlaybackControlReceiver() {
+        val filter = IntentFilter().apply {
+            addAction(MusicPlaybackService.ACTION_NEXT)
+            addAction(MusicPlaybackService.ACTION_PREVIOUS)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ContextCompat.registerReceiver(
+                this,
+                playbackControlReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            registerReceiver(playbackControlReceiver, filter)
         }
     }
 
@@ -144,7 +408,8 @@ class MainActivity : AppCompatActivity() {
         if (isMultiSelectMode) {
             exitMultiSelectMode()
         } else {
-            super.onBackPressed()
+            // 返回键将APP隐藏到后台，而不是退出
+            moveTaskToBack(true)
         }
     }
 
@@ -154,6 +419,21 @@ class MainActivity : AppCompatActivity() {
         if (savedSource != currentPlatform) {
             currentPlatform = savedSource
             updateSourceSelectorUI()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // 注销广播接收器
+        try {
+            unregisterReceiver(exitAppReceiver)
+        } catch (e: Exception) {
+            // 忽略未注册的错误
+        }
+        try {
+            unregisterReceiver(playbackControlReceiver)
+        } catch (e: Exception) {
+            // 忽略未注册的错误
         }
     }
 
@@ -1234,5 +1514,58 @@ class MainActivity : AppCompatActivity() {
                 ).show()
             }
         }
+    }
+
+    /**
+     * 播放下一首歌曲（从通知栏控制）
+     */
+    private fun playNextSong() {
+        // 直接获取下一首歌曲并播放，避免通过广播导致的循环
+        val nextSong = playlistManager.next()
+        if (nextSong != null) {
+            lifecycleScope.launch {
+                playSongFromPlaylist(nextSong)
+            }
+        } else {
+            Toast.makeText(this, "已经是最后一首了", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * 播放上一首歌曲（从通知栏控制）
+     */
+    private fun playPreviousSong() {
+        // 直接获取上一首歌曲并播放，避免通过广播导致的循环
+        val prevSong = playlistManager.previous()
+        if (prevSong != null) {
+            lifecycleScope.launch {
+                playSongFromPlaylist(prevSong)
+            }
+        } else {
+            Toast.makeText(this, "已经是第一首了", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * 从播放列表播放歌曲（用于通知栏控制）
+     * 关键修复：后台切换歌曲时不启动新Activity，只更新播放状态
+     * 实际播放由MusicPlaybackService处理
+     */
+    private suspend fun playSongFromPlaylist(playlistSong: PlaylistSong) {
+        // 不执行任何操作，让服务处理播放
+        // 服务会通过广播通知Activity更新UI
+    }
+
+    /**
+     * 检查播放页是否正在运行
+     */
+    private fun isPlayerActivityRunning(): Boolean {
+        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val runningTasks = activityManager.getRunningTasks(1)
+        if (runningTasks.isNotEmpty()) {
+            val topActivity = runningTasks[0].topActivity
+            return topActivity?.className == PlayerActivity::class.java.name
+        }
+        return false
     }
 }

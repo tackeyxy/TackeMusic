@@ -262,7 +262,7 @@ class PlaybackManager private constructor(context: Context) {
     }
 
     /**
-     * 保存播放状态
+     * 保存播放状态（私有方法，内部使用）
      */
     private fun savePlaybackState(
         songId: String,
@@ -282,6 +282,20 @@ class PlaybackManager private constructor(context: Context) {
         songDetail?.let { detail ->
             playbackPreferences.saveSongDetail(songId, detail)
         }
+    }
+
+    /**
+     * 直接保存播放状态（公共方法，供后台切换歌曲时使用）
+     * 不启动Activity，只更新播放状态
+     */
+    fun savePlaybackStateDirect(
+        songId: String,
+        position: Long,
+        isPlaying: Boolean,
+        quality: String,
+        songDetail: SongDetail? = null
+    ) {
+        savePlaybackState(songId, position, isPlaying, quality, songDetail)
     }
 
     /**

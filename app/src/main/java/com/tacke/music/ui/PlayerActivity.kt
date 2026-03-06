@@ -21,6 +21,7 @@ import android.widget.SeekBar
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media3.common.MediaItem
@@ -28,7 +29,11 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import android.graphics.Bitmap
+import android.graphics.drawable.Drawable
 import com.bumptech.glide.Glide
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.tacke.music.R
 import com.tacke.music.data.model.PlaylistSong
@@ -78,6 +83,7 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var playbackManager: PlaybackManager
     private lateinit var recentPlayRepository: RecentPlayRepository
     private var isFromEmptyState = false
+    private var pendingRestoreFromNotification = false  // 标记是否等待从通知栏恢复
 
     // Service connection
     private var musicService: MusicPlaybackService? = null
@@ -97,6 +103,17 @@ class PlayerActivity : AppCompatActivity() {
             setupPlayerListeners()
 
             val currentMediaItem = exoPlayer?.currentMediaItem
+
+            // 检查是否有待处理的从通知栏恢复请求
+            if (pendingRestoreFromNotification) {
+                pendingRestoreFromNotification = false
+                lifecycleScope.launch {
+                    if (!isDestroyed && !isFinishing) {
+                        restoreFromCurrentPlayback()
+                    }
+                }
+                return
+            }
 
             if (isFromEmptyState) {
                 // 空状态进入时，如果服务正在播放，恢复当前播放状态
@@ -155,6 +172,10 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_DURATION = "duration"
         const val EXTRA_IS_PLAYING = "is_playing"
         const val EXTRA_SEEK_POSITION = "seek_position"
+
+        // 通知栏控制动作
+        const val ACTION_NEXT = "com.tacke.music.ACTION_NEXT"
+        const val ACTION_PREVIOUS = "com.tacke.music.ACTION_PREVIOUS"
 
         // 启动模式
         const val EXTRA_LAUNCH_MODE = "launch_mode"
@@ -271,7 +292,13 @@ class PlayerActivity : AppCompatActivity() {
         if ((isNewEmptyState || isRestoreMode) && exoPlayer?.currentMediaItem != null) {
             // 从播放列表获取当前歌曲信息
             lifecycleScope.launch {
-                restoreFromCurrentPlayback()
+                // 如果服务已绑定，直接恢复；否则等待服务绑定完成
+                if (serviceBound && musicService != null) {
+                    restoreFromCurrentPlayback()
+                } else {
+                    // 服务尚未绑定，设置标志等待服务连接完成
+                    pendingRestoreFromNotification = true
+                }
             }
             return
         }
@@ -288,11 +315,13 @@ class PlayerActivity : AppCompatActivity() {
             } else {
                 val currentMediaItem = exoPlayer?.currentMediaItem
                 val currentSong = playlistManager.getCurrentSong()
-                val wasPlaying = exoPlayer?.isPlaying ?: false
 
-                if (currentSong?.id == songId && currentMediaItem != null) {
+                // 检查是否是同一首歌曲，如果是则不重新加载
+                if (currentSong?.id == songId && currentMediaItem != null && songId.isNotEmpty()) {
+                    // 同一首歌曲，只更新UI，不重新加载
                     updateUIForCurrentSong()
-                } else {
+                } else if (songId.isNotEmpty()) {
+                    // 不同歌曲，需要重新加载
                     // 立即重置播放器状态，防止上一首歌曲的进度带到新歌曲
                     isSwitchingSong = true  // 设置标志，暂停UI更新
                     exoPlayer?.stop()
@@ -334,31 +363,46 @@ class PlayerActivity : AppCompatActivity() {
             binding.tvSongName.text = songName
             binding.tvArtist.text = songArtists
 
-            // 获取歌曲详情用于封面和歌词等
-            try {
-                var detail = playbackPreferences.getSongDetail(songId)
-                if (detail == null) {
-                    detail = withContext(Dispatchers.IO) {
-                        repository.getSongDetail(platform, songId, currentQuality)
-                    }
+            // 优先从服务获取保存的完整歌曲信息（包括封面和歌词）
+            val serviceSongInfo = musicService?.getCurrentSongInfo()
+
+            if (serviceSongInfo != null) {
+                // 使用服务中保存的完整信息
+                songCover = serviceSongInfo.coverUrl ?: currentSong.coverUrl
+                songLyrics = serviceSongInfo.lyrics
+                loadCoverAndBackground(songCover)
+
+                // 解析歌词
+                songLyrics?.let { lyricsText ->
+                    parsedLyrics = parseLyrics(lyricsText)
                 }
-                if (detail != null) {
-                    songDetail = detail
-                    songLyrics = detail.lyrics
-                    // 优先使用 detail 中的封面，如果没有则使用 currentSong 中的封面
-                    songCover = detail.cover ?: currentSong.coverUrl
-                    updateUI(detail)
-                } else {
-                    // 获取详情失败，使用 currentSong 中的封面
+            } else {
+                // 获取歌曲详情用于封面和歌词等
+                try {
+                    var detail = playbackPreferences.getSongDetail(songId)
+                    if (detail == null) {
+                        detail = withContext(Dispatchers.IO) {
+                            repository.getSongDetail(platform, songId, currentQuality)
+                        }
+                    }
+                    if (detail != null) {
+                        songDetail = detail
+                        songLyrics = detail.lyrics
+                        // 优先使用 detail 中的封面，如果没有则使用 currentSong 中的封面
+                        songCover = detail.cover ?: currentSong.coverUrl
+                        updateUI(detail)
+                    } else {
+                        // 获取详情失败，使用 currentSong 中的封面
+                        songCover = currentSong.coverUrl
+                    }
+                } catch (e: Exception) {
+                    // 忽略错误，使用 currentSong 中的封面
                     songCover = currentSong.coverUrl
                 }
-            } catch (e: Exception) {
-                // 忽略错误，使用 currentSong 中的封面
-                songCover = currentSong.coverUrl
-            }
 
-            // 加载封面
-            loadCoverAndBackground(songCover)
+                // 加载封面
+                loadCoverAndBackground(songCover)
+            }
 
             // 更新播放控制UI
             updateUIForCurrentSong()
@@ -651,16 +695,38 @@ class PlayerActivity : AppCompatActivity() {
         return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event)
     }
 
+    private var lastBroadcastTime = 0L
+    private val BROADCAST_DEBOUNCE_INTERVAL = 800L // 800ms 防抖动间隔
+
     private fun setupSeekReceiver() {
         seekReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 intent?.let {
+                    // 防抖动检查
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastBroadcastTime < BROADCAST_DEBOUNCE_INTERVAL) {
+                        // 忽略过快的重复触发
+                        return
+                    }
+
                     when (it.action) {
                         ACTION_SEEK_TO -> {
                             val seekPosition = it.getLongExtra(EXTRA_SEEK_POSITION, -1)
                             if (seekPosition >= 0) {
                                 exoPlayer?.seekTo(seekPosition)
                             }
+                            Unit
+                        }
+                        ACTION_NEXT -> {
+                            // 从通知栏接收下一首命令
+                            lastBroadcastTime = currentTime
+                            playNextSong()
+                            Unit
+                        }
+                        ACTION_PREVIOUS -> {
+                            // 从通知栏接收上一首命令
+                            lastBroadcastTime = currentTime
+                            playPreviousSong()
                             Unit
                         }
                         LyricsActivity.ACTION_REQUEST_PLAYBACK_STATUS -> {
@@ -684,14 +750,38 @@ class PlayerActivity : AppCompatActivity() {
         super.onResume()
         val filter = IntentFilter().apply {
             addAction(ACTION_SEEK_TO)
+            addAction(ACTION_NEXT)
+            addAction(ACTION_PREVIOUS)
             addAction(LyricsActivity.ACTION_REQUEST_PLAYBACK_STATUS)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(seekReceiver, filter)
+
+        // 同时注册全局广播接收器（用于接收从 MainActivity 发送的切换歌曲命令）
+        val globalFilter = IntentFilter().apply {
+            addAction(ACTION_NEXT)
+            addAction(ACTION_PREVIOUS)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ContextCompat.registerReceiver(
+                this,
+                seekReceiver,
+                globalFilter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            registerReceiver(seekReceiver, globalFilter)
+        }
     }
 
     override fun onPause() {
         super.onPause()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(seekReceiver)
+        // 注销全局广播接收器
+        try {
+            unregisterReceiver(seekReceiver)
+        } catch (e: Exception) {
+            // 忽略未注册的错误
+        }
         // 保存播放进度
         savePlaybackState()
     }
@@ -723,12 +813,36 @@ class PlayerActivity : AppCompatActivity() {
                 .error(R.drawable.bg_default_light_cyan)
                 .into(binding.ivBackground)
 
+            // 加载图片的 Bitmap 用于通知栏显示
+            Glide.with(this)
+                .asBitmap()
+                .load(coverUrl)
+                .placeholder(R.drawable.ic_album_default)
+                .error(R.drawable.ic_album_default)
+                .into(object : CustomTarget<Bitmap>() {
+                    override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
+                        // 更新通知栏的图片
+                        musicService?.updateMediaMetadata(songName, songArtists, resource)
+                    }
+
+                    override fun onLoadCleared(placeholder: Drawable?) {
+                        // 清理资源
+                    }
+
+                    override fun onLoadFailed(errorDrawable: Drawable?) {
+                        // 加载失败时使用 null，通知栏会显示默认图片
+                        musicService?.updateMediaMetadata(songName, songArtists, null)
+                    }
+                })
+
             // 显示背景图片
             binding.ivBackground.visibility = View.VISIBLE
         } else {
             // 没有封面时隐藏背景
             binding.ivAlbum.setImageResource(R.drawable.ic_album_default)
             binding.ivBackground.visibility = View.GONE
+            // 更新通知栏为默认状态
+            musicService?.updateMediaMetadata(songName, songArtists, null)
         }
     }
 
@@ -1323,6 +1437,15 @@ class PlayerActivity : AppCompatActivity() {
 
             musicService?.updateMediaMetadata(songName, songArtists, null)
 
+            // 保存完整歌曲信息到服务，用于从通知栏恢复时显示
+            musicService?.updateCurrentSongInfo(
+                songId,
+                songName,
+                songArtists,
+                songDetail?.cover ?: songCover,
+                songDetail?.lyrics ?: songLyrics
+            )
+
             songDetail?.let { detail ->
                 playbackPreferences.saveSongDetail(songId, detail)
             }
@@ -1366,6 +1489,15 @@ class PlayerActivity : AppCompatActivity() {
             }
 
             musicService?.updateMediaMetadata(songName, songArtists, null)
+
+            // 保存完整歌曲信息到服务，用于从通知栏恢复时显示
+            musicService?.updateCurrentSongInfo(
+                songId,
+                songName,
+                songArtists,
+                songDetail?.cover ?: songCover,
+                songDetail?.lyrics ?: songLyrics
+            )
 
             songDetail?.let { detail ->
                 playbackPreferences.saveSongDetail(songId, detail)
