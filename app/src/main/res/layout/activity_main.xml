@@ -7,6 +7,14 @@
     android:background="@color/background"
     tools:context=".ui.MainActivity">
 
+    <!-- 状态栏占位View -->
+    <View
+        android:id="@+id/statusBarBackground"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/background"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <!-- 搜索栏 -->
     <LinearLayout
         android:id="@+id/searchLayout"
@@ -14,12 +22,12 @@
         android:layout_height="44dp"
         android:orientation="horizontal"
         android:layout_marginHorizontal="16dp"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="8dp"
         android:background="@drawable/bg_search_bar"
         android:paddingStart="4dp"
         android:paddingEnd="12dp"
         android:gravity="center_vertical"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toBottomOf="@id/statusBarBackground">
 
         <!-- 音乐源选择器 -->
         <LinearLayout

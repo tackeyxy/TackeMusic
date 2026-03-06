@@ -23,11 +23,20 @@
         android:background="@color/black"
         android:alpha="0.5" />
 
+    <!-- 状态栏占位View -->
+    <View
+        android:id="@+id/statusBarBackground"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <!-- 顶部导航栏 -->
     <LinearLayout
         android:id="@+id/headerLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        app:layout_constraintTop_toBottomOf="@id/statusBarBackground"
         android:orientation="horizontal"
         android:padding="16dp"
         android:gravity="center_vertical"

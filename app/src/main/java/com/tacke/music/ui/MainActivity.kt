@@ -36,6 +36,7 @@ import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.update.UpdateDialogManager
+import com.tacke.music.util.StatusBarUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -104,6 +105,14 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // 设置沉浸式状态栏
+        StatusBarUtil.setImmersiveStatusBar(this)
+        StatusBarUtil.setLightStatusBar(this, true)
+        StatusBarUtil.setLightNavigationBar(this, true)
+        
+        // 设置状态栏占位View高度
+        StatusBarUtil.setStatusBarHeight(binding.statusBarBackground)
 
         currentPlatform = SettingsActivity.getDefaultSource(this)
         playlistRepository = PlaylistRepository(this)

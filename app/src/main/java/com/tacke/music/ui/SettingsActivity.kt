@@ -16,6 +16,7 @@ import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.databinding.ActivitySettingsBinding
 import com.tacke.music.databinding.DialogDownloadPathBinding
 import com.tacke.music.update.UpdateDialogManager
+import com.tacke.music.util.StatusBarUtil
 import java.io.File
 
 class SettingsActivity : AppCompatActivity() {
@@ -146,6 +147,14 @@ class SettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // 设置沉浸式状态栏
+        StatusBarUtil.setImmersiveStatusBar(this)
+        StatusBarUtil.setLightStatusBar(this, true)
+        StatusBarUtil.setLightNavigationBar(this, true)
+        
+        // 设置状态栏占位View高度
+        StatusBarUtil.setStatusBarHeight(binding.statusBarBackground)
 
         updateDialogManager = UpdateDialogManager(this, lifecycleScope)
 

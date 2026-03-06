@@ -21,6 +21,7 @@ import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityProfileBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.ui.adapter.PlaylistListAdapter
+import com.tacke.music.util.StatusBarUtil
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
@@ -38,6 +39,14 @@ class ProfileActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityProfileBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // 设置沉浸式状态栏
+        StatusBarUtil.setImmersiveStatusBar(this)
+        StatusBarUtil.setLightStatusBar(this, true)
+        StatusBarUtil.setLightNavigationBar(this, true)
+        
+        // 设置状态栏占位View高度
+        StatusBarUtil.setStatusBarHeight(binding.statusBarBackground)
 
         downloadManager = DownloadManager.getInstance(this)
         playlistRepository = PlaylistRepository(this)

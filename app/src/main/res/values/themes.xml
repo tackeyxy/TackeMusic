@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!-- 基础主题 - 所有Activity默认使用 -->
     <style name="Theme.TackeMusic" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryVariant">@color/primary_dark</item>
@@ -8,19 +9,31 @@
         <item name="colorSecondary">@color/accent</item>
         <item name="colorSecondaryVariant">@color/primary_dark</item>
         <item name="colorOnSecondary">@color/white</item>
-        <item name="android:statusBarColor">@color/background</item>
+        <!-- 状态栏透明，让内容延伸到状态栏下方 -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowBackground">@color/background</item>
         <item name="android:textColorPrimary">@color/text_primary</item>
         <item name="android:textColorSecondary">@color/text_secondary</item>
+        <!-- 允许内容延伸到状态栏和导航栏区域 -->
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:windowTranslucentNavigation">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <!-- 导航栏颜色 -->
+        <item name="android:navigationBarColor">@color/background</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
 
+    <!-- 播放器页面主题 - 全透明沉浸式设计 -->
     <style name="Theme.TackeMusic.Player" parent="Theme.MaterialComponents.Light.NoActionBar">
         <item name="colorPrimary">@color/primary</item>
         <item name="colorPrimaryVariant">@color/primary_dark</item>
         <item name="colorOnPrimary">@color/white</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
     </style>
 
     <!-- BottomSheetDialog 主题 -->

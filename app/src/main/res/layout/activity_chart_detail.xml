@@ -5,11 +5,19 @@
     android:layout_height="match_parent"
     android:background="@color/background">
 
+    <!-- 状态栏占位View -->
+    <View
+        android:id="@+id/statusBarBackground"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_chart_soaring" />
+
     <!-- 固定的顶部标题区块 - 不会随滑动隐藏 -->
     <FrameLayout
         android:id="@+id/headerContainer"
         android:layout_width="match_parent"
         android:layout_height="120dp"
+        android:layout_marginTop="?attr/actionBarSize"
         android:background="@drawable/bg_chart_soaring"
         android:elevation="4dp">
 

@@ -1,11 +1,11 @@
 {
   "status": 200,
   "data": {
-    "versionCode": 6,
-    "versionName": "1.0.5",
+    "versionCode": 7,
+    "versionName": "1.0.6",
     "download_url": "https://gh-proxy.org/https://github.com/tackeyxy/TackeMusic/blob/master/apk/app-debug.apk",
     "file_size": "10.89 MB",
-    "release_notes": "1. 优化歌曲列表UI布局\n2. 修复在Android16设备闪退问题\n3. 增加列表音源标识",
-    "publish_time": "2026-03-06 10:31:00"
+    "release_notes": "1. 优化所有页面确保显示完整的状态栏\n2. 修复在Android16设备闪退问题",
+    "publish_time": "2026-03-06 11:11:00"
   }
 }
