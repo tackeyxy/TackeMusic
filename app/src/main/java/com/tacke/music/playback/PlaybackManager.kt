@@ -125,6 +125,11 @@ class PlaybackManager private constructor(context: Context) {
         // 添加到播放列表
         playlistManager.addSong(playlistSong)
 
+        // 关键修复：设置当前播放索引为新添加的歌曲
+        // 这样播放列表中的"正在播放"图标才能正确显示
+        val newIndex = playlistManager.currentPlaylist.value.size - 1
+        playlistManager.setCurrentIndex(newIndex.coerceAtLeast(0))
+
         // 保存播放状态（新歌曲从头开始播放，位置为0）
         savePlaybackState(
             songId = songId,
@@ -175,6 +180,11 @@ class PlaybackManager private constructor(context: Context) {
 
         // 添加到播放列表
         playlistManager.addSong(updatedSong)
+
+        // 关键修复：设置当前播放索引为新添加的歌曲
+        // 这样播放列表中的"正在播放"图标才能正确显示
+        val newIndex = playlistManager.currentPlaylist.value.size - 1
+        playlistManager.setCurrentIndex(newIndex.coerceAtLeast(0))
 
         // 保存播放状态（新歌曲从头开始播放，位置为0）
         savePlaybackState(
@@ -459,6 +469,11 @@ class PlaybackManager private constructor(context: Context) {
 
         // 添加到播放列表
         playlistManager.addSong(playlistSong)
+
+        // 关键修复：设置当前播放索引为新添加的歌曲
+        // 这样播放列表中的"正在播放"图标才能正确显示
+        val newIndex = playlistManager.currentPlaylist.value.size - 1
+        playlistManager.setCurrentIndex(newIndex.coerceAtLeast(0))
 
         // 尝试获取歌曲详情（用于歌词和封面）
         val detail = withContext(Dispatchers.IO) {

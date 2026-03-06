@@ -4,44 +4,31 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginVertical="6dp"
+    android:layout_marginVertical="4dp"
     app:cardCornerRadius="12dp"
     app:cardElevation="0dp"
     app:cardBackgroundColor="@color/surface">
 
-    <RelativeLayout
+    <FrameLayout
+        android:id="@+id/itemContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="12dp"
-        android:background="?attr/selectableItemBackground">
+        android:background="?attr/selectableItemBackground"
+        android:padding="12dp">
 
-        <!-- 左侧：歌曲封面 + 信息 整体靠左 -->
         <LinearLayout
-            android:id="@+id/llLeftContent"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_alignParentStart="true"
-            android:layout_centerVertical="true"
-            android:layout_toStartOf="@id/llRightArea"
-            android:layout_marginEnd="8dp"
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
-            <!-- 复选框/播放指示器 - 默认隐藏，多选时显示 -->
+            <!-- 圆形复选框 - 多选模式显示 -->
             <FrameLayout
-                android:id="@+id/flIndex"
-                android:layout_width="32dp"
-                android:layout_height="56dp"
+                android:id="@+id/flCheckbox"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="12dp"
                 android:visibility="gone">
-
-                <ImageView
-                    android:id="@+id/ivPlaying"
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:layout_gravity="center"
-                    android:src="@drawable/ic_play"
-                    android:tint="@color/accent_color"
-                    android:visibility="gone" />
 
                 <ImageView
                     android:id="@+id/ivCheckbox"
@@ -53,23 +40,25 @@
 
             </FrameLayout>
 
-            <!-- 排名 -->
+            <!-- 序号 - 非多选模式显示 -->
             <TextView
-                android:id="@+id/tvRank"
-                android:layout_width="32dp"
-                android:layout_height="wrap_content"
+                android:id="@+id/tvIndex"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="12dp"
                 android:gravity="center"
-                android:text="1"
                 android:textSize="16sp"
                 android:textStyle="bold"
-                android:textColor="@color/text_primary" />
+                android:textColor="@color/text_primary"
+                android:visibility="visible"
+                tools:text="1" />
 
-            <!-- 歌曲信息（歌名+歌手） -->
+            <!-- 歌曲信息 -->
             <LinearLayout
-                android:id="@+id/llSongInfo"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
                 android:orientation="vertical">
 
                 <!-- 歌名 -->
@@ -83,32 +72,40 @@
                     android:ellipsize="end"
                     tools:text="歌曲名称" />
 
-                <!-- 歌手 -->
-                <TextView
-                    android:id="@+id/tvArtist"
+                <!-- 歌手和音源 -->
+                <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:textSize="13sp"
-                    android:textColor="@color/text_secondary"
-                    android:maxLines="1"
-                    android:ellipsize="end"
-                    tools:text="歌手名称" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <!-- 音源图标 -->
+                    <ImageView
+                        android:id="@+id/ivSource"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:layout_marginEnd="4dp"
+                        android:scaleType="fitCenter"
+                        tools:src="@drawable/ic_netease_logo" />
+
+                    <!-- 歌手 -->
+                    <TextView
+                        android:id="@+id/tvArtist"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_secondary"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        tools:text="艺术家" />
+
+                </LinearLayout>
 
             </LinearLayout>
 
         </LinearLayout>
 
-        <!-- 右侧：音源图标 - 靠最右侧 -->
-        <ImageView
-            android:id="@+id/ivSource"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_alignParentEnd="true"
-            android:layout_centerVertical="true"
-            android:scaleType="fitCenter"
-            tools:src="@drawable/ic_netease_logo" />
-
-    </RelativeLayout>
+    </FrameLayout>
 
 </androidx.cardview.widget.CardView>

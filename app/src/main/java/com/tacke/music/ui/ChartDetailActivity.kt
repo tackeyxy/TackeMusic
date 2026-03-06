@@ -99,6 +99,7 @@ class ChartDetailActivity : AppCompatActivity() {
         }
 
         binding.tvChartTitle.text = chartTitle
+        binding.tvChartSubtitle.text = chartSubtitle
 
         // 设置背景颜色
         val backgroundRes = when (chartType) {
@@ -107,7 +108,7 @@ class ChartDetailActivity : AppCompatActivity() {
             ChartType.ORIGINAL -> R.drawable.bg_chart_original
             ChartType.HOT -> R.drawable.bg_chart_hot
         }
-        binding.headerContainer.setBackgroundResource(backgroundRes)
+        binding.headerBackground.setBackgroundResource(backgroundRes)
     }
 
     private fun setupRecyclerView() {
@@ -123,6 +124,7 @@ class ChartDetailActivity : AppCompatActivity() {
             onLongClick = { song ->
                 if (!isMultiSelectMode) {
                     enterMultiSelectMode()
+                    toggleSelection(song.id)
                     true
                 } else {
                     false
@@ -131,6 +133,17 @@ class ChartDetailActivity : AppCompatActivity() {
         )
         binding.rvChartSongs.layoutManager = LinearLayoutManager(this)
         binding.rvChartSongs.adapter = adapter
+    }
+
+    private fun toggleSelection(songId: String) {
+        val currentSelected = adapter.getSelectedSongs().map { it.id }.toMutableSet()
+        if (currentSelected.contains(songId)) {
+            currentSelected.remove(songId)
+        } else {
+            currentSelected.add(songId)
+        }
+        adapter.setSelectedItems(currentSelected)
+        updateBatchActionBar()
     }
 
     private fun setupClickListeners() {
@@ -145,6 +158,7 @@ class ChartDetailActivity : AppCompatActivity() {
         isMultiSelectMode = true
         adapter.setMultiSelectMode(true)
         showBatchActionBar()
+        updateBatchActionBar()
     }
 
     private fun exitMultiSelectMode() {
@@ -158,6 +172,8 @@ class ChartDetailActivity : AppCompatActivity() {
         binding.btnPlayAll.visibility = View.GONE
         // 隐藏"移除所选"按钮（榜单列表不需要此功能）
         binding.batchActionBarContainer.btnRemoveSelected.visibility = View.GONE
+        // 隐藏"清空"按钮（榜单列表不需要此功能）
+        binding.batchActionBarContainer.btnClearAll.visibility = View.GONE
         // 隐藏下载管理专用按钮
         binding.batchActionBarContainer.btnPauseSelected.visibility = View.GONE
         binding.batchActionBarContainer.btnResumeSelected.visibility = View.GONE
@@ -183,7 +199,17 @@ class ChartDetailActivity : AppCompatActivity() {
 
         // 全选按钮
         binding.batchActionBarContainer.btnSelectAll.setOnClickListener {
-            adapter.selectAll()
+            val allSongs = adapter.getSongs()
+            val currentSelected = adapter.getSelectedSongs().map { it.id }.toMutableSet()
+            if (currentSelected.size == allSongs.size) {
+                // 如果已经全选，则取消全选
+                currentSelected.clear()
+            } else {
+                // 否则全选
+                currentSelected.clear()
+                currentSelected.addAll(allSongs.map { it.id })
+            }
+            adapter.setSelectedItems(currentSelected)
             updateBatchActionBar()
         }
 
