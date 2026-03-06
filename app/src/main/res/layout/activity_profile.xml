@@ -61,18 +61,20 @@
                     android:orientation="vertical"
                     android:gravity="center_vertical"
                     android:padding="16dp"
-                    android:background="@drawable/bg_card_local_music"
+                    android:background="@drawable/bg_card_dynamic_gradient"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground">
 
                     <ImageView
+                        android:id="@+id/ivLocalMusic"
                         android:layout_width="32dp"
                         android:layout_height="32dp"
                         android:src="@drawable/ic_local_music"
                         app:tint="#FFFFFF" />
 
                     <TextView
+                        android:id="@+id/tvLocalMusicTitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
@@ -102,18 +104,20 @@
                     android:orientation="vertical"
                     android:gravity="center_vertical"
                     android:padding="16dp"
-                    android:background="@drawable/bg_card_download"
+                    android:background="@drawable/bg_card_dynamic_gradient"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground">
 
                     <ImageView
+                        android:id="@+id/ivDownloadManager"
                         android:layout_width="32dp"
                         android:layout_height="32dp"
                         android:src="@drawable/ic_download_white"
                         app:tint="#FFFFFF" />
 
                     <TextView
+                        android:id="@+id/tvDownloadManagerTitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
@@ -143,18 +147,20 @@
                     android:orientation="vertical"
                     android:gravity="center_vertical"
                     android:padding="16dp"
-                    android:background="@drawable/bg_card_favorite"
+                    android:background="@drawable/bg_card_dynamic_gradient"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground">
 
                     <ImageView
+                        android:id="@+id/ivFavorites"
                         android:layout_width="32dp"
                         android:layout_height="32dp"
                         android:src="@drawable/ic_heart"
                         app:tint="#FFFFFF" />
 
                     <TextView
+                        android:id="@+id/tvFavoritesTitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
@@ -184,18 +190,20 @@
                     android:orientation="vertical"
                     android:gravity="center_vertical"
                     android:padding="16dp"
-                    android:background="@drawable/bg_card_history"
+                    android:background="@drawable/bg_card_dynamic_gradient"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground">
 
                     <ImageView
+                        android:id="@+id/ivRecent"
                         android:layout_width="32dp"
                         android:layout_height="32dp"
                         android:src="@drawable/ic_history_white"
                         app:tint="#FFFFFF" />
 
                     <TextView
+                        android:id="@+id/tvRecentTitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"

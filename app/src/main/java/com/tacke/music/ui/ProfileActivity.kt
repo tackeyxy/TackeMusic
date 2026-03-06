@@ -1,11 +1,14 @@
 package com.tacke.music.ui
 
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -19,6 +22,7 @@ import com.tacke.music.databinding.ActivityProfileBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.ui.adapter.PlaylistListAdapter
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 class ProfileActivity : AppCompatActivity() {
 
@@ -51,6 +55,51 @@ class ProfileActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshPlaylistList()
+        // 每次进入页面时设置随机渐变色
+        setupRandomGradientColors()
+    }
+
+    /**
+     * 为四个卡片设置随机渐变色背景
+     */
+    private fun setupRandomGradientColors() {
+        // 预定义的渐变色组合（排除白色）
+        val gradientColors = listOf(
+            intArrayOf(Color.parseColor("#FF6B6B"), Color.parseColor("#4ECDC4")), // 红-青
+            intArrayOf(Color.parseColor("#667EEA"), Color.parseColor("#764BA2")), // 紫-紫红
+            intArrayOf(Color.parseColor("#F093FB"), Color.parseColor("#F5576C")), // 粉-红
+            intArrayOf(Color.parseColor("#4FACFE"), Color.parseColor("#00F2FE")), // 蓝-青
+            intArrayOf(Color.parseColor("#43E97B"), Color.parseColor("#38F9D7")), // 绿-青
+            intArrayOf(Color.parseColor("#FA709A"), Color.parseColor("#FEE140")), // 粉-黄
+            intArrayOf(Color.parseColor("#30CFD0"), Color.parseColor("#330867")), // 青-深紫
+            intArrayOf(Color.parseColor("#A8EDEA"), Color.parseColor("#FED6E3")), // 浅青-浅粉
+            intArrayOf(Color.parseColor("#FF9A9E"), Color.parseColor("#FECFEF")), // 粉-浅粉
+            intArrayOf(Color.parseColor("#FFECD2"), Color.parseColor("#FCB69F")), // 浅黄-橙
+            intArrayOf(Color.parseColor("#FF8A80"), Color.parseColor("#FFAB91")), // 红-橙
+            intArrayOf(Color.parseColor("#B39DDB"), Color.parseColor("#9575CD")), // 浅紫-紫
+            intArrayOf(Color.parseColor("#81D4FA"), Color.parseColor("#4FC3F7")), // 浅蓝-蓝
+            intArrayOf(Color.parseColor("#A5D6A7"), Color.parseColor("#81C784")), // 浅绿-绿
+            intArrayOf(Color.parseColor("#FFF59D"), Color.parseColor("#FFCA28")), // 黄-琥珀
+            intArrayOf(Color.parseColor("#FFCC80"), Color.parseColor("#FFB74D")), // 橙-深橙
+            intArrayOf(Color.parseColor("#F48FB1"), Color.parseColor("#F06292")), // 粉-深粉
+            intArrayOf(Color.parseColor("#CE93D8"), Color.parseColor("#BA68C8")), // 浅紫-紫
+            intArrayOf(Color.parseColor("#90CAF9"), Color.parseColor("#64B5F6")), // 浅蓝-蓝
+            intArrayOf(Color.parseColor("#80CBC4"), Color.parseColor("#4DB6AC"))  // 青-深青
+        )
+
+        // 为每个卡片设置随机渐变色
+        val cards = listOf(binding.btnLocalMusic, binding.btnDownloadManager, binding.btnFavorites, binding.btnRecent)
+
+        cards.forEach { card ->
+            val randomColors = gradientColors.random()
+            val gradientDrawable = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                randomColors
+            ).apply {
+                cornerRadius = 16f * resources.displayMetrics.density
+            }
+            card.background = gradientDrawable
+        }
     }
 
     private fun setupClickListeners() {

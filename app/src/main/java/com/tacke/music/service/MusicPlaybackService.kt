@@ -12,6 +12,7 @@ import android.content.IntentFilter
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import androidx.core.content.ContextCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -98,7 +99,16 @@ class MusicPlaybackService : Service() {
             addAction(ACTION_PREVIOUS)
             addAction(ACTION_STOP)
         }
-        registerReceiver(controlReceiver, filter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ContextCompat.registerReceiver(
+                this,
+                controlReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED
+            )
+        } else {
+            registerReceiver(controlReceiver, filter)
+        }
     }
 
     private val controlReceiver = object : BroadcastReceiver() {
