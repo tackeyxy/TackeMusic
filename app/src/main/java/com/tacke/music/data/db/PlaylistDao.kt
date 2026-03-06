@@ -96,6 +96,13 @@ interface PlaylistDao {
         if (!song.coverUrl.isNullOrEmpty()) {
             updatePlaylistCover(playlistId, song.coverUrl)
         }
+        // 如果新歌曲没有封面，尝试使用歌单中已有的最新有效封面
+        else {
+            val existingCover = getLatestValidSongCover(playlistId)
+            if (!existingCover.isNullOrEmpty()) {
+                updatePlaylistCover(playlistId, existingCover)
+            }
+        }
     }
 
     @Transaction
@@ -125,9 +132,15 @@ interface PlaylistDao {
         }
         updatePlaylistSongCount(playlistId)
         // 更新歌单封面为最晚添加的歌曲封面（即批量添加的最后一首）
-        songs.lastOrNull()?.coverUrl?.let { coverUrl ->
-            if (coverUrl.isNotEmpty()) {
-                updatePlaylistCover(playlistId, coverUrl)
+        val lastSongCover = songs.lastOrNull()?.coverUrl
+        if (!lastSongCover.isNullOrEmpty()) {
+            updatePlaylistCover(playlistId, lastSongCover)
+        }
+        // 如果批量添加的歌曲都没有封面，尝试使用歌单中已有的最新有效封面
+        else {
+            val existingCover = getLatestValidSongCover(playlistId)
+            if (!existingCover.isNullOrEmpty()) {
+                updatePlaylistCover(playlistId, existingCover)
             }
         }
     }

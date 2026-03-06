@@ -218,6 +218,11 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
 
     private fun showBatchActionBar() {
         binding.batchActionBarContainer.root.visibility = View.VISIBLE
+        // 隐藏"移除所选"按钮（推荐歌单列表不需要此功能）
+        binding.batchActionBarContainer.btnRemoveSelected.visibility = View.GONE
+        // 隐藏下载管理专用按钮
+        binding.batchActionBarContainer.btnPauseSelected.visibility = View.GONE
+        binding.batchActionBarContainer.btnResumeSelected.visibility = View.GONE
         updateBatchActionBar()
         setupBatchActionListeners()
     }

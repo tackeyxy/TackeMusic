@@ -163,8 +163,33 @@ class DownloadActivity : AppCompatActivity() {
             }
         }
 
-        // 删除按钮 - 两个标签页都使用删除功能
-        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
+        // 暂停所选按钮 - 仅在正在下载标签页有效
+        binding.batchActionBarContainer.btnPauseSelected.setOnClickListener {
+            if (binding.tabLayout.selectedTabPosition == 0) {
+                val selectedTasks = downloadingAdapter.getSelectedTasks()
+                if (selectedTasks.isNotEmpty()) {
+                    val taskIds = selectedTasks.map { it.id }
+                    downloadManager.pauseDownloads(taskIds)
+                    Toast.makeText(this, "已暂停 ${selectedTasks.size} 个任务", Toast.LENGTH_SHORT).show()
+                }
+                exitMultiSelectMode()
+            }
+        }
+
+        // 继续下载按钮 - 仅在正在下载标签页有效
+        binding.batchActionBarContainer.btnResumeSelected.setOnClickListener {
+            if (binding.tabLayout.selectedTabPosition == 0) {
+                val selectedTasks = downloadingAdapter.getSelectedTasks()
+                if (selectedTasks.isNotEmpty()) {
+                    downloadManager.resumeDownloads(selectedTasks)
+                    Toast.makeText(this, "已继续 ${selectedTasks.size} 个任务", Toast.LENGTH_SHORT).show()
+                }
+                exitMultiSelectMode()
+            }
+        }
+
+        // 移除所选按钮 - 两个标签页都使用删除功能
+        binding.batchActionBarContainer.btnRemoveSelected.setOnClickListener {
             showBatchDeleteDialog { deleteFile ->
                 if (binding.tabLayout.selectedTabPosition == 0) {
                     val selectedTasks = downloadingAdapter.getSelectedTasks()
@@ -376,15 +401,44 @@ class DownloadActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showDeleteSingleTaskDialog(task: DownloadTask) {
+        val isDownloadingTab = binding.tabLayout.selectedTabPosition == 0
+        val title = if (isDownloadingTab) "删除下载任务" else "删除下载记录"
+        val options = arrayOf("仅删除记录", "删除文件及记录")
+        var selectedOption = 0
+
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage("确定要删除\"${task.songName}\"吗？")
+            .setSingleChoiceItems(options, selectedOption) { _, which ->
+                selectedOption = which
+            }
+            .setPositiveButton("删除") { _, _ ->
+                downloadManager.deleteDownloads(listOf(task), selectedOption == 1)
+                Toast.makeText(this, "已删除\"${task.songName}\"", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
     private fun enterMultiSelectMode() {
         isMultiSelectMode = true
         binding.batchActionBarContainer.root.visibility = View.VISIBLE
 
-        // 根据当前标签页设置适配器
+        // 隐藏下载按钮（下载管理页面不需要下载功能）
+        binding.batchActionBarContainer.btnBatchDownload.visibility = View.GONE
+
+        // 根据当前标签页显示/隐藏特定按钮
         if (binding.tabLayout.selectedTabPosition == 0) {
+            // 正在下载标签页
             downloadingAdapter.setMultiSelectMode(true)
+            binding.batchActionBarContainer.btnPauseSelected.visibility = View.VISIBLE
+            binding.batchActionBarContainer.btnResumeSelected.visibility = View.VISIBLE
         } else {
+            // 下载历史标签页
             historyAdapter.setMultiSelectMode(true)
+            binding.batchActionBarContainer.btnPauseSelected.visibility = View.GONE
+            binding.batchActionBarContainer.btnResumeSelected.visibility = View.GONE
         }
 
         updateSelectedCount(0)

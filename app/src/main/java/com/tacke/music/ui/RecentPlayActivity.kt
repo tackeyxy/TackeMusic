@@ -147,8 +147,8 @@ class RecentPlayActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        // 删除按钮 - 使用下载按钮的位置
-        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
+        // 移除所选按钮
+        binding.batchActionBarContainer.btnRemoveSelected.setOnClickListener {
             showDeleteConfirm()
         }
 
@@ -225,6 +225,9 @@ class RecentPlayActivity : AppCompatActivity() {
         adapter.setMultiSelectMode(true)
         selectedItems.clear()
         updateSelectedCount()
+        // 隐藏下载管理专用按钮
+        binding.batchActionBarContainer.btnPauseSelected.visibility = View.GONE
+        binding.batchActionBarContainer.btnResumeSelected.visibility = View.GONE
         setupBatchActionListeners()
     }
 
@@ -297,6 +300,17 @@ class RecentPlayActivity : AppCompatActivity() {
                 Toast.makeText(this@RecentPlayActivity, "删除失败", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun showDeleteSingleConfirm(recentPlay: RecentPlay) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("删除记录")
+            .setMessage("确定要删除\"${recentPlay.name}\"的播放记录吗？")
+            .setPositiveButton("删除") { _, _ ->
+                deleteSingleRecord(recentPlay.id)
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun showClearAllDialog() {

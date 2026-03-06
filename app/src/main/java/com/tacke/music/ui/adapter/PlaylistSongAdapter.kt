@@ -62,7 +62,27 @@ class PlaylistSongAdapter(
         private val tvIndex: TextView = itemView.findViewById(R.id.tvIndex)
         private val coverOverlay: View = itemView.findViewById(R.id.coverOverlay)
 
+        private var currentSong: PlaylistSong? = null
+
+        init {
+            itemView.setOnClickListener {
+                currentSong?.let { song ->
+                    if (isMultiSelectMode) {
+                        toggleSelection(song.id)
+                        updateCheckboxState(selectedItems.contains(song.id))
+                        updateSelectedVisuals(selectedItems.contains(song.id))
+                    }
+                    onItemClick(song)
+                }
+            }
+
+            itemView.setOnLongClickListener {
+                currentSong?.let { onLongClick(it) } ?: false
+            }
+        }
+
         fun bind(song: PlaylistSong, position: Int) {
+            currentSong = song
             tvSongName.text = song.name
             tvArtist.text = song.artists
             tvIndex.text = (position + 1).toString()
@@ -86,22 +106,6 @@ class PlaylistSongAdapter(
 
                 // 设置选中状态的视觉反馈
                 updateSelectedVisuals(isSelected)
-
-                // 点击切换选中状态
-                itemView.setOnClickListener {
-                    toggleSelection(song.id)
-                    updateCheckboxState(selectedItems.contains(song.id))
-                    updateSelectedVisuals(selectedItems.contains(song.id))
-                    onItemClick(song)
-                }
-
-                // 点击复选框区域也切换
-                flCheckbox.setOnClickListener {
-                    toggleSelection(song.id)
-                    updateCheckboxState(selectedItems.contains(song.id))
-                    updateSelectedVisuals(selectedItems.contains(song.id))
-                    onItemClick(song)
-                }
             } else {
                 // 非多选模式
                 flCheckbox.visibility = View.GONE
@@ -109,11 +113,7 @@ class PlaylistSongAdapter(
 
                 // 重置视觉状态
                 resetVisuals()
-
-                itemView.setOnClickListener { onItemClick(song) }
             }
-
-            itemView.setOnLongClickListener { onLongClick(song) }
         }
 
         private fun toggleSelection(songId: String) {

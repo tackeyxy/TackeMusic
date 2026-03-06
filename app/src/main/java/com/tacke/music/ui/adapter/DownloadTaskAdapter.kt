@@ -87,32 +87,41 @@ class DownloadTaskAdapter(
 
     inner class TaskViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
 
-        private val flIndex: FrameLayout = itemView.findViewById(R.id.flIndex)
-        private val ivCheckbox: ImageView = itemView.findViewById(R.id.ivCheckbox)
-        private val ivCover: ImageView = itemView.findViewById(R.id.ivCover)
-        private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
-        private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
-        private val layoutProgress: LinearLayout = itemView.findViewById(R.id.layoutProgress)
-        private val progressBar: ProgressBar = itemView.findViewById(R.id.progressBar)
-        private val tvProgress: TextView = itemView.findViewById(R.id.tvProgress)
-        private val tvSpeed: TextView = itemView.findViewById(R.id.tvSpeed)
-        private val tvSize: TextView = itemView.findViewById(R.id.tvSize)
-        private val tvStatus: TextView = itemView.findViewById(R.id.tvStatus)
-        private val btnControl: ImageButton = itemView.findViewById(R.id.btnControl)
+        private val contentContainer: FrameLayout = itemView.findViewById(R.id.contentContainer)
+
+        // 内容视图中的控件
+        private lateinit var flIndex: FrameLayout
+        private lateinit var ivCheckbox: ImageView
+        private lateinit var ivCover: ImageView
+        private lateinit var tvSongName: TextView
+        private lateinit var tvArtist: TextView
+        private lateinit var layoutProgress: LinearLayout
+        private lateinit var progressBar: ProgressBar
+        private lateinit var tvProgress: TextView
+        private lateinit var tvSpeed: TextView
+        private lateinit var tvSize: TextView
+        private lateinit var tvStatus: TextView
+        private lateinit var btnControl: ImageButton
 
         private val dateFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
         private var currentTask: DownloadTask? = null
+        private var contentView: View? = null
 
         init {
-            btnControl.setOnClickListener {
-                currentTask?.let { task ->
-                    onControlClick(task)
-                }
+            // 动态添加内容布局到内容容器
+            if (contentContainer.childCount == 0) {
+                contentView = LayoutInflater.from(itemView.context)
+                    .inflate(R.layout.item_download_task_content, contentContainer, true)
+                initContentViews()
             }
 
             itemView.setOnClickListener {
                 currentTask?.let { task ->
-                    onItemClick(task)
+                    if (isMultiSelectMode) {
+                        toggleSelection(task.id)
+                    } else {
+                        onItemClick(task)
+                    }
                 }
             }
 
@@ -120,6 +129,29 @@ class DownloadTaskAdapter(
                 currentTask?.let { task ->
                     onLongClick(task)
                 } ?: false
+            }
+        }
+
+        private fun initContentViews() {
+            contentView?.let { view ->
+                flIndex = view.findViewById(R.id.flIndex)
+                ivCheckbox = view.findViewById(R.id.ivCheckbox)
+                ivCover = view.findViewById(R.id.ivCover)
+                tvSongName = view.findViewById(R.id.tvSongName)
+                tvArtist = view.findViewById(R.id.tvArtist)
+                layoutProgress = view.findViewById(R.id.layoutProgress)
+                progressBar = view.findViewById(R.id.progressBar)
+                tvProgress = view.findViewById(R.id.tvProgress)
+                tvSpeed = view.findViewById(R.id.tvSpeed)
+                tvSize = view.findViewById(R.id.tvSize)
+                tvStatus = view.findViewById(R.id.tvStatus)
+                btnControl = view.findViewById(R.id.btnControl)
+
+                btnControl.setOnClickListener {
+                    currentTask?.let { task ->
+                        onControlClick(task)
+                    }
+                }
             }
         }
 
@@ -148,7 +180,7 @@ class DownloadTaskAdapter(
                 flIndex.visibility = View.GONE
                 ivCheckbox.visibility = View.GONE
                 btnControl.visibility = View.VISIBLE
-                itemView.setBackgroundResource(android.R.color.transparent)
+                contentView?.setBackgroundResource(android.R.color.transparent)
             }
 
             if (isHistory) {
@@ -186,9 +218,9 @@ class DownloadTaskAdapter(
 
         private fun updateSelectedBackground(isSelected: Boolean) {
             if (isSelected) {
-                itemView.setBackgroundColor(itemView.context.getColor(R.color.light_blue_cyan))
+                contentView?.setBackgroundColor(itemView.context.getColor(R.color.light_blue_cyan))
             } else {
-                itemView.setBackgroundResource(android.R.color.transparent)
+                contentView?.setBackgroundResource(android.R.color.transparent)
             }
         }
 

@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.view.GestureDetector
@@ -83,6 +84,11 @@ class PlayerActivity : AppCompatActivity() {
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            // 检查Activity是否已被销毁，避免崩溃
+            if (isDestroyed || isFinishing) {
+                return
+            }
+
             val binder = service as MusicPlaybackService.MusicBinder
             musicService = binder.getService()
             exoPlayer = binder.getPlayer()
@@ -95,14 +101,20 @@ class PlayerActivity : AppCompatActivity() {
                 // 空状态进入时，如果服务正在播放，恢复当前播放状态
                 if (currentMediaItem != null) {
                     lifecycleScope.launch {
-                        restoreFromCurrentPlayback()
+                        // 再次检查生命周期状态
+                        if (!isDestroyed && !isFinishing) {
+                            restoreFromCurrentPlayback()
+                        }
                     }
                 } else {
                     lifecycleScope.launch {
-                        // 尝试从播放列表恢复
-                        val restored = restoreFromCurrentPlayback()
-                        if (!restored) {
-                            setupEmptyState()
+                        // 再次检查生命周期状态
+                        if (!isDestroyed && !isFinishing) {
+                            // 尝试从播放列表恢复
+                            val restored = restoreFromCurrentPlayback()
+                            if (!restored) {
+                                setupEmptyState()
+                            }
                         }
                     }
                 }
@@ -213,8 +225,13 @@ class PlayerActivity : AppCompatActivity() {
         setupPlayer()
 
         // 启动并绑定服务
+        // Android 16+ 需要使用 startForegroundService 启动前台服务
         val serviceIntent = Intent(this, MusicPlaybackService::class.java)
-        startService(serviceIntent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
         bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
 
         // 加载播放列表并初始化播放模式图标
@@ -376,6 +393,10 @@ class PlayerActivity : AppCompatActivity() {
         lifecycleScope.launch {
             while (true) {
                 delay(100)
+                // 检查Activity是否已被销毁，避免崩溃
+                if (isDestroyed || isFinishing) {
+                    break
+                }
                 exoPlayer?.let { player ->
                     // 如果正在切换歌曲，跳过UI更新
                     if (!isTracking && !isSwitchingSong) {

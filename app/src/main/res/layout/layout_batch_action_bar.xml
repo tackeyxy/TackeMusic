@@ -51,7 +51,7 @@
     <!-- 全选 -->
     <LinearLayout
         android:id="@+id/btnSelectAll"
-        android:layout_width="wrap_content"
+        android:layout_width="64dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center"
@@ -75,10 +75,64 @@
             android:textColor="@color/text_primary" />
     </LinearLayout>
 
+    <!-- 暂停所选 -->
+    <LinearLayout
+        android:id="@+id/btnPauseSelected"
+        android:layout_width="64dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="8dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_pause"
+            android:tint="@color/primary" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="暂停"
+            android:textSize="10sp"
+            android:textColor="@color/text_primary" />
+    </LinearLayout>
+
+    <!-- 继续下载 -->
+    <LinearLayout
+        android:id="@+id/btnResumeSelected"
+        android:layout_width="64dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="8dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_play"
+            android:tint="@color/primary" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="继续"
+            android:textSize="10sp"
+            android:textColor="@color/text_primary" />
+    </LinearLayout>
+
     <!-- 下载 -->
     <LinearLayout
         android:id="@+id/btnBatchDownload"
-        android:layout_width="wrap_content"
+        android:layout_width="64dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center"
@@ -105,7 +159,7 @@
     <!-- 添加到喜欢 -->
     <LinearLayout
         android:id="@+id/btnAddToFavorite"
-        android:layout_width="wrap_content"
+        android:layout_width="64dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center"
@@ -132,7 +186,7 @@
     <!-- 添加到歌单 -->
     <LinearLayout
         android:id="@+id/btnAddToPlaylist"
-        android:layout_width="wrap_content"
+        android:layout_width="64dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center"
@@ -159,7 +213,7 @@
     <!-- 加入播放 -->
     <LinearLayout
         android:id="@+id/btnAddToNowPlaying"
-        android:layout_width="wrap_content"
+        android:layout_width="64dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center"
@@ -183,10 +237,37 @@
             android:textColor="@color/text_primary" />
     </LinearLayout>
 
+    <!-- 移除所选 -->
+    <LinearLayout
+        android:id="@+id/btnRemoveSelected"
+        android:layout_width="64dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="8dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_delete"
+            android:tint="@color/error" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="移除"
+            android:textSize="10sp"
+            android:textColor="@color/error" />
+    </LinearLayout>
+
     <!-- 清空列表 -->
     <LinearLayout
         android:id="@+id/btnClearAll"
-        android:layout_width="wrap_content"
+        android:layout_width="64dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center"

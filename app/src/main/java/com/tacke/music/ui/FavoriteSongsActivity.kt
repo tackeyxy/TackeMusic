@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -157,8 +158,8 @@ class FavoriteSongsActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        // 删除按钮 - 使用下载按钮的位置作为删除按钮
-        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
+        // 移除所选按钮
+        binding.batchActionBarContainer.btnRemoveSelected.setOnClickListener {
             showDeleteConfirm()
         }
 
@@ -238,6 +239,9 @@ class FavoriteSongsActivity : AppCompatActivity() {
         updateSelectedCount()
         // 隐藏"喜欢"按钮（已经在喜欢列表中）
         binding.batchActionBarContainer.btnAddToFavorite.visibility = View.GONE
+        // 隐藏下载管理专用按钮
+        binding.batchActionBarContainer.btnPauseSelected.visibility = View.GONE
+        binding.batchActionBarContainer.btnResumeSelected.visibility = View.GONE
         setupBatchActionListeners()
     }
 
@@ -272,6 +276,28 @@ class FavoriteSongsActivity : AppCompatActivity() {
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    private fun showDeleteSingleConfirm(song: FavoriteSongEntity) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("移除收藏")
+            .setMessage("确定要从我喜欢中移除歌曲\"${song.name}\"吗？")
+            .setPositiveButton("移除") { _, _ ->
+                removeSingleFromFavorites(song)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun removeSingleFromFavorites(song: FavoriteSongEntity) {
+        lifecycleScope.launch {
+            try {
+                favoriteRepository.removeFromFavorites(song)
+                Toast.makeText(this@FavoriteSongsActivity, "已移除\"${song.name}\"", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@FavoriteSongsActivity, "移除失败", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun removeSelectedFromFavorites() {
@@ -542,6 +568,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
         }
 
         inner class SongViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+            private val itemContainer: FrameLayout = itemView.findViewById(R.id.itemContainer)
             private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
             private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
             private val ivSource: ImageView = itemView.findViewById(R.id.ivSource)
@@ -552,7 +579,26 @@ class FavoriteSongsActivity : AppCompatActivity() {
             private val tvIndex: TextView = itemView.findViewById(R.id.tvIndex)
             private val coverOverlay: View = itemView.findViewById(R.id.coverOverlay)
 
+            private var currentSong: FavoriteSongEntity? = null
+
+            init {
+                itemView.setOnClickListener {
+                    currentSong?.let { song ->
+                        if (isMultiSelectMode) {
+                            toggleSelection(song.id)
+                            updateSelectedVisuals(selectedItems.contains(song.id))
+                        }
+                        onItemClick(song)
+                    }
+                }
+
+                itemView.setOnLongClickListener {
+                    currentSong?.let { onLongClick(it) } ?: false
+                }
+            }
+
             fun bind(song: FavoriteSongEntity, position: Int) {
+                currentSong = song
                 tvSongName.text = song.name
                 tvArtist.text = song.artists
                 tvIndex.text = (position + 1).toString()
@@ -575,30 +621,30 @@ class FavoriteSongsActivity : AppCompatActivity() {
                     tvIndex.visibility = View.GONE
                     ivCheckbox.isSelected = isSelected
                     updateSelectedVisuals(isSelected)
-
-                    itemView.setOnClickListener {
-                        onItemClick(song)
-                    }
                 } else {
                     flCheckbox.visibility = View.GONE
                     tvIndex.visibility = View.VISIBLE
                     resetVisuals()
-
-                    itemView.setOnClickListener { onItemClick(song) }
                 }
+            }
 
-                itemView.setOnLongClickListener { onLongClick(song) }
+            private fun toggleSelection(id: String) {
+                if (selectedItems.contains(id)) {
+                    selectedItems.remove(id)
+                } else {
+                    selectedItems.add(id)
+                }
             }
 
             private fun updateSelectedVisuals(isSelected: Boolean) {
                 if (isSelected) {
-                    itemView.setBackgroundResource(R.drawable.bg_item_selected)
+                    itemContainer.setBackgroundResource(R.drawable.bg_item_selected)
                     coverOverlay.visibility = View.VISIBLE
                     coverOverlay.alpha = 0.3f
                     cvCover.scaleX = 0.95f
                     cvCover.scaleY = 0.95f
                 } else {
-                    itemView.setBackgroundResource(android.R.color.transparent)
+                    itemContainer.setBackgroundResource(android.R.color.transparent)
                     coverOverlay.visibility = View.GONE
                     cvCover.scaleX = 1f
                     cvCover.scaleY = 1f
@@ -606,7 +652,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
             }
 
             private fun resetVisuals() {
-                itemView.setBackgroundResource(android.R.color.transparent)
+                itemContainer.setBackgroundResource(android.R.color.transparent)
                 coverOverlay.visibility = View.GONE
                 cvCover.scaleX = 1f
                 cvCover.scaleY = 1f

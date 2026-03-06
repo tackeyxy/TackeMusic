@@ -61,7 +61,27 @@ class RecentPlayAdapter(
         private val flIndex: View = itemView.findViewById(R.id.flIndex)
         private val tvPlayTime: TextView = itemView.findViewById(R.id.tvPlayTime)
 
+        private var currentRecentPlay: RecentPlay? = null
+
+        init {
+            itemView.setOnClickListener {
+                currentRecentPlay?.let { recentPlay ->
+                    if (isMultiSelectMode) {
+                        toggleSelection(recentPlay.id)
+                        updateCheckboxState(selectedItems.contains(recentPlay.id))
+                        updateSelectedBackground(selectedItems.contains(recentPlay.id))
+                    }
+                    onItemClick(recentPlay)
+                }
+            }
+
+            itemView.setOnLongClickListener {
+                currentRecentPlay?.let { onLongClick(it) } ?: false
+            }
+        }
+
         fun bind(recentPlay: RecentPlay) {
+            currentRecentPlay = recentPlay
             tvSongName.text = recentPlay.name
             tvArtist.text = recentPlay.artists
             tvPlayTime.text = formatTime(recentPlay.playedAt)
@@ -87,21 +107,6 @@ class RecentPlayAdapter(
 
                 // 设置选中状态的视觉反馈
                 updateSelectedBackground(isSelected)
-
-                itemView.setOnClickListener {
-                    // 切换选中状态
-                    val newSelectedState = !ivCheckbox.isSelected
-                    ivCheckbox.isSelected = newSelectedState
-                    if (newSelectedState) {
-                        selectedItems.add(recentPlay.id)
-                    } else {
-                        selectedItems.remove(recentPlay.id)
-                    }
-                    // 更新当前项的背景
-                    updateSelectedBackground(newSelectedState)
-                    // 通知外部选中状态变化
-                    onItemClick(recentPlay)
-                }
             } else {
                 // 非多选模式
                 flIndex.visibility = View.GONE
@@ -111,11 +116,19 @@ class RecentPlayAdapter(
 
                 // 重置背景
                 itemView.setBackgroundResource(android.R.color.transparent)
-
-                itemView.setOnClickListener { onItemClick(recentPlay) }
             }
+        }
 
-            itemView.setOnLongClickListener { onLongClick(recentPlay) }
+        private fun toggleSelection(id: String) {
+            if (selectedItems.contains(id)) {
+                selectedItems.remove(id)
+            } else {
+                selectedItems.add(id)
+            }
+        }
+
+        private fun updateCheckboxState(isSelected: Boolean) {
+            ivCheckbox.isSelected = isSelected
         }
 
         private fun updateSelectedBackground(isSelected: Boolean) {

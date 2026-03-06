@@ -14,6 +14,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 class PlaylistRepository(private val context: Context) {
 
@@ -97,17 +98,36 @@ class PlaylistRepository(private val context: Context) {
     }
 
     suspend fun addSongToPlaylist(playlistId: String, song: Song, platform: String) {
-        // 先使用原始封面URL快速添加到歌单，不等待封面下载
+        // 获取歌曲详情以确保有封面URL
+        val platformEnum = when (platform.lowercase()) {
+            "kuwo" -> MusicRepository.Platform.KUWO
+            "netease" -> MusicRepository.Platform.NETEASE
+            else -> MusicRepository.Platform.KUWO
+        }
+        
+        // 如果歌曲没有封面URL，先获取歌曲详情
+        var coverUrl = song.coverUrl
+        if (coverUrl.isNullOrEmpty()) {
+            try {
+                val songDetail = MusicRepository().getSongDetail(platformEnum, song.id, "320k")
+                coverUrl = songDetail?.cover
+                Log.d(TAG, "获取歌曲详情封面: ${song.name}, coverUrl=$coverUrl")
+            } catch (e: Exception) {
+                Log.e(TAG, "获取歌曲详情失败: ${song.name}, ${e.message}")
+            }
+        }
+        
+        // 使用获取到的封面URL创建PlaylistSong
         val playlistSong = PlaylistSong(
             id = song.id,
             name = song.name,
             artists = song.artists,
-            coverUrl = song.coverUrl,
+            coverUrl = coverUrl,
             platform = platform
         )
         playlistDao.addSongToPlaylist(playlistId, playlistSong, songEntityDao)
         
-        Log.d(TAG, "添加歌曲到歌单: ${song.name}, 封面将在后台异步下载")
+        Log.d(TAG, "添加歌曲到歌单: ${song.name}, coverUrl=$coverUrl, 封面将在后台异步下载")
         
         // 后台异步下载封面
         GlobalScope.launch(Dispatchers.IO) {
@@ -120,6 +140,8 @@ class PlaylistRepository(private val context: Context) {
                 if (localCoverPath != null) {
                     // 下载成功，更新数据库中的封面路径
                     playlistDao.updateSongCoverUrl(playlistId, song.id, localCoverPath)
+                    // 同时更新歌单封面为本地路径（这是最新添加的歌曲）
+                    playlistDao.updatePlaylistCover(playlistId, localCoverPath)
                     Log.d(TAG, "封面异步下载完成: ${song.name}, 路径: $localCoverPath")
                 }
             } catch (e: Exception) {
@@ -129,16 +151,32 @@ class PlaylistRepository(private val context: Context) {
     }
 
     suspend fun addSongsToPlaylist(playlistId: String, songs: List<Song>, platform: String) {
-        // 先使用原始封面URL快速将所有歌曲添加到歌单，不等待封面下载
+        val platformEnum = when (platform.lowercase()) {
+            "kuwo" -> MusicRepository.Platform.KUWO
+            "netease" -> MusicRepository.Platform.NETEASE
+            else -> MusicRepository.Platform.KUWO
+        }
+        
+        // 为每首歌曲获取封面URL（如果没有的话）
         val playlistSongs = songs.map { song ->
+            var coverUrl = song.coverUrl
+            if (coverUrl.isNullOrEmpty()) {
+                try {
+                    val songDetail = MusicRepository().getSongDetail(platformEnum, song.id, "320k")
+                    coverUrl = songDetail?.cover
+                } catch (e: Exception) {
+                    Log.e(TAG, "获取歌曲详情失败: ${song.name}, ${e.message}")
+                }
+            }
             PlaylistSong(
                 id = song.id,
                 name = song.name,
                 artists = song.artists,
-                coverUrl = song.coverUrl,
+                coverUrl = coverUrl,
                 platform = platform
             )
         }
+        
         playlistDao.addSongsToPlaylist(playlistId, playlistSongs, songEntityDao)
         
         Log.d(TAG, "批量添加 ${songs.size} 首歌曲到歌单，封面将在后台异步下载")
@@ -146,6 +184,7 @@ class PlaylistRepository(private val context: Context) {
         // 后台异步批量下载封面
         GlobalScope.launch(Dispatchers.IO) {
             var successCount = 0
+            var lastCoverPath: String? = null
             songs.forEach { song ->
                 try {
                     val localCoverPath = CoverImageManager.downloadAndCacheCover(
@@ -156,13 +195,20 @@ class PlaylistRepository(private val context: Context) {
                     if (localCoverPath != null) {
                         // 下载成功，更新数据库中的封面路径
                         playlistDao.updateSongCoverUrl(playlistId, song.id, localCoverPath)
+                        lastCoverPath = localCoverPath
                         successCount++
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "封面异步下载失败: ${song.name}, ${e.message}")
                 }
             }
-            Log.d(TAG, "批量封面异步下载完成: $successCount/${songs.size}")
+            // 批量添加完成后，更新歌单封面为最后一首成功下载的歌曲封面
+            if (lastCoverPath != null) {
+                playlistDao.updatePlaylistCover(playlistId, lastCoverPath)
+                Log.d(TAG, "批量封面异步下载完成: $successCount/${songs.size}, 歌单封面已更新")
+            } else {
+                Log.d(TAG, "批量封面异步下载完成: $successCount/${songs.size}, 无有效封面")
+            }
         }
     }
 
