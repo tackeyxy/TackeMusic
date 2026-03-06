@@ -21,6 +21,7 @@ import com.tacke.music.databinding.ActivityDownloadBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.ui.adapter.DownloadTaskAdapter
+import com.tacke.music.util.StatusBarUtil
 import kotlinx.coroutines.launch
 
 class DownloadActivity : AppCompatActivity() {
@@ -44,11 +45,18 @@ class DownloadActivity : AppCompatActivity() {
         playlistRepository = PlaylistRepository(this)
         playbackManager = PlaybackManager.getInstance(this)
 
+        setupStatusBar()
         setupToolbar()
         setupTabLayout()
         setupRecyclerViews()
         setupBatchActions()
         observeDownloadData()
+    }
+
+    private fun setupStatusBar() {
+        StatusBarUtil.setImmersiveStatusBar(this)
+        StatusBarUtil.setLightStatusBar(this, true)
+        StatusBarUtil.setStatusBarHeight(binding.statusBarBackground)
     }
 
     private fun setupToolbar() {

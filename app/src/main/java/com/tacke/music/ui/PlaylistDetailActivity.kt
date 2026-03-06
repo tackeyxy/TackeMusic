@@ -19,6 +19,7 @@ import com.tacke.music.databinding.ActivityPlaylistDetailBinding
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.PlaylistSongAdapter
+import com.tacke.music.util.StatusBarUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -57,10 +58,17 @@ class PlaylistDetailActivity : AppCompatActivity() {
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
 
+        setupStatusBar()
         setupUI()
         setupRecyclerView()
         setupClickListeners()
         observeSongs()
+    }
+
+    private fun setupStatusBar() {
+        StatusBarUtil.setImmersiveStatusBar(this)
+        StatusBarUtil.setLightStatusBar(this, true)
+        StatusBarUtil.setStatusBarHeight(binding.statusBarBackground)
     }
 
     private fun setupUI() {
@@ -222,22 +230,43 @@ class PlaylistDetailActivity : AppCompatActivity() {
     }
 
     private fun observeSongs() {
+        android.util.Log.d("PlaylistDetail", "开始观察歌曲列表, playlistId=$playlistId")
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                playlistRepository.getSongsInPlaylist(playlistId).collect { songs ->
-                    songAdapter.submitList(songs)
-                    updateEmptyState(songs.isEmpty())
-                    updateSongCount(songs.size)
+                android.util.Log.d("PlaylistDetail", "Lifecycle STARTED, 开始收集数据")
+                try {
+                    playlistRepository.getSongsInPlaylist(playlistId).collect { songs ->
+                        android.util.Log.d("PlaylistDetail", "加载到 ${songs.size} 首歌曲, adapter=${songAdapter != null}, recyclerView=${binding.recyclerView != null}")
+                        songs.forEachIndexed { index, song ->
+                            android.util.Log.d("PlaylistDetail", "歌曲 $index: ${song.name}, id=${song.id}")
+                        }
+                        songAdapter.submitList(songs)
+                        android.util.Log.d("PlaylistDetail", "submitList 后 adapter itemCount=${songAdapter.itemCount}")
+                        updateEmptyState(songs.isEmpty())
+                        updateSongCount(songs.size)
+                        binding.recyclerView.post {
+                            android.util.Log.d("PlaylistDetail", "RecyclerView childCount=${binding.recyclerView.childCount}, visibility=${binding.recyclerView.visibility}")
+                        }
 
-                    if (isMultiSelectMode) {
-                        val validSelections = selectedSongs.intersect(songs.map { it.id }.toSet())
-                        if (validSelections.size != selectedSongs.size) {
-                            selectedSongs.clear()
-                            selectedSongs.addAll(validSelections)
-                            songAdapter.setSelectedItems(selectedSongs)
-                            updateSelectedCount()
+                        if (isMultiSelectMode) {
+                            val validSelections = selectedSongs.intersect(songs.map { it.id }.toSet())
+                            if (validSelections.size != selectedSongs.size) {
+                                selectedSongs.clear()
+                                selectedSongs.addAll(validSelections)
+                                songAdapter.setSelectedItems(selectedSongs)
+                                updateSelectedCount()
+                            }
                         }
                     }
+                } catch (e: Exception) {
+                    // 忽略协程取消异常，这是正常的生命周期行为
+                    if (e is kotlinx.coroutines.CancellationException) {
+                        android.util.Log.d("PlaylistDetail", "协程已取消")
+                        throw e
+                    }
+                    android.util.Log.e("PlaylistDetail", "加载歌曲列表失败: ${e.message}", e)
+                    Toast.makeText(this@PlaylistDetailActivity, "加载失败: ${e.message}", Toast.LENGTH_LONG).show()
+                    updateEmptyState(true)
                 }
             }
         }

@@ -20,6 +20,7 @@ import com.tacke.music.databinding.ActivityRecentPlayBinding
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.RecentPlayAdapter
+import com.tacke.music.util.StatusBarUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -48,9 +49,16 @@ class RecentPlayActivity : AppCompatActivity() {
         playbackManager = PlaybackManager.getInstance(this)
         playlistManager = PlaylistManager.getInstance(this)
 
+        setupStatusBar()
         setupRecyclerView()
         setupClickListeners()
         observeRecentPlays()
+    }
+
+    private fun setupStatusBar() {
+        StatusBarUtil.setImmersiveStatusBar(this)
+        StatusBarUtil.setLightStatusBar(this, true)
+        StatusBarUtil.setStatusBarHeight(binding.statusBarBackground)
     }
 
     private fun setupRecyclerView() {
@@ -190,28 +198,42 @@ class RecentPlayActivity : AppCompatActivity() {
     private fun observeRecentPlays() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                recentPlayRepository.getRecentPlays().collect { recentPlays ->
-                    adapter.submitList(recentPlays)
-                    updateEmptyState(recentPlays.isEmpty())
-                    updateRecordCount(recentPlays.size)
+                try {
+                    recentPlayRepository.getRecentPlays().collect { recentPlays ->
+                        android.util.Log.d("RecentPlay", "加载到 ${recentPlays.size} 条播放记录")
+                        adapter.submitList(recentPlays)
+                        updateEmptyState(recentPlays.isEmpty())
+                        updateRecordCount(recentPlays.size)
 
-                    if (isMultiSelectMode) {
-                        val validSelections = selectedItems.intersect(recentPlays.map { it.id }.toSet())
-                        if (validSelections.size != selectedItems.size) {
-                            selectedItems.clear()
-                            selectedItems.addAll(validSelections)
-                            adapter.setSelectedItems(selectedItems)
-                            updateSelectedCount()
+                        if (isMultiSelectMode) {
+                            val validSelections = selectedItems.intersect(recentPlays.map { it.id }.toSet())
+                            if (validSelections.size != selectedItems.size) {
+                                selectedItems.clear()
+                                selectedItems.addAll(validSelections)
+                                adapter.setSelectedItems(selectedItems)
+                                updateSelectedCount()
+                            }
                         }
                     }
+                } catch (e: Exception) {
+                    // 忽略协程取消异常，这是正常的生命周期行为
+                    if (e is kotlinx.coroutines.CancellationException) {
+                        android.util.Log.d("RecentPlay", "协程已取消")
+                        throw e
+                    }
+                    android.util.Log.e("RecentPlay", "加载播放记录失败: ${e.message}", e)
+                    Toast.makeText(this@RecentPlayActivity, "加载失败: ${e.message}", Toast.LENGTH_LONG).show()
+                    updateEmptyState(true)
                 }
             }
         }
     }
 
     private fun updateEmptyState(isEmpty: Boolean) {
+        android.util.Log.d("RecentPlay", "updateEmptyState: isEmpty=$isEmpty, emptyView=${binding.emptyView.visibility}, recyclerView=${binding.recyclerView.visibility}")
         binding.emptyView.visibility = if (isEmpty) View.VISIBLE else View.GONE
         binding.recyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
+        android.util.Log.d("RecentPlay", "updateEmptyState 后: emptyView=${binding.emptyView.visibility}, recyclerView=${binding.recyclerView.visibility}")
     }
 
     private fun updateRecordCount(count: Int) {

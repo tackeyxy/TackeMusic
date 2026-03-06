@@ -28,6 +28,7 @@ import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityPlaylistDetailBinding
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
+import com.tacke.music.util.StatusBarUtil
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -60,10 +61,17 @@ class FavoriteSongsActivity : AppCompatActivity() {
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
 
+        setupStatusBar()
         setupUI()
         setupRecyclerView()
         setupClickListeners()
         observeFavoriteSongs()
+    }
+
+    private fun setupStatusBar() {
+        StatusBarUtil.setImmersiveStatusBar(this)
+        StatusBarUtil.setLightStatusBar(this, true)
+        StatusBarUtil.setStatusBarHeight(binding.statusBarBackground)
     }
 
     private fun setupUI() {
@@ -202,29 +210,42 @@ class FavoriteSongsActivity : AppCompatActivity() {
     private fun observeFavoriteSongs() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                favoriteRepository.getAllFavoriteSongs().collect { songs ->
-                    favoriteSongs = songs
-                    songAdapter.submitList(songs)
-                    binding.tvSongListTitle.text = "歌曲列表（共${songs.size}首）"
+                try {
+                    favoriteRepository.getAllFavoriteSongs().collect { songs ->
+                        android.util.Log.d("FavoriteSongs", "加载到 ${songs.size} 首喜欢歌曲")
+                        favoriteSongs = songs
+                        songAdapter.submitList(songs)
+                        binding.tvSongListTitle.text = "歌曲列表（共${songs.size}首）"
 
-                    // 更新空状态
-                    if (songs.isEmpty()) {
-                        binding.emptyView.visibility = View.VISIBLE
-                        binding.recyclerView.visibility = View.GONE
-                    } else {
-                        binding.emptyView.visibility = View.GONE
-                        binding.recyclerView.visibility = View.VISIBLE
-                    }
+                        // 更新空状态
+                        if (songs.isEmpty()) {
+                            binding.emptyView.visibility = View.VISIBLE
+                            binding.recyclerView.visibility = View.GONE
+                        } else {
+                            binding.emptyView.visibility = View.GONE
+                            binding.recyclerView.visibility = View.VISIBLE
+                        }
 
-                    if (isMultiSelectMode) {
-                        val validSelections = selectedSongs.intersect(songs.map { it.id }.toSet())
-                        if (validSelections.size != selectedSongs.size) {
-                            selectedSongs.clear()
-                            selectedSongs.addAll(validSelections)
-                            songAdapter.setSelectedItems(selectedSongs)
-                            updateSelectedCount()
+                        if (isMultiSelectMode) {
+                            val validSelections = selectedSongs.intersect(songs.map { it.id }.toSet())
+                            if (validSelections.size != selectedSongs.size) {
+                                selectedSongs.clear()
+                                selectedSongs.addAll(validSelections)
+                                songAdapter.setSelectedItems(selectedSongs)
+                                updateSelectedCount()
+                            }
                         }
                     }
+                } catch (e: Exception) {
+                    // 忽略协程取消异常，这是正常的生命周期行为
+                    if (e is kotlinx.coroutines.CancellationException) {
+                        android.util.Log.d("FavoriteSongs", "协程已取消")
+                        throw e
+                    }
+                    android.util.Log.e("FavoriteSongs", "加载喜欢歌曲失败: ${e.message}", e)
+                    Toast.makeText(this@FavoriteSongsActivity, "加载失败: ${e.message}", Toast.LENGTH_LONG).show()
+                    binding.emptyView.visibility = View.VISIBLE
+                    binding.recyclerView.visibility = View.GONE
                 }
             }
         }

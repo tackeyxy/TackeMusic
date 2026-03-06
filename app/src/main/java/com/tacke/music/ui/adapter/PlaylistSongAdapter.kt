@@ -30,8 +30,10 @@ class PlaylistSongAdapter(
     private val selectedItems = mutableSetOf<String>()
 
     fun submitList(newSongs: List<PlaylistSong>) {
+        android.util.Log.d("PlaylistSongAdapter", "submitList: ${newSongs.size} 首歌曲")
         songs = newSongs
         notifyDataSetChanged()
+        android.util.Log.d("PlaylistSongAdapter", "submitList 后 itemCount=$itemCount")
     }
 
     fun setMultiSelectMode(enabled: Boolean) {
