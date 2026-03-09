@@ -174,7 +174,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         binding.layoutLyricColor.setOnClickListener {
-            showLyricColorPickerDialog()
+            startActivity(Intent(this, LyricSettingsActivity::class.java))
         }
 
         binding.layoutLogViewer.setOnClickListener {

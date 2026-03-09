@@ -19,6 +19,7 @@
     <!-- APK下载和安装权限 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <application
         android:name=".MusicApplication"
@@ -63,6 +64,12 @@
             android:name=".ui.SettingsActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".ui.LyricSettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="歌词设置" />
 
         <activity
             android:name=".ui.DownloadActivity"
@@ -113,6 +120,12 @@
 
         <service
             android:name=".service.MusicPlaybackService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <service
+            android:name=".service.FloatingLyricsService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />

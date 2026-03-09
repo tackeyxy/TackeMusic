@@ -110,7 +110,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginStart="16dp"
-                android:text="歌词颜色"
+                android:text="歌词设置"
                 android:textSize="15sp"
                 android:textColor="@color/text_primary" />
 

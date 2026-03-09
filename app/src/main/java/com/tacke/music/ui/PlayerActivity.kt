@@ -40,8 +40,12 @@ import com.tacke.music.data.model.Song
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
+import com.tacke.music.service.FloatingLyricsService
 import com.tacke.music.service.MusicPlaybackService
 import com.tacke.music.ui.adapter.PlaylistDialogAdapter
+import android.net.Uri
+import android.provider.Settings
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -400,6 +404,10 @@ class PlayerActivity : AppCompatActivity() {
                     updatePlayPauseButton(player.isPlaying)
                     // 发送播放进度广播给歌词页面
                     sendPlaybackUpdate(player.currentPosition, player.duration, player.isPlaying)
+                    // 更新悬浮歌词位置
+                    updateFloatingLyricsPosition(player.currentPosition)
+                    // 更新悬浮歌词播放状态
+                    updateFloatingLyricsState(player.isPlaying)
                 }
             }
         }
@@ -700,6 +708,8 @@ class PlayerActivity : AppCompatActivity() {
                                 songDetail = detail
                                 songLyrics = detail.lyrics
                                 updateUI(detail)
+                                // 更新悬浮歌词
+                                sendFloatingLyricsUpdate()
                             }
                         }
                     }
@@ -783,6 +793,9 @@ class PlayerActivity : AppCompatActivity() {
 
                 // 更新播放控制UI
                 updateUIForCurrentSong()
+
+                // 更新悬浮歌词
+                sendFloatingLyricsUpdate()
             }
         }
     }
@@ -938,6 +951,15 @@ class PlayerActivity : AppCompatActivity() {
                 Toast.makeText(this, "暂无歌曲", Toast.LENGTH_SHORT).show()
             } else {
                 showMoreOptions()
+            }
+        }
+
+        // 悬浮歌词按钮
+        binding.btnFloatingLyrics.setOnClickListener {
+            if (isFromEmptyState) {
+                Toast.makeText(this, "暂无歌曲", Toast.LENGTH_SHORT).show()
+            } else {
+                toggleFloatingLyrics()
             }
         }
 
@@ -1371,7 +1393,7 @@ class PlayerActivity : AppCompatActivity() {
         }
 
         // 获取用户设置的歌词颜色
-        val lyricColor = SettingsActivity.getLyricColor(this)
+        val lyricColor = LyricSettingsActivity.getPlayerLyricColor(this)
 
         if (currentIndex >= 0) {
             binding.tvLyricsCurrent.text = parsedLyrics[currentIndex].second
@@ -1743,6 +1765,93 @@ class PlayerActivity : AppCompatActivity() {
             LocalBroadcastManager.getInstance(this).unregisterReceiver(playbackControlReceiver)
         } catch (e: Exception) {
             // 忽略未注册的错误
+        }
+    }
+
+    // 悬浮歌词相关方法
+    private fun toggleFloatingLyrics() {
+        // 检查是否启用了悬浮歌词功能
+        if (!LyricSettingsActivity.isFloatingLyricsEnabled(this)) {
+            Toast.makeText(this, "请先前往设置-歌词设置中启用悬浮歌词", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        // 检查悬浮窗权限
+        if (!Settings.canDrawOverlays(this)) {
+            requestOverlayPermission()
+            return
+        }
+
+        // 检查服务是否正在运行
+        if (FloatingLyricsService.isRunning(this)) {
+            // 停止悬浮歌词
+            stopFloatingLyrics()
+            Toast.makeText(this, "悬浮歌词已关闭", Toast.LENGTH_SHORT).show()
+        } else {
+            // 启动悬浮歌词
+            startFloatingLyrics()
+        }
+    }
+
+    private fun requestOverlayPermission() {
+        Toast.makeText(this, "需要悬浮窗权限才能显示悬浮歌词", Toast.LENGTH_LONG).show()
+        val intent = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:$packageName")
+        )
+        startActivity(intent)
+    }
+
+    private fun startFloatingLyrics() {
+        val intent = Intent(this, FloatingLyricsService::class.java).apply {
+            action = FloatingLyricsService.ACTION_SHOW_FLOATING_LYRICS
+            putExtra(FloatingLyricsService.EXTRA_LYRICS, songLyrics ?: songDetail?.lyrics)
+            putExtra(FloatingLyricsService.EXTRA_SONG_NAME, songName)
+            putExtra(FloatingLyricsService.EXTRA_ARTISTS, songArtists)
+            putExtra(FloatingLyricsService.EXTRA_LYRIC_COLOR, LyricSettingsActivity.getFloatingLyricColor(this@PlayerActivity))
+        }
+        // 使用 startForegroundService 启动服务（Android 8.0+ 要求）
+        ContextCompat.startForegroundService(this, intent)
+        Toast.makeText(this, "悬浮歌词已开启", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun stopFloatingLyrics() {
+        val intent = Intent(this, FloatingLyricsService::class.java).apply {
+            action = FloatingLyricsService.ACTION_HIDE_FLOATING_LYRICS
+        }
+        startService(intent)
+    }
+
+    private fun updateFloatingLyricsPosition(position: Long) {
+        if (FloatingLyricsService.isRunning(this)) {
+            val intent = Intent(this, FloatingLyricsService::class.java).apply {
+                action = FloatingLyricsService.ACTION_UPDATE_POSITION
+                putExtra(FloatingLyricsService.EXTRA_POSITION, position)
+            }
+            startService(intent)
+        }
+    }
+
+    private fun updateFloatingLyricsState(isPlaying: Boolean) {
+        if (FloatingLyricsService.isRunning(this)) {
+            val intent = Intent(this, FloatingLyricsService::class.java).apply {
+                action = FloatingLyricsService.ACTION_PLAYBACK_STATE_CHANGED
+                putExtra(FloatingLyricsService.EXTRA_IS_PLAYING, isPlaying)
+            }
+            startService(intent)
+        }
+    }
+
+    private fun sendFloatingLyricsUpdate() {
+        if (FloatingLyricsService.isRunning(this)) {
+            val intent = Intent(this, FloatingLyricsService::class.java).apply {
+                action = FloatingLyricsService.ACTION_UPDATE_LYRICS
+                putExtra(FloatingLyricsService.EXTRA_LYRICS, songLyrics ?: songDetail?.lyrics)
+                putExtra(FloatingLyricsService.EXTRA_SONG_NAME, songName)
+                putExtra(FloatingLyricsService.EXTRA_ARTISTS, songArtists)
+                putExtra(FloatingLyricsService.EXTRA_LYRIC_COLOR, LyricSettingsActivity.getFloatingLyricColor(this@PlayerActivity))
+            }
+            startService(intent)
         }
     }
 }
