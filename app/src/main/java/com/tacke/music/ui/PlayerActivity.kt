@@ -349,13 +349,14 @@ class PlayerActivity : AppCompatActivity() {
                 if (playbackState == Player.STATE_READY) {
                     val duration = exoPlayer?.duration ?: 0
                     val currentPosition = exoPlayer?.currentPosition ?: 0
-                    if (duration > 0) {
+                    // 修复：确保duration是有效值（大于0且不是TIME_UNSET）
+                    if (duration > 0 && duration != androidx.media3.common.C.TIME_UNSET) {
                         binding.seekBar.max = duration.toInt()
                         binding.tvTotalTime.text = formatTime(duration)
                     }
                     // 同步当前进度显示（仅在非切换歌曲状态下）
                     if (!isSwitchingSong) {
-                        binding.seekBar.progress = currentPosition.toInt()
+                        binding.seekBar.progress = currentPosition.toInt().coerceIn(0, binding.seekBar.max)
                         binding.tvCurrentTime.text = formatTime(currentPosition)
                     }
                 } else if (playbackState == Player.STATE_ENDED) {
@@ -382,9 +383,19 @@ class PlayerActivity : AppCompatActivity() {
                     // 如果正在切换歌曲，跳过UI更新
                     if (!isTracking && !isSwitchingSong) {
                         val currentPosition = player.currentPosition
-                        binding.seekBar.progress = currentPosition.toInt()
-                        binding.tvCurrentTime.text = formatTime(currentPosition)
-                        updateLyrics(currentPosition)
+                        val duration = player.duration
+                        // 修复：确保position和duration都是有效值
+                        if (duration > 0 && duration != androidx.media3.common.C.TIME_UNSET) {
+                            // 如果seekBar.max还没设置或不对，先设置
+                            if (binding.seekBar.max != duration.toInt()) {
+                                binding.seekBar.max = duration.toInt()
+                                binding.tvTotalTime.text = formatTime(duration)
+                            }
+                            // 确保progress在有效范围内
+                            binding.seekBar.progress = currentPosition.toInt().coerceIn(0, binding.seekBar.max)
+                            binding.tvCurrentTime.text = formatTime(currentPosition)
+                            updateLyrics(currentPosition)
+                        }
                     }
                     updatePlayPauseButton(player.isPlaying)
                     // 发送播放进度广播给歌词页面
@@ -427,8 +438,16 @@ class PlayerActivity : AppCompatActivity() {
         binding.tvSongName.text = songName
         binding.tvArtist.text = songArtists
         loadCoverAndBackground(songCover)
-        binding.seekBar.max = (exoPlayer?.duration ?: 0).toInt()
-        binding.tvTotalTime.text = formatTime(exoPlayer?.duration ?: 0)
+        // 修复：确保duration是有效值
+        val duration = exoPlayer?.duration ?: 0
+        if (duration > 0 && duration != androidx.media3.common.C.TIME_UNSET) {
+            binding.seekBar.max = duration.toInt()
+            binding.tvTotalTime.text = formatTime(duration)
+        }
+        // 同步当前进度
+        val currentPosition = exoPlayer?.currentPosition ?: 0
+        binding.seekBar.progress = currentPosition.toInt().coerceIn(0, binding.seekBar.max)
+        binding.tvCurrentTime.text = formatTime(currentPosition)
         updatePlayPauseButton(exoPlayer?.isPlaying == true)
         if (exoPlayer?.isPlaying == true) {
             startAlbumRotation()
@@ -1433,15 +1452,22 @@ class PlayerActivity : AppCompatActivity() {
             player.setMediaItem(mediaItem, position)
             player.prepare()
 
-            // 立即重置UI进度显示
-            binding.seekBar.progress = position.toInt()
-            binding.tvCurrentTime.text = formatTime(position)
+            // 修复：立即重置UI进度显示，但确保position不为负数
+            val safePosition = position.coerceAtLeast(0)
+            binding.seekBar.progress = safePosition.toInt()
+            binding.tvCurrentTime.text = formatTime(safePosition)
             // 重置保存的播放进度
-            playbackPreferences.currentPosition = position
+            playbackPreferences.currentPosition = safePosition
 
-            // 延迟重置切换歌曲标志，确保播放器已经准备好
+            // 延迟重置切换歌曲标志，确保播放器已经准备好并更新duration显示
             lifecycleScope.launch {
-                delay(200)
+                delay(300)
+                // 播放器准备好后，更新duration显示
+                val duration = player.duration
+                if (duration > 0 && duration != androidx.media3.common.C.TIME_UNSET) {
+                    binding.seekBar.max = duration.toInt()
+                    binding.tvTotalTime.text = formatTime(duration)
+                }
                 isSwitchingSong = false
             }
 

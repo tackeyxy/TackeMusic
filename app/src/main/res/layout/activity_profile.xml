@@ -61,7 +61,6 @@
                     android:orientation="vertical"
                     android:gravity="center_vertical"
                     android:padding="16dp"
-                    android:background="@drawable/bg_card_local_music"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground">
@@ -102,7 +101,6 @@
                     android:orientation="vertical"
                     android:gravity="center_vertical"
                     android:padding="16dp"
-                    android:background="@drawable/bg_card_download"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground">
@@ -143,7 +141,6 @@
                     android:orientation="vertical"
                     android:gravity="center_vertical"
                     android:padding="16dp"
-                    android:background="@drawable/bg_card_favorite"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground">
@@ -184,7 +181,6 @@
                     android:orientation="vertical"
                     android:gravity="center_vertical"
                     android:padding="16dp"
-                    android:background="@drawable/bg_card_history"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground">
