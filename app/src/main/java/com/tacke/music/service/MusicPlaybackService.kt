@@ -98,7 +98,11 @@ class MusicPlaybackService : Service() {
             addAction(ACTION_PREVIOUS)
             addAction(ACTION_STOP)
         }
-        registerReceiver(controlReceiver, filter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            registerReceiver(controlReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(controlReceiver, filter)
+        }
     }
 
     private val controlReceiver = object : BroadcastReceiver() {

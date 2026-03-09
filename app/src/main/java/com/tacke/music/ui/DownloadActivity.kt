@@ -383,8 +383,12 @@ class DownloadActivity : AppCompatActivity() {
         // 根据当前标签页设置适配器
         if (binding.tabLayout.selectedTabPosition == 0) {
             downloadingAdapter.setMultiSelectMode(true)
+            // 正在下载页面显示下载按钮（用于删除任务）
+            binding.batchActionBarContainer.btnBatchDownload.visibility = View.VISIBLE
         } else {
             historyAdapter.setMultiSelectMode(true)
+            // 下载历史页面隐藏下载按钮（已下载的文件不需要再下载）
+            binding.batchActionBarContainer.btnBatchDownload.visibility = View.GONE
         }
 
         updateSelectedCount(0)
@@ -397,6 +401,9 @@ class DownloadActivity : AppCompatActivity() {
 
         downloadingAdapter.setMultiSelectMode(false)
         historyAdapter.setMultiSelectMode(false)
+
+        // 恢复下载按钮的可见性
+        binding.batchActionBarContainer.btnBatchDownload.visibility = View.VISIBLE
     }
 
     private fun updateSelectedCount(count: Int) {

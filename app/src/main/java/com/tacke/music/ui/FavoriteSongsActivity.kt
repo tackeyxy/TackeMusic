@@ -25,6 +25,7 @@ import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityPlaylistDetailBinding
+import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import kotlinx.coroutines.launch
@@ -37,6 +38,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
     private lateinit var playlistRepository: PlaylistRepository
     private lateinit var playlistManager: PlaylistManager
     private lateinit var playbackManager: PlaybackManager
+    private lateinit var downloadManager: DownloadManager
     private lateinit var songAdapter: FavoriteSongAdapter
     private var favoriteSongs: List<FavoriteSongEntity> = emptyList()
     private var isMultiSelectMode = false
@@ -58,6 +60,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
         playlistRepository = PlaylistRepository(this)
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
+        downloadManager = DownloadManager.getInstance(this)
 
         setupUI()
         setupRecyclerView()
@@ -157,8 +160,18 @@ class FavoriteSongsActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        // 删除按钮 - 使用下载按钮的位置作为删除按钮
+        // 下载按钮 - 真正的下载功能
         binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
+            val selectedSongList = favoriteSongs.filter { selectedSongs.contains(it.id) }
+            if (selectedSongList.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showBatchDownloadQualityDialog(selectedSongList)
+        }
+
+        // 移除按钮 - 从我喜欢中移除
+        binding.batchActionBarContainer.btnBatchRemove.setOnClickListener {
             showDeleteConfirm()
         }
 
@@ -238,6 +251,8 @@ class FavoriteSongsActivity : AppCompatActivity() {
         updateSelectedCount()
         // 隐藏"喜欢"按钮（已经在喜欢列表中）
         binding.batchActionBarContainer.btnAddToFavorite.visibility = View.GONE
+        // 显示"移除"按钮
+        binding.batchActionBarContainer.btnBatchRemove.visibility = View.VISIBLE
         setupBatchActionListeners()
     }
 
@@ -247,6 +262,8 @@ class FavoriteSongsActivity : AppCompatActivity() {
         binding.btnPlayAll.visibility = View.VISIBLE
         songAdapter.setMultiSelectMode(false)
         selectedSongs.clear()
+        // 隐藏"移除"按钮
+        binding.batchActionBarContainer.btnBatchRemove.visibility = View.GONE
     }
 
     private fun toggleSelection(songId: String) {
@@ -499,6 +516,64 @@ class FavoriteSongsActivity : AppCompatActivity() {
                     Toast.LENGTH_SHORT
                 ).show()
             }
+        }
+    }
+
+    private fun showBatchDownloadQualityDialog(songs: List<FavoriteSongEntity>) {
+        val qualities = arrayOf("HR (24bit/96kHz)", "CDQ (16bit/44.1kHz)", "HQ (320kbps)", "LQ (128kbps)")
+        val qualityValues = arrayOf("flac24bit", "flac", "320k", "128k")
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("批量下载")
+            .setItems(qualities) { _, which ->
+                batchDownloadSongs(songs, qualityValues[which])
+            }
+            .show()
+    }
+
+    private fun batchDownloadSongs(songs: List<FavoriteSongEntity>, quality: String) {
+        lifecycleScope.launch {
+            var successCount = 0
+            var failCount = 0
+
+            songs.forEach { song ->
+                try {
+                    val platform = when (song.platform.uppercase()) {
+                        "KUWO" -> MusicRepository.Platform.KUWO
+                        "NETEASE" -> MusicRepository.Platform.NETEASE
+                        else -> MusicRepository.Platform.KUWO
+                    }
+                    val detail = MusicRepository().getSongDetail(platform, song.id, quality)
+                    if (detail != null) {
+                        val task = downloadManager.createDownloadTask(
+                            Song(
+                                index = 0,
+                                id = song.id,
+                                name = song.name,
+                                artists = song.artists,
+                                coverUrl = song.coverUrl
+                            ),
+                            detail,
+                            quality,
+                            song.platform
+                        )
+                        downloadManager.startDownload(task)
+                        successCount++
+                    } else {
+                        failCount++
+                    }
+                } catch (e: Exception) {
+                    failCount++
+                }
+            }
+
+            Toast.makeText(
+                this@FavoriteSongsActivity,
+                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
+                Toast.LENGTH_LONG
+            ).show()
+
+            exitMultiSelectMode()
         }
     }
 

@@ -13,7 +13,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.tacke.music.BuildConfig
+
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -35,9 +35,9 @@ import com.tacke.music.ui.adapter.SongAdapter
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
-import com.tacke.music.update.UpdateDialogManager
+
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -50,7 +50,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playlistManager: PlaylistManager
     private lateinit var playbackManager: PlaybackManager
-    private lateinit var updateDialogManager: UpdateDialogManager
     private lateinit var currentPlatform: MusicRepository.Platform
     private var currentSongList: MutableList<Song> = mutableListOf()
     private var isMultiSelectMode = false
@@ -110,7 +109,6 @@ class MainActivity : AppCompatActivity() {
         favoriteRepository = FavoriteRepository(this)
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
-        updateDialogManager = UpdateDialogManager(this, lifecycleScope)
         setupRecyclerView()
         setupPlaylistRecyclerView()
         setupClickListeners()
@@ -119,16 +117,6 @@ class MainActivity : AppCompatActivity() {
         updateSourceSelectorUI()
         loadAllChartData()
         loadPlaylistTags()
-
-        // 延迟检查更新，避免影响启动速度
-        lifecycleScope.launch {
-            delay(3000) // 延迟3秒后检查更新
-            checkForUpdateAuto()
-        }
-    }
-
-    private fun checkForUpdateAuto() {
-        updateDialogManager.checkForUpdate(BuildConfig.VERSION_CODE, isManualCheck = false)
     }
 
     override fun onBackPressed() {

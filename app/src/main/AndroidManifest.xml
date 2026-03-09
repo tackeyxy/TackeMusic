@@ -105,6 +105,12 @@
             android:screenOrientation="portrait"
             android:label="日志管理" />
 
+        <activity
+            android:name=".ui.UpdateCheckActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="检测更新" />
+
         <service
             android:name=".service.MusicPlaybackService"
             android:enabled="true"
