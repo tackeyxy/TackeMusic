@@ -69,6 +69,7 @@ class PlayerActivity : AppCompatActivity() {
     private var parsedLyrics: List<Pair<Long, String>> = emptyList()
     private lateinit var gestureDetector: GestureDetector
     private lateinit var seekReceiver: BroadcastReceiver
+    private lateinit var playbackControlReceiver: BroadcastReceiver
     private var loadingToast: Toast? = null
 
     private lateinit var playlistManager: PlaylistManager
@@ -210,6 +211,7 @@ class PlayerActivity : AppCompatActivity() {
         setupAlbumRotation()
         setupGestureDetector()
         setupSeekReceiver()
+        setupPlaybackControlReceiver()
         setupPlayer()
 
         // 启动并绑定服务
@@ -650,6 +652,43 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupPlaybackControlReceiver() {
+        playbackControlReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    MusicPlaybackService.ACTION_SONG_CHANGED -> {
+                        // Service已切换歌曲，更新UI
+                        val newSongId = intent.getStringExtra(MusicPlaybackService.EXTRA_SONG_ID)
+                        val newSongName = intent.getStringExtra(MusicPlaybackService.EXTRA_SONG_NAME)
+                        val newSongArtists = intent.getStringExtra(MusicPlaybackService.EXTRA_SONG_ARTISTS)
+                        val newSongCover = intent.getStringExtra(MusicPlaybackService.EXTRA_SONG_COVER)
+
+                        if (newSongId != null && newSongId != songId) {
+                            // 更新当前歌曲信息
+                            songId = newSongId
+                            songName = newSongName ?: ""
+                            songArtists = newSongArtists ?: ""
+                            songCover = newSongCover
+
+                            // 更新UI
+                            binding.tvSongName.text = songName
+                            binding.tvArtist.text = songArtists
+                            loadCoverAndBackground(songCover)
+
+                            // 从Preferences获取歌曲详情
+                            val detail = playbackPreferences.getSongDetail(songId)
+                            if (detail != null) {
+                                songDetail = detail
+                                songLyrics = detail.lyrics
+                                updateUI(detail)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         val filter = IntentFilter().apply {
@@ -657,11 +696,23 @@ class PlayerActivity : AppCompatActivity() {
             addAction(LyricsActivity.ACTION_REQUEST_PLAYBACK_STATUS)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(seekReceiver, filter)
+
+        // 注册歌曲变更广播接收器（用于Service切歌后更新UI）
+        val controlFilter = IntentFilter().apply {
+            addAction(MusicPlaybackService.ACTION_SONG_CHANGED)
+        }
+        LocalBroadcastManager.getInstance(this).registerReceiver(playbackControlReceiver, controlFilter)
     }
 
     override fun onPause() {
         super.onPause()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(seekReceiver)
+        // 注销播放控制广播接收器
+        try {
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(playbackControlReceiver)
+        } catch (e: Exception) {
+            // 忽略未注册的错误
+        }
         // 保存播放进度
         savePlaybackState()
     }
@@ -1595,6 +1646,13 @@ class PlayerActivity : AppCompatActivity() {
         if (serviceBound) {
             unbindService(serviceConnection)
             serviceBound = false
+        }
+
+        // 确保注销广播接收器
+        try {
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(playbackControlReceiver)
+        } catch (e: Exception) {
+            // 忽略未注册的错误
         }
     }
 }
