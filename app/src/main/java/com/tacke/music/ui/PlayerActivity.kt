@@ -702,6 +702,70 @@ class PlayerActivity : AppCompatActivity() {
             addAction(MusicPlaybackService.ACTION_SONG_CHANGED)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(playbackControlReceiver, controlFilter)
+
+        // 从后台恢复时，同步当前播放的歌曲信息
+        syncCurrentPlaybackState()
+    }
+
+    /**
+     * 同步当前播放状态
+     * 用于从后台恢复时检查歌曲是否已在后台被切换
+     */
+    private fun syncCurrentPlaybackState() {
+        lifecycleScope.launch {
+            // 获取播放列表中的当前歌曲
+            val currentPlaylistSong = playlistManager.getCurrentSong()
+            val currentMediaItem = exoPlayer?.currentMediaItem
+
+            // 如果播放列表中的歌曲与Activity中保存的歌曲不一致，说明在后台已被切换
+            if (currentPlaylistSong != null && currentPlaylistSong.id != songId) {
+                // 更新歌曲信息
+                songId = currentPlaylistSong.id
+                songName = currentPlaylistSong.name
+                songArtists = currentPlaylistSong.artists
+                songCover = currentPlaylistSong.coverUrl
+                platform = try {
+                    MusicRepository.Platform.valueOf(currentPlaylistSong.platform.uppercase())
+                } catch (e: Exception) {
+                    MusicRepository.Platform.KUWO
+                }
+
+                // 标记为非空状态
+                isFromEmptyState = false
+
+                // 更新UI
+                binding.tvSongName.text = songName
+                binding.tvArtist.text = songArtists
+                loadCoverAndBackground(songCover)
+
+                // 尝试从Preferences获取歌曲详情
+                val detail = playbackPreferences.getSongDetail(songId)
+                if (detail != null) {
+                    songDetail = detail
+                    songLyrics = detail.lyrics
+                    updateUI(detail)
+                } else {
+                    // 如果Preferences中没有，尝试重新获取
+                    try {
+                        val newDetail = withContext(Dispatchers.IO) {
+                            repository.getSongDetail(platform, songId, currentQuality)
+                        }
+                        if (newDetail != null) {
+                            songDetail = newDetail
+                            songLyrics = newDetail.lyrics
+                            songCover = newDetail.cover ?: songCover
+                            loadCoverAndBackground(songCover)
+                            updateUI(newDetail)
+                        }
+                    } catch (e: Exception) {
+                        // 忽略错误
+                    }
+                }
+
+                // 更新播放控制UI
+                updateUIForCurrentSong()
+            }
+        }
     }
 
     override fun onPause() {
