@@ -1,5 +1,8 @@
 package com.tacke.music.ui
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ObjectAnimator
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -37,7 +40,7 @@ import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 
 import kotlinx.coroutines.Dispatchers
-
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -114,9 +117,116 @@ class MainActivity : AppCompatActivity() {
         setupClickListeners()
         setupBottomNavigation()
         setupChartCards()
+        setupSwipeRefresh()
         updateSourceSelectorUI()
-        loadAllChartData()
+        lifecycleScope.launch {
+            loadAllChartData()
+        }
         loadPlaylistTags()
+    }
+
+    /**
+     * 设置下拉刷新
+     */
+    private fun setupSwipeRefresh() {
+        binding.swipeRefreshLayout.apply {
+            // 设置刷新指示器颜色
+            setColorSchemeResources(
+                R.color.primary,
+                R.color.accent_cyan,
+                R.color.accent_purple
+            )
+            // 设置刷新监听器
+            setOnRefreshListener {
+                refreshAllData()
+            }
+        }
+    }
+
+    /**
+     * 刷新所有数据
+     */
+    private fun refreshAllData() {
+        lifecycleScope.launch {
+            try {
+                // 重置推荐歌单状态
+                playlistLastTime = 0
+                hasMorePlaylists = true
+                recommendPlaylistAdapter.submitList(emptyList())
+
+                // 并行加载所有数据
+                val chartJob = launch { loadAllChartData() }
+                val playlistJob = launch { loadRecommendPlaylists(currentPlaylistCategory, isLoadMore = false) }
+
+                // 等待所有数据加载完成
+                chartJob.join()
+                playlistJob.join()
+
+                // 显示刷新成功提示
+                showRefreshSuccessTip()
+
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "刷新失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                // 停止刷新动画
+                binding.swipeRefreshLayout.isRefreshing = false
+            }
+        }
+    }
+
+    /**
+     * 显示刷新成功提示 - 现代化透明背景TIPS
+     */
+    private fun showRefreshSuccessTip() {
+        val tipContainer = binding.refreshTipContainer
+        val tipText = binding.tvRefreshTip
+
+        // 更新提示文本
+        tipText.text = "刷新数据成功"
+
+        // 取消之前的动画
+        tipContainer.animate().cancel()
+
+        // 显示提示
+        tipContainer.visibility = View.VISIBLE
+        tipContainer.alpha = 0f
+        tipContainer.translationY = -50f
+
+        // 入场动画
+        tipContainer.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(300)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .withEndAction {
+                // 停留2秒后淡出
+                tipContainer.postDelayed({
+                    hideRefreshTip()
+                }, 2000)
+            }
+            .start()
+    }
+
+    /**
+     * 隐藏刷新提示
+     */
+    private fun hideRefreshTip() {
+        val tipContainer = binding.refreshTipContainer
+
+        // 如果已经隐藏则直接返回
+        if (tipContainer.visibility != View.VISIBLE) return
+
+        // 出场动画
+        tipContainer.animate()
+            .alpha(0f)
+            .translationY(-30f)
+            .setDuration(250)
+            .setInterpolator(android.view.animation.AccelerateInterpolator())
+            .withEndAction {
+                tipContainer.visibility = View.GONE
+                tipContainer.translationY = 0f
+            }
+            .start()
     }
 
     override fun onBackPressed() {
@@ -465,8 +575,8 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun loadAllChartData() {
-        lifecycleScope.launch {
+    private suspend fun loadAllChartData() {
+        coroutineScope {
             ChartType.values().forEach { chartType ->
                 launch {
                     try {
