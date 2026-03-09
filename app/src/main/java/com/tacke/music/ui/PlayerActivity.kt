@@ -954,15 +954,6 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
 
-        // 悬浮歌词按钮
-        binding.btnFloatingLyrics.setOnClickListener {
-            if (isFromEmptyState) {
-                Toast.makeText(this, "暂无歌曲", Toast.LENGTH_SHORT).show()
-            } else {
-                toggleFloatingLyrics()
-            }
-        }
-
         // 点击音质标识可以切换音质
         binding.tvQuality.setOnClickListener {
             if (isFromEmptyState) {
@@ -1202,7 +1193,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun showMoreOptions() {
-        val options = arrayOf("下载", "选择音质", "添加到歌单", "查看歌手")
+        val options = arrayOf("下载", "选择音质", "添加到歌单", "查看歌手", getFloatingLyricsMenuText())
         AlertDialog.Builder(this)
             .setTitle("更多选项")
             .setItems(options) { _, which ->
@@ -1211,9 +1202,20 @@ class PlayerActivity : AppCompatActivity() {
                     1 -> showQualityDialog()
                     2 -> Toast.makeText(this, "添加到歌单", Toast.LENGTH_SHORT).show()
                     3 -> Toast.makeText(this, "查看歌手", Toast.LENGTH_SHORT).show()
+                    4 -> toggleFloatingLyrics()
                 }
             }
             .show()
+    }
+
+    private fun getFloatingLyricsMenuText(): String {
+        return if (!LyricSettingsActivity.isFloatingLyricsEnabled(this)) {
+            "悬浮歌词（未开启）"
+        } else if (FloatingLyricsService.isRunning(this)) {
+            "关闭悬浮歌词"
+        } else {
+            "开启悬浮歌词"
+        }
     }
 
     private fun updatePlayPauseButton(isPlaying: Boolean) {

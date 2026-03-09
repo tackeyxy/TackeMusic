@@ -11,7 +11,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -44,6 +46,12 @@ class FloatingLyricsService : Service() {
     private var initialTouchX = 0f
     private var initialTouchY = 0f
 
+    // 长按相关变量
+    private var isLongPress = false
+    private val longPressHandler = Handler(Looper.getMainLooper())
+    private var longPressRunnable: Runnable? = null
+    private val LONG_PRESS_DURATION = 300L // 长按触发时间（毫秒）
+
     private var parsedLyrics: List<Pair<Long, String>> = emptyList()
     private var currentPosition: Long = 0
     private var isPlaying = false
@@ -58,6 +66,7 @@ class FloatingLyricsService : Service() {
         const val ACTION_UPDATE_POSITION = "com.tacke.music.ACTION_UPDATE_POSITION"
         const val ACTION_PLAYBACK_STATE_CHANGED = "com.tacke.music.ACTION_PLAYBACK_STATE_CHANGED"
         const val ACTION_TOGGLE_LOCK = "com.tacke.music.ACTION_TOGGLE_LOCK"
+        const val ACTION_UPDATE_SIZE = "com.tacke.music.ACTION_UPDATE_SIZE"
 
         const val EXTRA_LYRICS = "lyrics"
         const val EXTRA_POSITION = "position"
@@ -66,6 +75,7 @@ class FloatingLyricsService : Service() {
         const val EXTRA_ARTISTS = "artists"
         const val EXTRA_LYRIC_COLOR = "lyric_color"
         const val EXTRA_IS_LOCKED = "is_locked"
+        const val EXTRA_LYRIC_SIZE = "lyric_size"
 
         private const val PREFS_NAME = "floating_lyrics_prefs"
         private const val KEY_IS_LOCKED = "is_locked"
@@ -145,6 +155,10 @@ class FloatingLyricsService : Service() {
             ACTION_TOGGLE_LOCK -> {
                 toggleLock()
             }
+            ACTION_UPDATE_SIZE -> {
+                val sizePercent = intent.getIntExtra(EXTRA_LYRIC_SIZE, 100)
+                updateLyricSize(sizePercent)
+            }
         }
         return START_STICKY
     }
@@ -192,6 +206,7 @@ class FloatingLyricsService : Service() {
             addAction(ACTION_UPDATE_POSITION)
             addAction(ACTION_PLAYBACK_STATE_CHANGED)
             addAction(ACTION_TOGGLE_LOCK)
+            addAction(ACTION_UPDATE_SIZE)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(updateReceiver, filter)
     }
@@ -208,6 +223,10 @@ class FloatingLyricsService : Service() {
                     isPlaying = intent.getBooleanExtra(EXTRA_IS_PLAYING, false)
                 }
                 ACTION_TOGGLE_LOCK -> toggleLock()
+                ACTION_UPDATE_SIZE -> {
+                    val sizePercent = intent.getIntExtra(EXTRA_LYRIC_SIZE, 100)
+                    updateLyricSize(sizePercent)
+                }
             }
         }
     }
@@ -235,6 +254,10 @@ class FloatingLyricsService : Service() {
         // 设置歌词颜色
         updateLyricColor(currentLyricColor)
 
+        // 应用歌词大小设置
+        val lyricSize = com.tacke.music.ui.LyricSettingsActivity.getFloatingLyricSize(this)
+        updateLyricSize(lyricSize)
+
         // 设置按钮点击事件
         btnLock?.setOnClickListener {
             android.util.Log.d("FloatingLyrics", "Lock button clicked, current state: isLocked=$isLocked")
@@ -248,7 +271,7 @@ class FloatingLyricsService : Service() {
             stopSelf()
         }
 
-        // 设置拖动和点击事件
+        // 设置拖动和点击事件 - 改为长按拖动
         setupDragAndClick()
 
         // 更新锁定状态UI
@@ -287,10 +310,23 @@ class FloatingLyricsService : Service() {
     }
 
     private fun setupDragAndClick() {
-        // 拖动处理 - 只在解锁状态下允许拖动
-        dragHandle?.setOnTouchListener(object : View.OnTouchListener {
+        // 长按拖动处理 - 只在解锁状态下允许拖动
+        lyricsContainer?.setOnTouchListener(object : View.OnTouchListener {
             override fun onTouch(v: View?, event: MotionEvent?): Boolean {
-                if (isLocked) return false
+                if (isLocked) {
+                    // 锁定状态下只处理点击事件（打开播放页）
+                    when (event?.action) {
+                        MotionEvent.ACTION_UP -> {
+                            // 点击歌词区域打开播放页
+                            val intent = Intent(this@FloatingLyricsService, PlayerActivity::class.java).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                putExtra(PlayerActivity.EXTRA_LAUNCH_MODE, PlayerActivity.LAUNCH_MODE_RESTORE)
+                            }
+                            startActivity(intent)
+                        }
+                    }
+                    return false
+                }
 
                 when (event?.action) {
                     MotionEvent.ACTION_DOWN -> {
@@ -298,25 +334,67 @@ class FloatingLyricsService : Service() {
                         initialY = layoutParams?.y ?: 0
                         initialTouchX = event.rawX
                         initialTouchY = event.rawY
+                        isLongPress = false
+
+                        // 启动长按检测
+                        longPressRunnable = Runnable {
+                            isLongPress = true
+                            // 显示视觉反馈
+                            lyricsContainer?.alpha = 0.7f
+                        }
+                        longPressHandler.postDelayed(longPressRunnable!!, LONG_PRESS_DURATION)
                         return true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        val deltaX = (event.rawX - initialTouchX).toInt()
-                        val deltaY = (event.rawY - initialTouchY).toInt()
-                        layoutParams?.x = initialX + deltaX
-                        layoutParams?.y = initialY + deltaY
-                        try {
-                            layoutParams?.let { windowManager.updateViewLayout(floatingView, it) }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
+                        // 如果移动距离超过阈值，取消长按
+                        val deltaX = kotlin.math.abs(event.rawX - initialTouchX)
+                        val deltaY = kotlin.math.abs(event.rawY - initialTouchY)
+                        if ((deltaX > 10 || deltaY > 10) && !isLongPress) {
+                            longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
+                        }
+
+                        // 只有在长按触发后才允许拖动
+                        if (isLongPress) {
+                            val moveDeltaX = (event.rawX - initialTouchX).toInt()
+                            val moveDeltaY = (event.rawY - initialTouchY).toInt()
+                            layoutParams?.x = initialX + moveDeltaX
+                            layoutParams?.y = initialY + moveDeltaY
+                            try {
+                                layoutParams?.let { windowManager.updateViewLayout(floatingView, it) }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
                         }
                         return true
                     }
                     MotionEvent.ACTION_UP -> {
-                        // 保存位置
-                        layoutParams?.let {
-                            savePosition(this@FloatingLyricsService, it.x, it.y)
+                        // 取消长按检测
+                        longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
+
+                        // 恢复视觉反馈
+                        lyricsContainer?.alpha = 1.0f
+
+                        if (isLongPress) {
+                            // 长按结束，保存位置
+                            isLongPress = false
+                            layoutParams?.let {
+                                savePosition(this@FloatingLyricsService, it.x, it.y)
+                            }
+                        } else {
+                            // 普通点击，打开播放页
+                            val intent = Intent(this@FloatingLyricsService, PlayerActivity::class.java).apply {
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                putExtra(PlayerActivity.EXTRA_LAUNCH_MODE, PlayerActivity.LAUNCH_MODE_RESTORE)
+                            }
+                            startActivity(intent)
                         }
+                        return true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        // 取消长按检测
+                        longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
+                        lyricsContainer?.alpha = 1.0f
+                        isLongPress = false
                         return true
                     }
                 }
@@ -324,7 +402,7 @@ class FloatingLyricsService : Service() {
             }
         })
 
-        // 点击歌词区域打开播放页
+        // 点击歌词区域打开播放页（作为备用）
         lyricsContainer?.setOnClickListener {
             val intent = Intent(this, PlayerActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -364,6 +442,15 @@ class FloatingLyricsService : Service() {
         tvNextLine?.setTextColor(0x80FFFFFF.toInt())
     }
 
+    private fun updateLyricSize(sizePercent: Int) {
+        val scale = sizePercent / 100f
+        val currentTextSize = 16f * scale
+        val nextTextSize = 13f * scale
+
+        tvCurrentLine?.textSize = currentTextSize
+        tvNextLine?.textSize = nextTextSize
+    }
+
     private fun updateLyricsFromIntent(intent: Intent) {
         val lyrics = intent.getStringExtra(EXTRA_LYRICS)
         currentSongName = intent.getStringExtra(EXTRA_SONG_NAME) ?: ""
@@ -373,6 +460,12 @@ class FloatingLyricsService : Service() {
         val newColor = intent.getIntExtra(EXTRA_LYRIC_COLOR, currentLyricColor)
         if (newColor != currentLyricColor) {
             updateLyricColor(newColor)
+        }
+
+        // 更新大小
+        val newSize = intent.getIntExtra(EXTRA_LYRIC_SIZE, 0)
+        if (newSize > 0) {
+            updateLyricSize(newSize)
         }
 
         // 解析歌词

@@ -15,12 +15,12 @@
         android:padding="16dp"
         android:background="@drawable/bg_floating_lyrics">
 
-        <!-- 拖动把手 -->
+        <!-- 拖动把手（仅作为视觉提示，解锁状态下显示） -->
         <View
             android:id="@+id/dragHandle"
-            android:layout_width="60dp"
-            android:layout_height="24dp"
-            android:layout_marginBottom="4dp"
+            android:layout_width="40dp"
+            android:layout_height="4dp"
+            android:layout_marginBottom="8dp"
             android:background="@drawable/bg_drag_handle" />
 
         <!-- 当前歌词行 -->

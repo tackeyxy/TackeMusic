@@ -2,7 +2,10 @@ package com.tacke.music.ui
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
+import android.widget.SeekBar
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -19,9 +22,12 @@ class LyricSettingsActivity : AppCompatActivity() {
         const val KEY_PLAYER_LYRIC_COLOR = "player_lyric_color"
         const val KEY_FLOATING_LYRIC_COLOR = "floating_lyric_color"
         const val KEY_FLOATING_LYRICS_ENABLED = "floating_lyrics_enabled"
+        const val KEY_FLOATING_LYRIC_SIZE = "floating_lyric_size"
 
         // 默认歌词颜色（青色）
         const val DEFAULT_LYRIC_COLOR = 0xFF00CED1.toInt()
+        // 默认歌词大小（100%）
+        const val DEFAULT_LYRIC_SIZE = 100
 
         // 预设歌词颜色列表
         val PRESET_LYRIC_COLORS = listOf(
@@ -86,6 +92,16 @@ class LyricSettingsActivity : AppCompatActivity() {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             prefs.edit().putBoolean(KEY_FLOATING_LYRICS_ENABLED, enabled).apply()
         }
+
+        fun getFloatingLyricSize(context: Context): Int {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getInt(KEY_FLOATING_LYRIC_SIZE, DEFAULT_LYRIC_SIZE)
+        }
+
+        fun setFloatingLyricSize(context: Context, size: Int) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putInt(KEY_FLOATING_LYRIC_SIZE, size).apply()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -112,14 +128,60 @@ class LyricSettingsActivity : AppCompatActivity() {
             showColorPickerDialog(false)
         }
 
-        // 悬浮歌词开关
+        // 悬浮歌词开关 - 带权限校验
         binding.switchFloatingLyrics.setOnCheckedChangeListener { _, isChecked ->
-            setFloatingLyricsEnabled(this, isChecked)
-            updateFloatingLyricsStatus()
             if (isChecked) {
-                Toast.makeText(this, "悬浮歌词已开启，请在播放页点击悬浮歌词按钮显示", Toast.LENGTH_LONG).show()
+                // 开启时检查悬浮权限
+                if (!Settings.canDrawOverlays(this)) {
+                    // 没有权限，显示对话框引导用户开启
+                    showOverlayPermissionDialog()
+                    // 强制关闭开关
+                    binding.switchFloatingLyrics.isChecked = false
+                    return@setOnCheckedChangeListener
+                }
+                // 有权限，正常开启
+                setFloatingLyricsEnabled(this, true)
+                Toast.makeText(this, "悬浮歌词已开启，请在播放页点击更多菜单使用", Toast.LENGTH_LONG).show()
+            } else {
+                // 关闭
+                setFloatingLyricsEnabled(this, false)
             }
+            updateFloatingLyricsStatus()
         }
+
+        // 歌词大小滑条
+        binding.seekBarLyricSize.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                // 将 0-150 映射到 50-200
+                val sizePercent = 50 + progress
+                binding.tvLyricSizeValue.text = "$sizePercent%"
+                updatePreviewLyricSize(sizePercent)
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                // 保存设置
+                val sizePercent = 50 + (seekBar?.progress ?: 50)
+                setFloatingLyricSize(this@LyricSettingsActivity, sizePercent)
+                Toast.makeText(this@LyricSettingsActivity, "歌词大小已保存", Toast.LENGTH_SHORT).show()
+            }
+        })
+    }
+
+    private fun showOverlayPermissionDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("需要悬浮窗权限")
+            .setMessage("悬浮歌词功能需要悬浮窗权限才能正常使用。请前往系统设置开启权限。")
+            .setPositiveButton("去设置") { _, _ ->
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+                startActivity(intent)
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun updateUI() {
@@ -130,16 +192,33 @@ class LyricSettingsActivity : AppCompatActivity() {
         // 更新悬浮歌词颜色预览
         val floatingColor = getFloatingLyricColor(this)
         binding.viewFloatingLyricColorPreview.setBackgroundColor(floatingColor)
+        binding.tvPreviewCurrentLine.setTextColor(floatingColor)
 
         // 更新悬浮歌词开关
         binding.switchFloatingLyrics.isChecked = isFloatingLyricsEnabled(this)
         updateFloatingLyricsStatus()
+
+        // 更新歌词大小
+        val lyricSize = getFloatingLyricSize(this)
+        binding.seekBarLyricSize.progress = lyricSize - 50
+        binding.tvLyricSizeValue.text = "$lyricSize%"
+        updatePreviewLyricSize(lyricSize)
     }
 
     private fun updateFloatingLyricsStatus() {
         val enabled = isFloatingLyricsEnabled(this)
         binding.layoutFloatingLyricColor.alpha = if (enabled) 1.0f else 0.5f
         binding.layoutFloatingLyricColor.isClickable = enabled
+        binding.layoutFloatingLyricSize.alpha = if (enabled) 1.0f else 0.5f
+    }
+
+    private fun updatePreviewLyricSize(sizePercent: Int) {
+        val scale = sizePercent / 100f
+        val currentTextSize = 16f * scale
+        val nextTextSize = 13f * scale
+
+        binding.tvPreviewCurrentLine.textSize = currentTextSize
+        binding.tvPreviewNextLine.textSize = nextTextSize
     }
 
     private fun showColorPickerDialog(isPlayerLyric: Boolean) {
@@ -218,6 +297,7 @@ class LyricSettingsActivity : AppCompatActivity() {
             } else {
                 setFloatingLyricColor(this, selectedColor)
                 binding.viewFloatingLyricColorPreview.setBackgroundColor(selectedColor)
+                binding.tvPreviewCurrentLine.setTextColor(selectedColor)
             }
             Toast.makeText(this, "歌词颜色已更新", Toast.LENGTH_SHORT).show()
             dialog.dismiss()
