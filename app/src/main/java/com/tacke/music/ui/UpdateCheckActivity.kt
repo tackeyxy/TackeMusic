@@ -199,16 +199,26 @@ class UpdateCheckActivity : AppCompatActivity() {
     }
 
     private fun showUpdateInfo(versionInfo: VersionInfo) {
-        binding.layoutUpdateInfo.visibility = View.VISIBLE
+        // 直接跳转到新版本页面展示更新信息，不在当前页面显示卡片
+        NewVersionActivity.start(
+            context = this,
+            versionName = versionInfo.versionName,
+            versionCode = versionInfo.versionCode,
+            downloadUrl = versionInfo.downloadUrl,
+            fileSize = versionInfo.fileSize,
+            publishTime = versionInfo.publishTime,
+            releaseNotes = versionInfo.releaseNotes,
+            isForceUpdate = false
+        )
+
+        // 显示提示信息
+        Toast.makeText(this, "发现新版本", Toast.LENGTH_SHORT).show()
+
+        // 不显示更新卡片，保持页面简洁
+        binding.layoutUpdateInfo.visibility = View.GONE
         binding.layoutNoUpdate.visibility = View.GONE
         binding.layoutError.visibility = View.GONE
-
-        binding.tvNewVersion.text = "v${versionInfo.versionName}"
-        binding.chipFileSize.text = versionInfo.fileSize
-        binding.chipPublishTime.text = versionInfo.publishTime
-        binding.tvReleaseNotes.text = versionInfo.releaseNotes
-
-        binding.btnDownloadUpdate.visibility = View.VISIBLE
+        binding.btnDownloadUpdate.visibility = View.GONE
     }
 
     private fun showNoUpdate() {

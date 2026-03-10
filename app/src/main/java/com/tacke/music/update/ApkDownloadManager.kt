@@ -14,6 +14,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
 
+/**
+ * APK下载管理器
+ * 负责处理应用更新的下载和安装
+ */
 class ApkDownloadManager(private val context: Context) {
 
     companion object {
@@ -41,7 +45,15 @@ class ApkDownloadManager(private val context: Context) {
     private val _isDownloading = MutableStateFlow(false)
     val isDownloading: StateFlow<Boolean> = _isDownloading
 
+    private val _downloadSpeed = MutableStateFlow(0L)
+    val downloadSpeed: StateFlow<Long> = _downloadSpeed
+
     private var downloadCompleteReceiver: BroadcastReceiver? = null
+    private var progressQueryThread: Thread? = null
+
+    // 速度计算
+    private var lastDownloadedBytes: Long = 0
+    private var lastSpeedUpdateTime: Long = 0
 
     /**
      * 开始下载APK
@@ -73,6 +85,9 @@ class ApkDownloadManager(private val context: Context) {
             currentDownloadId = downloadManager.enqueue(request)
             _isDownloading.value = true
             _downloadProgress.value = 0
+            _downloadSpeed.value = 0L
+            lastDownloadedBytes = 0
+            lastSpeedUpdateTime = System.currentTimeMillis()
 
             AppLogger.d(TAG, "Started download: $downloadUrl, id: $currentDownloadId")
 
@@ -85,6 +100,7 @@ class ApkDownloadManager(private val context: Context) {
         } catch (e: Exception) {
             AppLogger.e(TAG, "Failed to start download", e)
             Toast.makeText(context, "下载失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            _isDownloading.value = false
             onComplete(false)
         }
     }
@@ -105,6 +121,7 @@ class ApkDownloadManager(private val context: Context) {
                             AppLogger.d(TAG, "Download completed successfully")
                             _isDownloading.value = false
                             _downloadProgress.value = 100
+                            _downloadSpeed.value = 0L
                             installApk()
                             onComplete(true)
                         } else {
@@ -112,6 +129,7 @@ class ApkDownloadManager(private val context: Context) {
                             AppLogger.e(TAG, "Download failed, reason: $reason")
                             Toast.makeText(context, "下载失败", Toast.LENGTH_SHORT).show()
                             _isDownloading.value = false
+                            _downloadSpeed.value = 0L
                             onComplete(false)
                         }
                     }
@@ -139,17 +157,29 @@ class ApkDownloadManager(private val context: Context) {
      * 启动进度查询
      */
     private fun startProgressQuery() {
-        Thread {
+        progressQueryThread = Thread {
             while (_isDownloading.value && currentDownloadId != -1L) {
                 try {
                     val query = DownloadManager.Query().setFilterById(currentDownloadId)
                     val cursor = downloadManager.query(query)
                     if (cursor.moveToFirst()) {
-                        val bytesDownloaded = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-                        val bytesTotal = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                        val bytesDownloaded = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                        val bytesTotal = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+
                         if (bytesTotal > 0) {
-                            val progress = (bytesDownloaded * 100 / bytesTotal)
+                            val progress = (bytesDownloaded * 100 / bytesTotal).toInt()
                             _downloadProgress.value = progress
+
+                            // 计算下载速度
+                            val currentTime = System.currentTimeMillis()
+                            val timeDiff = currentTime - lastSpeedUpdateTime
+                            if (timeDiff >= 1000) { // 每秒更新一次速度
+                                val bytesDiff = bytesDownloaded - lastDownloadedBytes
+                                val speed = (bytesDiff * 1000) / timeDiff // bytes per second
+                                _downloadSpeed.value = speed
+                                lastDownloadedBytes = bytesDownloaded
+                                lastSpeedUpdateTime = currentTime
+                            }
                         }
                     }
                     cursor.close()
@@ -158,7 +188,7 @@ class ApkDownloadManager(private val context: Context) {
                     break
                 }
             }
-        }.start()
+        }.apply { start() }
     }
 
     /**
@@ -201,7 +231,11 @@ class ApkDownloadManager(private val context: Context) {
             currentDownloadId = -1
         }
         _isDownloading.value = false
+        _downloadProgress.value = 0
+        _downloadSpeed.value = 0L
         unregisterReceiver()
+        progressQueryThread?.interrupt()
+        progressQueryThread = null
         AppLogger.d(TAG, "Download cancelled")
     }
 

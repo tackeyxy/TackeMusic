@@ -6,20 +6,25 @@ import android.os.Bundle
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.tacke.music.BuildConfig
 import com.tacke.music.R
 import com.tacke.music.databinding.ActivityNewVersionBinding
 import com.tacke.music.update.ApkDownloadManager
+import com.tacke.music.util.AppLogger
+import com.tacke.music.util.ImmersiveStatusBarHelper
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import java.text.DecimalFormat
 
 /**
  * 新版本展示页面
- * 以现代化全屏设计展示新版本信息，替代原有的卡片覆盖形式
+ * 以现代化全屏设计展示新版本信息，替代原有的对话框形式
+ * 功能：
+ * 1. 展示新版本信息（版本号、文件大小、发布时间、更新日志）
+ * 2. 忽略此版本（记录版本号，后续不再提示此版本，但更新的版本不受影响）
+ * 3. 立即下载（显示下载进度条和速度，下载完成后自动安装）
+ * 4. 沉浸式状态栏
  */
 class NewVersionActivity : AppCompatActivity() {
 
@@ -27,13 +32,29 @@ class NewVersionActivity : AppCompatActivity() {
     private lateinit var apkDownloadManager: ApkDownloadManager
 
     companion object {
+        private const val TAG = "NewVersionActivity"
         private const val EXTRA_VERSION_NAME = "version_name"
         private const val EXTRA_VERSION_CODE = "version_code"
         private const val EXTRA_DOWNLOAD_URL = "download_url"
         private const val EXTRA_FILE_SIZE = "file_size"
         private const val EXTRA_PUBLISH_TIME = "publish_time"
         private const val EXTRA_RELEASE_NOTES = "release_notes"
+        private const val EXTRA_IS_FORCE_UPDATE = "is_force_update"
+        private const val PREFS_NAME = "update_settings"
+        private const val KEY_IGNORED_VERSION_CODE = "ignored_version_code"
 
+        /**
+         * 启动新版本页面
+         *
+         * @param context 上下文
+         * @param versionName 版本名称
+         * @param versionCode 版本号
+         * @param downloadUrl 下载链接
+         * @param fileSize 文件大小
+         * @param publishTime 发布时间
+         * @param releaseNotes 更新日志
+         * @param isForceUpdate 是否强制更新
+         */
         fun start(
             context: Context,
             versionName: String,
@@ -41,7 +62,8 @@ class NewVersionActivity : AppCompatActivity() {
             downloadUrl: String,
             fileSize: String,
             publishTime: String,
-            releaseNotes: String
+            releaseNotes: String,
+            isForceUpdate: Boolean = false
         ) {
             val intent = Intent(context, NewVersionActivity::class.java).apply {
                 putExtra(EXTRA_VERSION_NAME, versionName)
@@ -50,121 +72,197 @@ class NewVersionActivity : AppCompatActivity() {
                 putExtra(EXTRA_FILE_SIZE, fileSize)
                 putExtra(EXTRA_PUBLISH_TIME, publishTime)
                 putExtra(EXTRA_RELEASE_NOTES, releaseNotes)
+                putExtra(EXTRA_IS_FORCE_UPDATE, isForceUpdate)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
             context.startActivity(intent)
+        }
+
+        /**
+         * 获取已忽略的版本号
+         */
+        fun getIgnoredVersionCode(context: Context): Int {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getInt(KEY_IGNORED_VERSION_CODE, 0)
+        }
+
+        /**
+         * 设置忽略的版本号
+         */
+        fun setIgnoredVersionCode(context: Context, versionCode: Int) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putInt(KEY_IGNORED_VERSION_CODE, versionCode).apply()
+            AppLogger.d(TAG, "Ignored version code set to: $versionCode")
+        }
+
+        /**
+         * 清除忽略的版本记录
+         */
+        fun clearIgnoredVersion(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().remove(KEY_IGNORED_VERSION_CODE).apply()
+            AppLogger.d(TAG, "Cleared ignored version")
         }
     }
 
     private var downloadUrl: String = ""
     private var versionCode: Int = 0
+    private var isForceUpdate: Boolean = false
+
+    // 下载速度计算
+    private var lastDownloadedBytes: Long = 0
+    private var lastSpeedUpdateTime: Long = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityNewVersionBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Android 16: 适配 Edge-to-Edge 模式
-        setupEdgeToEdge()
+        // 设置沉浸式状态栏 - 使用渐变背景模式
+        ImmersiveStatusBarHelper.setupWithGradientBackground(
+            activity = this,
+            headerViewId = R.id.headerContainer,
+            contentViewId = R.id.scrollContent
+        )
 
         apkDownloadManager = ApkDownloadManager.getInstance(this)
+
+        // 获取传递的数据
+        parseIntentData()
 
         setupViews()
         displayVersionInfo()
         observeDownloadProgress()
     }
 
-    private fun setupEdgeToEdge() {
-        // 设置沉浸式状态栏 - 内容延伸到状态栏
-        window.statusBarColor = android.graphics.Color.TRANSPARENT
-        window.decorView.systemUiVisibility = (
-            android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-        )
-
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
-            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(
-                bottom = insets.bottom
-            )
-            windowInsets
+    private fun parseIntentData() {
+        intent?.let {
+            downloadUrl = it.getStringExtra(EXTRA_DOWNLOAD_URL) ?: ""
+            versionCode = it.getIntExtra(EXTRA_VERSION_CODE, 0)
+            isForceUpdate = it.getBooleanExtra(EXTRA_IS_FORCE_UPDATE, false)
         }
     }
 
     private fun setupViews() {
         // 返回按钮
         binding.btnBack.setOnClickListener {
-            finish()
+            if (!isForceUpdate) {
+                finish()
+            } else {
+                Toast.makeText(this, "请更新到最新版本", Toast.LENGTH_SHORT).show()
+            }
         }
 
-        // 下载更新按钮
+        // 立即下载按钮
         binding.btnDownloadUpdate.setOnClickListener {
             if (downloadUrl.isNotEmpty()) {
                 startDownload(downloadUrl)
+            } else {
+                Toast.makeText(this, "下载链接无效", Toast.LENGTH_SHORT).show()
             }
         }
 
         // 忽略此版本按钮
         binding.btnIgnoreUpdate.setOnClickListener {
             if (versionCode > 0) {
-                val prefs = getSharedPreferences("update_settings", Context.MODE_PRIVATE)
-                prefs.edit().putInt("ignored_version_code", versionCode).apply()
+                setIgnoredVersionCode(this, versionCode)
                 Toast.makeText(this, "已忽略此版本更新", Toast.LENGTH_SHORT).show()
                 finish()
             }
         }
+
+        // 如果是强制更新，隐藏忽略按钮和返回按钮
+        if (isForceUpdate) {
+            binding.btnIgnoreUpdate.visibility = View.GONE
+            binding.btnBack.visibility = View.GONE
+        }
     }
 
     private fun displayVersionInfo() {
-        // 获取传递的数据
-        val versionName = intent.getStringExtra(EXTRA_VERSION_NAME) ?: ""
-        versionCode = intent.getIntExtra(EXTRA_VERSION_CODE, 0)
-        downloadUrl = intent.getStringExtra(EXTRA_DOWNLOAD_URL) ?: ""
-        val fileSize = intent.getStringExtra(EXTRA_FILE_SIZE) ?: ""
-        val publishTime = intent.getStringExtra(EXTRA_PUBLISH_TIME) ?: ""
-        val releaseNotes = intent.getStringExtra(EXTRA_RELEASE_NOTES) ?: ""
+        intent?.let {
+            val versionName = it.getStringExtra(EXTRA_VERSION_NAME) ?: ""
+            val fileSize = it.getStringExtra(EXTRA_FILE_SIZE) ?: ""
+            val publishTime = it.getStringExtra(EXTRA_PUBLISH_TIME) ?: ""
+            val releaseNotes = it.getStringExtra(EXTRA_RELEASE_NOTES) ?: ""
 
-        // 新版本号
-        binding.tvNewVersion.text = "v$versionName"
+            // 新版本号
+            binding.tvNewVersion.text = "v$versionName"
 
-        // 文件大小和发布时间
-        binding.chipFileSize.text = fileSize
-        binding.chipPublishTime.text = publishTime
+            // 文件大小和发布时间
+            binding.chipFileSize.text = fileSize
+            binding.chipPublishTime.text = publishTime
 
-        // 当前版本
-        binding.tvCurrentVersion.text = "v${BuildConfig.VERSION_NAME}"
-        binding.tvCurrentVersionNew.text = "v$versionName"
+            // 当前版本
+            binding.tvCurrentVersion.text = "v${BuildConfig.VERSION_NAME}"
+            binding.tvCurrentVersionNew.text = "v$versionName"
 
-        // 更新日志
-        binding.tvReleaseNotes.text = releaseNotes
+            // 更新日志
+            binding.tvReleaseNotes.text = releaseNotes
+        }
     }
 
     private fun observeDownloadProgress() {
         lifecycleScope.launch {
             apkDownloadManager.downloadProgress.collectLatest { progress ->
-                binding.progressBar.progress = progress
-                binding.tvProgressText.text = "$progress%"
-                when {
-                    progress == 0 -> binding.tvProgressDetail.text = "准备下载..."
-                    progress < 100 -> binding.tvProgressDetail.text = "正在下载更新包..."
-                    else -> binding.tvProgressDetail.text = "下载完成，准备安装..."
-                }
+                updateProgressUI(progress)
             }
         }
 
         lifecycleScope.launch {
             apkDownloadManager.isDownloading.collectLatest { isDownloading ->
-                binding.btnDownloadUpdate.isEnabled = !isDownloading
-                binding.btnIgnoreUpdate.isEnabled = !isDownloading
-                if (isDownloading) {
-                    binding.btnDownloadUpdate.text = "下载中..."
-                    binding.layoutProgress.visibility = View.VISIBLE
-                } else {
-                    binding.btnDownloadUpdate.text = "立即更新"
-                    if (binding.progressBar.progress == 100) {
-                        binding.layoutProgress.visibility = View.GONE
-                    }
-                }
+                updateDownloadStateUI(isDownloading)
             }
+        }
+
+        lifecycleScope.launch {
+            apkDownloadManager.downloadSpeed.collectLatest { speed ->
+                updateSpeedUI(speed)
+            }
+        }
+    }
+
+    private fun updateProgressUI(progress: Int) {
+        binding.progressBar.progress = progress
+        binding.tvProgressText.text = "$progress%"
+
+        when {
+            progress == 0 -> binding.tvProgressDetail.text = "准备下载..."
+            progress < 100 -> binding.tvProgressDetail.text = "正在下载更新包..."
+            else -> binding.tvProgressDetail.text = "下载完成，准备安装..."
+        }
+    }
+
+    private fun updateDownloadStateUI(isDownloading: Boolean) {
+        binding.btnDownloadUpdate.isEnabled = !isDownloading
+        binding.btnIgnoreUpdate.isEnabled = !isDownloading
+
+        if (isDownloading) {
+            binding.btnDownloadUpdate.text = "下载中..."
+            binding.layoutProgress.visibility = View.VISIBLE
+            lastDownloadedBytes = 0
+            lastSpeedUpdateTime = System.currentTimeMillis()
+        } else {
+            binding.btnDownloadUpdate.text = "立即更新"
+            if (binding.progressBar.progress == 100) {
+                binding.tvProgressDetail.text = "下载完成"
+            }
+        }
+    }
+
+    private fun updateSpeedUI(speed: Long) {
+        val speedText = formatSpeed(speed)
+        val progress = binding.progressBar.progress
+        if (progress in 1..99) {
+            binding.tvProgressDetail.text = "正在下载更新包... $speedText"
+        }
+    }
+
+    private fun formatSpeed(bytesPerSecond: Long): String {
+        val df = DecimalFormat("0.0")
+        return when {
+            bytesPerSecond < 1024 -> "${bytesPerSecond}B/s"
+            bytesPerSecond < 1024 * 1024 -> "${df.format(bytesPerSecond / 1024.0)}KB/s"
+            else -> "${df.format(bytesPerSecond / (1024.0 * 1024.0))}MB/s"
         }
     }
 
@@ -177,13 +275,26 @@ class NewVersionActivity : AppCompatActivity() {
                     Toast.makeText(this, "下载失败，请重试", Toast.LENGTH_SHORT).show()
                     binding.btnDownloadUpdate.isEnabled = true
                     binding.btnIgnoreUpdate.isEnabled = true
+                    binding.btnDownloadUpdate.text = "立即更新"
                 }
             }
         }
     }
 
+    override fun onBackPressed() {
+        if (isForceUpdate) {
+            Toast.makeText(this, "请更新到最新版本", Toast.LENGTH_SHORT).show()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        apkDownloadManager.cancelDownload()
+        // 如果正在下载，不取消，让用户可以在后台继续下载
+        // 只有在页面销毁且下载完成或失败时才清理
+        if (!apkDownloadManager.isDownloading.value) {
+            apkDownloadManager.cancelDownload()
+        }
     }
 }

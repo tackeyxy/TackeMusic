@@ -124,6 +124,13 @@
             android:screenOrientation="portrait"
             android:label="检测更新" />
 
+        <activity
+            android:name=".ui.NewVersionActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="新版本"
+            android:theme="@style/Theme.TackeMusic" />
+
         <!-- Android 16: 前台服务需要明确指定 foregroundServiceType -->
         <service
             android:name=".service.MusicPlaybackService"
