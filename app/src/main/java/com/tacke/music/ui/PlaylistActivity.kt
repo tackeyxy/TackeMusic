@@ -6,6 +6,9 @@ import android.view.LayoutInflater
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -28,6 +31,9 @@ class PlaylistActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityPlaylistBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Android 16: 适配 Edge-to-Edge 模式
+        setupEdgeToEdge()
 
         playlistRepository = PlaylistRepository(this)
 
@@ -179,5 +185,21 @@ class PlaylistActivity : AppCompatActivity() {
             putExtra("playlist_name", playlist.name)
         }
         startActivity(intent)
+    }
+
+    /**
+     * Android 16: 设置 Edge-to-Edge 模式
+     * 处理系统栏（状态栏和导航栏）的 insets
+     * 注意：布局中已添加 fitsSystemWindows="true"，这里处理额外的 insets 需求
+     */
+    private fun setupEdgeToEdge() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            // 只为底部设置 padding，顶部由 fitsSystemWindows 处理
+            view.updatePadding(
+                bottom = insets.bottom
+            )
+            windowInsets
+        }
     }
 }

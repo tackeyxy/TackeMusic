@@ -1333,13 +1333,13 @@ class MainActivity : AppCompatActivity() {
     /**
      * Android 16: 设置 Edge-to-Edge 模式
      * 处理系统栏（状态栏和导航栏）的 insets
+     * 注意：布局中已添加 fitsSystemWindows="true"，这里处理额外的 insets 需求
      */
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 为根视图设置 padding，避免内容被系统栏遮挡
+            // 只为底部导航栏区域设置 padding，顶部由 fitsSystemWindows 处理
             view.updatePadding(
-                top = insets.top,
                 bottom = insets.bottom
             )
             windowInsets

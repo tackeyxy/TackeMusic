@@ -18,6 +18,9 @@
         <item name="android:textColorSecondary">@color/text_secondary</item>
         <!-- Android 16: 启用 Edge-to-Edge -->
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <!-- 适配异形屏：允许内容延伸到刘海区域 -->
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:windowTranslucentNavigation">false</item>
     </style>
 
     <style name="Theme.TackeMusic.Player" parent="Theme.MaterialComponents.Light.NoActionBar">

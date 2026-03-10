@@ -1,11 +1,11 @@
 {
   "status": 200,
   "data": {
-    "versionCode": 5,
-    "versionName": "1.0.4",
+    "versionCode": 10,
+    "versionName": "1.0.9",
     "download_url": "https://gh-proxy.org/https://raw.githubusercontent.com/tackeyxy/TackeMusic/master/apk/app-debug.apk",
     "file_size": "10.84 MB",
-    "release_notes": "1. 优化加载速度\n2. 修复了跨页多选失效的问题\n3. 优化歌单列表UI显示\n4. 新增检测更新功能",
-    "publish_time": "2026-03-04 18:31:00"
+    "release_notes": "1. 最终完善悬浮歌词样式\n2. 修改播放进度条样式\n3. 修复歌单封面显示问题\n4. 修复异形屏幕显示异常问题",
+    "publish_time": "2026-03-10 13:31:00"
   }
 }
