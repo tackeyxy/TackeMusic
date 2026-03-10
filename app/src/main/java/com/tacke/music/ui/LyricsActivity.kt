@@ -78,12 +78,14 @@ class LyricsActivity : AppCompatActivity() {
         binding = ActivityLyricsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // 设置沉浸式状态栏 - 使用渐变背景模式（深色背景，白色状态栏图标）
-        ImmersiveStatusBarHelper.setupWithGradientBackground(
+        // 设置沉浸式状态栏 - 透明状态栏，背景延伸到状态栏
+        ImmersiveStatusBarHelper.setup(
             activity = this,
-            headerViewId = R.id.toolbar,
-            contentViewId = null
+            lightStatusBar = false,
+            lightNavigationBar = true
         )
+        // 为顶部工具栏设置状态栏高度 padding
+        ImmersiveStatusBarHelper.setStatusBarPadding(binding.toolbar)
 
         setupRecyclerView()
         setupSeekBar()

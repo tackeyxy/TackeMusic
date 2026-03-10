@@ -4,10 +4,9 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fitsSystemWindows="true"
     tools:context=".ui.PlayerActivity">
 
-    <!-- 背景图片（歌曲封面） -->
+    <!-- 背景图片（歌曲封面）- 延伸到状态栏 -->
     <ImageView
         android:id="@+id/ivBackground"
         android:layout_width="match_parent"
