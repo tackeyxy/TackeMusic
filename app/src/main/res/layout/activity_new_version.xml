@@ -7,7 +7,7 @@
 
     <!-- 顶部渐变背景区域 -->
     <FrameLayout
-        android:id="@+id/headerContainer"
+        android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="320dp"
         android:background="@drawable/bg_update_header_gradient">

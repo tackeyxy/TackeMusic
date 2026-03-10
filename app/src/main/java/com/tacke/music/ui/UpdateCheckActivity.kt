@@ -3,6 +3,8 @@ package com.tacke.music.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -17,16 +19,15 @@ import com.tacke.music.R
 import com.tacke.music.data.model.VersionInfo
 import com.tacke.music.data.repository.VersionRepository
 import com.tacke.music.databinding.ActivityUpdateCheckBinding
-import com.tacke.music.update.ApkDownloadManager
 import com.tacke.music.util.AppLogger
-import kotlinx.coroutines.flow.collectLatest
+import com.tacke.music.util.ImmersiveStatusBarHelper
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class UpdateCheckActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityUpdateCheckBinding
     private lateinit var versionRepository: VersionRepository
-    private lateinit var apkDownloadManager: ApkDownloadManager
 
     companion object {
         private const val TAG = "UpdateCheckActivity"
@@ -62,18 +63,30 @@ class UpdateCheckActivity : AppCompatActivity() {
 
     private var currentVersionInfo: VersionInfo? = null
     private var isChecking = false
+    private var checkTimeoutHandler: Handler? = null
+    private val CHECK_TIMEOUT_MS = 15000L // 15秒超时
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityUpdateCheckBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Android 16: 适配 Edge-to-Edge 模式
-        setupEdgeToEdge()
+        // 设置沉浸式状态栏 - 使用基础模式（浅色背景，深色状态栏图标）
+        ImmersiveStatusBarHelper.setup(
+            activity = this,
+            lightStatusBar = true,
+            lightNavigationBar = true
+        )
 
-        // 先初始化 Repository 和 DownloadManager
+        // 为 Toolbar 添加状态栏高度 padding
+        ViewCompat.setOnApplyWindowInsetsListener(binding.appBar) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars())
+            view.updatePadding(top = insets.top)
+            windowInsets
+        }
+
+        // 先初始化 Repository
         versionRepository = VersionRepository.getInstance(this)
-        apkDownloadManager = ApkDownloadManager.getInstance(this)
 
         setupToolbar()
         setupViews()
@@ -97,37 +110,12 @@ class UpdateCheckActivity : AppCompatActivity() {
     private fun setupViews() {
         // 检查更新按钮
         binding.btnCheckUpdate.setOnClickListener {
-            checkForUpdate()
-        }
-
-        // 下载更新按钮
-        binding.btnDownloadUpdate.setOnClickListener {
-            currentVersionInfo?.let { info ->
-                startDownload(info.downloadUrl)
-            }
-        }
-
-        // 监听下载进度
-        lifecycleScope.launch {
-            apkDownloadManager.downloadProgress.collectLatest { progress ->
-                binding.progressBar.progress = progress
-                binding.tvProgressText.text = "$progress%"
-            }
-        }
-
-        // 监听下载状态
-        lifecycleScope.launch {
-            apkDownloadManager.isDownloading.collectLatest { isDownloading ->
-                binding.btnDownloadUpdate.isEnabled = !isDownloading
-                if (isDownloading) {
-                    binding.btnDownloadUpdate.text = "下载中..."
-                    binding.layoutProgress.visibility = View.VISIBLE
-                } else {
-                    binding.btnDownloadUpdate.text = "下载更新"
-                    if (binding.progressBar.progress == 100) {
-                        binding.layoutProgress.visibility = View.GONE
-                    }
-                }
+            // 如果有已检测到的版本信息，点击跳转到新版本页面
+            if (currentVersionInfo != null) {
+                goToNewVersionPage(currentVersionInfo!!)
+            } else {
+                // 否则执行检测
+                checkForUpdate()
             }
         }
     }
@@ -149,33 +137,75 @@ class UpdateCheckActivity : AppCompatActivity() {
         if (isChecking) return
 
         isChecking = true
-        binding.layoutUpdateInfo.visibility = View.GONE
+        // 隐藏之前的所有状态
         binding.layoutNoUpdate.visibility = View.GONE
         binding.layoutError.visibility = View.GONE
+        binding.tvNewBadge.visibility = View.GONE
+        // 清除之前保存的版本信息
+        currentVersionInfo = null
+
         binding.progressBarChecking.visibility = View.VISIBLE
         binding.btnCheckUpdate.isEnabled = false
         binding.btnCheckUpdate.text = ""
+
+        // 设置超时处理
+        checkTimeoutHandler?.removeCallbacksAndMessages(null)
+        checkTimeoutHandler = Handler(Looper.getMainLooper())
+        checkTimeoutHandler?.postDelayed({
+            if (isChecking) {
+                isChecking = false
+                binding.progressBarChecking.visibility = View.GONE
+                binding.btnCheckUpdate.isEnabled = true
+                binding.btnCheckUpdate.text = "检查更新"
+                showError("检测超时，请检查网络连接后重试")
+            }
+        }, CHECK_TIMEOUT_MS)
 
         lifecycleScope.launch {
             try {
                 // 设置版本检查 URL
                 versionRepository.setVersionUrl(getVersionUrl(this@UpdateCheckActivity))
 
-                val result = versionRepository.checkForUpdate(BuildConfig.VERSION_CODE)
+                // 使用超时机制
+                val result = withTimeoutOrNull(CHECK_TIMEOUT_MS) {
+                    versionRepository.checkForUpdate(BuildConfig.VERSION_CODE)
+                }
+
+                // 取消超时处理
+                checkTimeoutHandler?.removeCallbacksAndMessages(null)
+
+                if (result == null) {
+                    // 超时
+                    isChecking = false
+                    binding.progressBarChecking.visibility = View.GONE
+                    binding.btnCheckUpdate.isEnabled = true
+                    binding.btnCheckUpdate.text = "检查更新"
+                    showError("检测超时，请检查网络连接后重试")
+                    return@launch
+                }
 
                 result.fold(
                     onSuccess = { versionInfo ->
                         binding.progressBarChecking.visibility = View.GONE
                         binding.btnCheckUpdate.isEnabled = true
-                        binding.btnCheckUpdate.text = "检查更新"
                         isChecking = false
 
                         if (versionInfo != null) {
-                            // 有新版本
-                            currentVersionInfo = versionInfo
-                            showUpdateInfo(versionInfo)
+                            // 检查远程版本是否低于当前版本（异常情况）
+                            if (versionInfo.versionCode < BuildConfig.VERSION_CODE) {
+                                // 远程版本低于当前版本，按无更新处理
+                                AppLogger.w(TAG, "Remote version ${versionInfo.versionCode} is lower than current ${BuildConfig.VERSION_CODE}")
+                                binding.btnCheckUpdate.text = "检查更新"
+                                showNoUpdate()
+                            } else {
+                                // 有新版本
+                                currentVersionInfo = versionInfo
+                                binding.btnCheckUpdate.text = "查看更新"
+                                showUpdateAvailable(versionInfo)
+                            }
                         } else {
                             // 没有新版本
+                            binding.btnCheckUpdate.text = "检查更新"
                             showNoUpdate()
                         }
                     },
@@ -188,6 +218,8 @@ class UpdateCheckActivity : AppCompatActivity() {
                     }
                 )
             } catch (e: Exception) {
+                // 取消超时处理
+                checkTimeoutHandler?.removeCallbacksAndMessages(null)
                 AppLogger.e(TAG, "Error checking update", e)
                 binding.progressBarChecking.visibility = View.GONE
                 binding.btnCheckUpdate.isEnabled = true
@@ -198,8 +230,34 @@ class UpdateCheckActivity : AppCompatActivity() {
         }
     }
 
-    private fun showUpdateInfo(versionInfo: VersionInfo) {
-        // 直接跳转到新版本页面展示更新信息，不在当前页面显示卡片
+    /**
+     * 显示有新版本可用（在当前页面显示，不自动跳转）
+     */
+    private fun showUpdateAvailable(versionInfo: VersionInfo) {
+        // 显示 NEW 标识
+        binding.tvNewBadge.visibility = View.VISIBLE
+
+        // 隐藏其他状态
+        binding.layoutNoUpdate.visibility = View.GONE
+        binding.layoutError.visibility = View.GONE
+
+        // 显示透明背景提示
+        showTransparentToast("检测到新版本")
+    }
+
+    /**
+     * 显示透明背景提示
+     */
+    private fun showTransparentToast(message: String) {
+        // 创建透明背景的 Toast
+        val toast = Toast.makeText(this, message, Toast.LENGTH_SHORT)
+        toast.show()
+    }
+
+    /**
+     * 跳转到新版本页面（点击按钮时调用）
+     */
+    private fun goToNewVersionPage(versionInfo: VersionInfo) {
         NewVersionActivity.start(
             context = this,
             versionName = versionInfo.versionName,
@@ -210,44 +268,19 @@ class UpdateCheckActivity : AppCompatActivity() {
             releaseNotes = versionInfo.releaseNotes,
             isForceUpdate = false
         )
-
-        // 显示提示信息
-        Toast.makeText(this, "发现新版本", Toast.LENGTH_SHORT).show()
-
-        // 不显示更新卡片，保持页面简洁
-        binding.layoutUpdateInfo.visibility = View.GONE
-        binding.layoutNoUpdate.visibility = View.GONE
-        binding.layoutError.visibility = View.GONE
-        binding.btnDownloadUpdate.visibility = View.GONE
     }
 
     private fun showNoUpdate() {
-        binding.layoutUpdateInfo.visibility = View.GONE
         binding.layoutNoUpdate.visibility = View.VISIBLE
         binding.layoutError.visibility = View.GONE
-        binding.btnDownloadUpdate.visibility = View.GONE
         currentVersionInfo = null
     }
 
     private fun showError(message: String) {
-        binding.layoutUpdateInfo.visibility = View.GONE
         binding.layoutNoUpdate.visibility = View.GONE
         binding.layoutError.visibility = View.VISIBLE
         binding.tvErrorMessage.text = message
-        binding.btnDownloadUpdate.visibility = View.GONE
         currentVersionInfo = null
-    }
-
-    private fun startDownload(downloadUrl: String) {
-        apkDownloadManager.startDownload(downloadUrl) { success ->
-            runOnUiThread {
-                if (success) {
-                    Toast.makeText(this, "下载完成，开始安装", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this, "下载失败，请重试", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -294,22 +327,7 @@ class UpdateCheckActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        apkDownloadManager.cancelDownload()
-    }
-
-    /**
-     * Android 16: 设置 Edge-to-Edge 模式
-     * 处理系统栏（状态栏和导航栏）的 insets
-     * 注意：布局中已添加 fitsSystemWindows="true"，这里处理额外的 insets 需求
-     */
-    private fun setupEdgeToEdge() {
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
-            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 只为底部设置 padding，顶部由 fitsSystemWindows 处理
-            view.updatePadding(
-                bottom = insets.bottom
-            )
-            windowInsets
-        }
+        // 清理超时 Handler
+        checkTimeoutHandler?.removeCallbacksAndMessages(null)
     }
 }

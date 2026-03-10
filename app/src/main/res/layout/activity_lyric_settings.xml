@@ -9,6 +9,7 @@
 
     <!-- 顶部标题栏 -->
     <LinearLayout
+        android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:orientation="horizontal"

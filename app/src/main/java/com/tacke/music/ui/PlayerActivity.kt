@@ -46,10 +46,8 @@ import com.tacke.music.ui.adapter.PlaylistDialogAdapter
 import android.net.Uri
 import android.provider.Settings
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updatePadding
 import kotlinx.coroutines.Dispatchers
+import com.tacke.music.util.ImmersiveStatusBarHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -212,8 +210,12 @@ class PlayerActivity : AppCompatActivity() {
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Android 16: 适配 Edge-to-Edge 模式，确保底部控制栏不被导航栏遮挡
-        setupEdgeToEdge()
+        // 设置沉浸式状态栏 - 使用渐变背景模式（深色背景，白色状态栏图标）
+        ImmersiveStatusBarHelper.setupWithGradientBackground(
+            activity = this,
+            headerViewId = R.id.toolbar,
+            contentViewId = null
+        )
 
         playlistManager = PlaylistManager.getInstance(this)
         playbackPreferences = PlaybackPreferences.getInstance(this)
@@ -1900,19 +1902,4 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Android 16: 设置 Edge-to-Edge 模式
-     * 处理系统栏（状态栏和导航栏）的 insets，确保底部控制按钮不被导航栏遮挡
-     * 注意：布局中已添加 fitsSystemWindows="true"，这里处理额外的 insets 需求
-     */
-    private fun setupEdgeToEdge() {
-        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
-            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 只为底部控制区域设置 padding，顶部由 fitsSystemWindows 处理
-            view.updatePadding(
-                bottom = insets.bottom
-            )
-            windowInsets
-        }
-    }
 }

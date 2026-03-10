@@ -113,7 +113,7 @@ class ChartDetailActivity : AppCompatActivity() {
             ChartType.ORIGINAL -> R.drawable.bg_chart_original
             ChartType.HOT -> R.drawable.bg_chart_hot
         }
-        binding.headerContainer.setBackgroundResource(backgroundRes)
+        binding.toolbar.setBackgroundResource(backgroundRes)
     }
 
     private fun setupRecyclerView() {
@@ -734,12 +734,16 @@ class ChartDetailActivity : AppCompatActivity() {
     /**
      * Android 16: 设置 Edge-to-Edge 模式
      * 处理系统栏（状态栏和导航栏）的 insets
-     * 注意：布局中已添加 fitsSystemWindows="true"，这里处理额外的 insets 需求
+     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
      */
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 只为底部设置 padding，顶部由 fitsSystemWindows 处理
+            // 为顶部 Toolbar 添加状态栏高度 padding
+            binding.toolbar.updatePadding(
+                top = insets.top
+            )
+            // 为底部设置 padding
             view.updatePadding(
                 bottom = insets.bottom
             )

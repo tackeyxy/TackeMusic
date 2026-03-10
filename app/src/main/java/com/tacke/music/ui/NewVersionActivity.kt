@@ -121,7 +121,7 @@ class NewVersionActivity : AppCompatActivity() {
         // 设置沉浸式状态栏 - 使用渐变背景模式
         ImmersiveStatusBarHelper.setupWithGradientBackground(
             activity = this,
-            headerViewId = R.id.headerContainer,
+            headerViewId = R.id.toolbar,
             contentViewId = R.id.scrollContent
         )
 

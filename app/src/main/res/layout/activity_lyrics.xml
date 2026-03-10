@@ -26,7 +26,7 @@
 
     <!-- 顶部导航栏 -->
     <androidx.constraintlayout.widget.ConstraintLayout
-        android:id="@+id/headerLayout"
+        android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:padding="16dp"
@@ -89,7 +89,7 @@
         android:layout_marginBottom="8dp"
         android:paddingHorizontal="24dp"
         android:clipToPadding="false"
-        app:layout_constraintTop_toBottomOf="@id/headerLayout"
+        app:layout_constraintTop_toBottomOf="@id/toolbar"
         app:layout_constraintBottom_toTopOf="@id/progressContainer"
         tools:listitem="@layout/item_lyric_line" />
 
