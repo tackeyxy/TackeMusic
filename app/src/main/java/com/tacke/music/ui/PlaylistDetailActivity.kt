@@ -483,8 +483,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                // 清空当前播放列表并添加所有歌曲
-                playlistManager.clearPlaylist()
+                // 添加所有歌曲到播放列表（不清空原有列表）
                 songs.forEach { song ->
                     playlistManager.addSong(song)
                 }

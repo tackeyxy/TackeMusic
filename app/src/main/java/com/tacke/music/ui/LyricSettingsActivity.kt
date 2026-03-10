@@ -2,14 +2,11 @@ package com.tacke.music.ui
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
-import android.provider.Settings
 import android.widget.SeekBar
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import com.tacke.music.R
 import com.tacke.music.databinding.ActivityLyricSettingsBinding
 
@@ -128,27 +125,6 @@ class LyricSettingsActivity : AppCompatActivity() {
             showColorPickerDialog(false)
         }
 
-        // 悬浮歌词开关 - 带权限校验
-        binding.switchFloatingLyrics.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) {
-                // 开启时检查悬浮权限
-                if (!Settings.canDrawOverlays(this)) {
-                    // 没有权限，显示对话框引导用户开启
-                    showOverlayPermissionDialog()
-                    // 强制关闭开关
-                    binding.switchFloatingLyrics.isChecked = false
-                    return@setOnCheckedChangeListener
-                }
-                // 有权限，正常开启
-                setFloatingLyricsEnabled(this, true)
-                Toast.makeText(this, "悬浮歌词已开启，请在播放页点击更多菜单使用", Toast.LENGTH_LONG).show()
-            } else {
-                // 关闭
-                setFloatingLyricsEnabled(this, false)
-            }
-            updateFloatingLyricsStatus()
-        }
-
         // 歌词大小滑条
         binding.seekBarLyricSize.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -169,21 +145,6 @@ class LyricSettingsActivity : AppCompatActivity() {
         })
     }
 
-    private fun showOverlayPermissionDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("需要悬浮窗权限")
-            .setMessage("悬浮歌词功能需要悬浮窗权限才能正常使用。请前往系统设置开启权限。")
-            .setPositiveButton("去设置") { _, _ ->
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName")
-                )
-                startActivity(intent)
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
-
     private fun updateUI() {
         // 更新播放页歌词颜色预览
         val playerColor = getPlayerLyricColor(this)
@@ -194,22 +155,11 @@ class LyricSettingsActivity : AppCompatActivity() {
         binding.viewFloatingLyricColorPreview.setBackgroundColor(floatingColor)
         binding.tvPreviewCurrentLine.setTextColor(floatingColor)
 
-        // 更新悬浮歌词开关
-        binding.switchFloatingLyrics.isChecked = isFloatingLyricsEnabled(this)
-        updateFloatingLyricsStatus()
-
         // 更新歌词大小
         val lyricSize = getFloatingLyricSize(this)
         binding.seekBarLyricSize.progress = lyricSize - 50
         binding.tvLyricSizeValue.text = "$lyricSize%"
         updatePreviewLyricSize(lyricSize)
-    }
-
-    private fun updateFloatingLyricsStatus() {
-        val enabled = isFloatingLyricsEnabled(this)
-        binding.layoutFloatingLyricColor.alpha = if (enabled) 1.0f else 0.5f
-        binding.layoutFloatingLyricColor.isClickable = enabled
-        binding.layoutFloatingLyricSize.alpha = if (enabled) 1.0f else 0.5f
     }
 
     private fun updatePreviewLyricSize(sizePercent: Int) {

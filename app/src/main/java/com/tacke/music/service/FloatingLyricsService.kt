@@ -19,6 +19,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -32,12 +33,13 @@ class FloatingLyricsService : Service() {
 
     private lateinit var windowManager: WindowManager
     private var floatingView: View? = null
+    private var rootContainer: FrameLayout? = null
     private var lyricsContainer: LinearLayout? = null
     private var tvCurrentLine: TextView? = null
     private var tvNextLine: TextView? = null
     private var btnLock: ImageView? = null
     private var btnClose: ImageView? = null
-    private var dragHandle: View? = null
+    private var controlContainer: LinearLayout? = null
 
     private var layoutParams: WindowManager.LayoutParams? = null
     private var isLocked = false
@@ -51,6 +53,12 @@ class FloatingLyricsService : Service() {
     private val longPressHandler = Handler(Looper.getMainLooper())
     private var longPressRunnable: Runnable? = null
     private val LONG_PRESS_DURATION = 300L // 长按触发时间（毫秒）
+
+    // 控件自动隐藏相关
+    private val hideControlsHandler = Handler(Looper.getMainLooper())
+    private var hideControlsRunnable: Runnable? = null
+    private val CONTROLS_SHOW_DURATION = 3000L // 控件显示持续时间（毫秒）
+    private var isControlsVisible = false
 
     private var parsedLyrics: List<Pair<Long, String>> = emptyList()
     private var currentPosition: Long = 0
@@ -67,6 +75,9 @@ class FloatingLyricsService : Service() {
         const val ACTION_PLAYBACK_STATE_CHANGED = "com.tacke.music.ACTION_PLAYBACK_STATE_CHANGED"
         const val ACTION_TOGGLE_LOCK = "com.tacke.music.ACTION_TOGGLE_LOCK"
         const val ACTION_UPDATE_SIZE = "com.tacke.music.ACTION_UPDATE_SIZE"
+
+        // 悬浮窗关闭广播通知
+        const val ACTION_FLOATING_LYRICS_CLOSED = "com.tacke.music.ACTION_FLOATING_LYRICS_CLOSED"
 
         const val EXTRA_LYRICS = "lyrics"
         const val EXTRA_POSITION = "position"
@@ -140,6 +151,8 @@ class FloatingLyricsService : Service() {
             ACTION_HIDE_FLOATING_LYRICS -> {
                 removeFloatingWindow()
                 stopForeground(true)
+                // 发送广播通知播放页悬浮窗已关闭
+                sendFloatingLyricsClosedBroadcast()
                 stopSelf()
             }
             ACTION_UPDATE_LYRICS -> {
@@ -244,12 +257,13 @@ class FloatingLyricsService : Service() {
         }
         floatingView = LayoutInflater.from(themedContext).inflate(R.layout.layout_floating_lyrics, null)
 
+        rootContainer = floatingView?.findViewById(R.id.rootContainer)
         lyricsContainer = floatingView?.findViewById(R.id.lyricsContainer)
         tvCurrentLine = floatingView?.findViewById(R.id.tvCurrentLine)
         tvNextLine = floatingView?.findViewById(R.id.tvNextLine)
         btnLock = floatingView?.findViewById(R.id.btnLock)
         btnClose = floatingView?.findViewById(R.id.btnClose)
-        dragHandle = floatingView?.findViewById(R.id.dragHandle)
+        controlContainer = floatingView?.findViewById(R.id.controlContainer)
 
         // 设置歌词颜色
         updateLyricColor(currentLyricColor)
@@ -268,11 +282,13 @@ class FloatingLyricsService : Service() {
             android.util.Log.d("FloatingLyrics", "Close button clicked")
             removeFloatingWindow()
             stopForeground(true)
+            // 发送广播通知播放页悬浮窗已关闭
+            sendFloatingLyricsClosedBroadcast()
             stopSelf()
         }
 
-        // 设置拖动和点击事件 - 改为长按拖动
-        setupDragAndClick()
+        // 设置触摸事件 - 全区域长按拖动，点击显示/隐藏控件
+        setupTouchEvents()
 
         // 更新锁定状态UI
         updateLockState()
@@ -289,13 +305,16 @@ class FloatingLyricsService : Service() {
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
             val (savedX, savedY) = getPosition(this@FloatingLyricsService)
-            x = if (savedX == -1) {
-                // 默认居中
-                val displayMetrics = resources.displayMetrics
-                (displayMetrics.widthPixels - 600) / 2
-            } else savedX
+            if (savedX == -1) {
+                // 默认水平居中，使用 CENTER_HORIZONTAL 确保窗口宽度变化时仍保持居中
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                x = 0
+            } else {
+                // 使用保存的位置
+                gravity = Gravity.TOP or Gravity.START
+                x = savedX
+            }
             y = savedY
         }
 
@@ -309,25 +328,34 @@ class FloatingLyricsService : Service() {
         }
     }
 
-    private fun setupDragAndClick() {
-        // 长按拖动处理 - 只在解锁状态下允许拖动
+    private fun setupTouchEvents() {
+        // 根容器触摸事件 - 用于检测是否点击在歌词区域外
+        rootContainer?.setOnTouchListener { _, event ->
+            when (event?.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    // 检查点击位置是否在歌词容器内
+                    val location = IntArray(2)
+                    lyricsContainer?.getLocationOnScreen(location)
+                    val lyricsLeft = location[0]
+                    val lyricsTop = location[1]
+                    val lyricsRight = lyricsLeft + (lyricsContainer?.width ?: 0)
+                    val lyricsBottom = lyricsTop + (lyricsContainer?.height ?: 0)
+
+                    val isInsideLyrics = event.rawX >= lyricsLeft && event.rawX <= lyricsRight &&
+                            event.rawY >= lyricsTop && event.rawY <= lyricsBottom
+
+                    if (!isInsideLyrics && isControlsVisible) {
+                        // 点击在歌词区域外，隐藏控件
+                        hideControls()
+                    }
+                }
+            }
+            false
+        }
+
+        // 歌词容器触摸事件 - 长按拖动/显示控件，点击显示/隐藏控件
         lyricsContainer?.setOnTouchListener(object : View.OnTouchListener {
             override fun onTouch(v: View?, event: MotionEvent?): Boolean {
-                if (isLocked) {
-                    // 锁定状态下只处理点击事件（打开播放页）
-                    when (event?.action) {
-                        MotionEvent.ACTION_UP -> {
-                            // 点击歌词区域打开播放页
-                            val intent = Intent(this@FloatingLyricsService, PlayerActivity::class.java).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                putExtra(PlayerActivity.EXTRA_LAUNCH_MODE, PlayerActivity.LAUNCH_MODE_RESTORE)
-                            }
-                            startActivity(intent)
-                        }
-                    }
-                    return false
-                }
-
                 when (event?.action) {
                     MotionEvent.ACTION_DOWN -> {
                         initialX = layoutParams?.x ?: 0
@@ -339,8 +367,13 @@ class FloatingLyricsService : Service() {
                         // 启动长按检测
                         longPressRunnable = Runnable {
                             isLongPress = true
-                            // 显示视觉反馈
-                            lyricsContainer?.alpha = 0.7f
+                            if (isLocked) {
+                                // 锁定状态下长按显示控件
+                                showControls()
+                            } else {
+                                // 解锁状态下长按显示视觉反馈（准备拖动）
+                                lyricsContainer?.alpha = 0.7f
+                            }
                         }
                         longPressHandler.postDelayed(longPressRunnable!!, LONG_PRESS_DURATION)
                         return true
@@ -353,8 +386,8 @@ class FloatingLyricsService : Service() {
                             longPressRunnable?.let { longPressHandler.removeCallbacks(it) }
                         }
 
-                        // 只有在长按触发后才允许拖动
-                        if (isLongPress) {
+                        // 只有在解锁状态且长按触发后才允许拖动
+                        if (!isLocked && isLongPress) {
                             val moveDeltaX = (event.rawX - initialTouchX).toInt()
                             val moveDeltaY = (event.rawY - initialTouchY).toInt()
                             layoutParams?.x = initialX + moveDeltaX
@@ -375,18 +408,28 @@ class FloatingLyricsService : Service() {
                         lyricsContainer?.alpha = 1.0f
 
                         if (isLongPress) {
-                            // 长按结束，保存位置
+                            // 长按结束
                             isLongPress = false
-                            layoutParams?.let {
-                                savePosition(this@FloatingLyricsService, it.x, it.y)
+                            if (!isLocked) {
+                                // 解锁状态下保存位置
+                                layoutParams?.let {
+                                    savePosition(this@FloatingLyricsService, it.x, it.y)
+                                }
                             }
+                            // 锁定状态下长按已触发显示控件，不执行其他操作
                         } else {
-                            // 普通点击，打开播放页
-                            val intent = Intent(this@FloatingLyricsService, PlayerActivity::class.java).apply {
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                putExtra(PlayerActivity.EXTRA_LAUNCH_MODE, PlayerActivity.LAUNCH_MODE_RESTORE)
+                            // 普通点击
+                            if (isLocked) {
+                                // 锁定状态下点击打开播放页
+                                val intent = Intent(this@FloatingLyricsService, PlayerActivity::class.java).apply {
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                    putExtra(PlayerActivity.EXTRA_LAUNCH_MODE, PlayerActivity.LAUNCH_MODE_RESTORE)
+                                }
+                                startActivity(intent)
+                            } else {
+                                // 解锁状态下点击切换控件显示/隐藏
+                                toggleControls()
                             }
-                            startActivity(intent)
                         }
                         return true
                     }
@@ -401,15 +444,34 @@ class FloatingLyricsService : Service() {
                 return false
             }
         })
+    }
 
-        // 点击歌词区域打开播放页（作为备用）
-        lyricsContainer?.setOnClickListener {
-            val intent = Intent(this, PlayerActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra(PlayerActivity.EXTRA_LAUNCH_MODE, PlayerActivity.LAUNCH_MODE_RESTORE)
-            }
-            startActivity(intent)
+    private fun toggleControls() {
+        if (isControlsVisible) {
+            hideControls()
+        } else {
+            showControls()
         }
+    }
+
+    private fun showControls() {
+        controlContainer?.visibility = View.VISIBLE
+        isControlsVisible = true
+
+        // 取消之前的隐藏任务
+        hideControlsRunnable?.let { hideControlsHandler.removeCallbacks(it) }
+
+        // 启动自动隐藏任务
+        hideControlsRunnable = Runnable {
+            hideControls()
+        }
+        hideControlsHandler.postDelayed(hideControlsRunnable!!, CONTROLS_SHOW_DURATION)
+    }
+
+    private fun hideControls() {
+        controlContainer?.visibility = View.GONE
+        isControlsVisible = false
+        hideControlsRunnable?.let { hideControlsHandler.removeCallbacks(it) }
     }
 
     private fun toggleLock() {
@@ -420,11 +482,9 @@ class FloatingLyricsService : Service() {
     }
 
     private fun updateLockState() {
-        dragHandle?.visibility = if (isLocked) View.GONE else View.VISIBLE
         btnLock?.setImageResource(if (isLocked) R.drawable.ic_lock else R.drawable.ic_lock_open)
 
         // 更新触摸标志 - 始终保持 NOT_TOUCH_MODAL 以允许按钮点击
-        // 锁定状态下只隐藏拖动把手，不禁用触摸
         layoutParams?.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
 
@@ -509,6 +569,7 @@ class FloatingLyricsService : Service() {
         if (parsedLyrics.isEmpty()) {
             tvCurrentLine?.text = currentSongName
             tvNextLine?.text = currentArtists
+            updateWindowWidth()
             return
         }
 
@@ -538,6 +599,90 @@ class FloatingLyricsService : Service() {
                 tvNextLine?.text = currentArtists
             }
         }
+        
+        // 更新窗口宽度以适应歌词
+        updateWindowWidth()
+    }
+    
+    /**
+     * 根据歌词长度动态更新窗口宽度
+     * 测量当前歌词和下一句歌词的文本宽度，取最大值
+     */
+    private fun updateWindowWidth() {
+        try {
+            floatingView?.post {
+                try {
+                    // 获取当前歌词文本
+                    val currentText = tvCurrentLine?.text?.toString() ?: ""
+                    val nextText = tvNextLine?.text?.toString() ?: ""
+                    
+                    // 计算文本宽度
+                    val currentWidth = measureTextWidth(tvCurrentLine, currentText)
+                    val nextWidth = measureTextWidth(tvNextLine, nextText)
+                    
+                    // 取最大值，并添加padding
+                    val maxTextWidth = maxOf(currentWidth, nextWidth)
+                    
+                    // 计算总padding:
+                    // rootContainer padding: 4dp (左右各4dp)
+                    // lyricsContainer paddingHorizontal: 12dp (左右各12dp)
+                    // TextView paddingHorizontal: 8dp (左右各8dp)
+                    // 额外边距: 16dp (用于阴影和确保文字不被截断)
+                    val density = resources.displayMetrics.density
+                    val paddingHorizontal = (4 + 4 + 12 + 12 + 8 + 8 + 16) * density
+                    val targetWidth = (maxTextWidth + paddingHorizontal).toInt()
+                    
+                    // 设置最小宽度和最大宽度限制
+                    val minWidth = (200 * density).toInt()
+                    val maxWidth = (resources.displayMetrics.widthPixels * 0.95).toInt()
+                    val finalWidth = targetWidth.coerceIn(minWidth, maxWidth)
+                    
+                    if (finalWidth > 0 && layoutParams?.width != finalWidth) {
+                        layoutParams?.width = finalWidth
+                        windowManager.updateViewLayout(floatingView, layoutParams)
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+    
+    /**
+     * 测量文本宽度
+     * 使用 TextView 的 Paint 对象，并考虑 textStyle (bold) 的影响
+     */
+    private fun measureTextWidth(textView: TextView?, text: String): Float {
+        if (textView == null || text.isEmpty()) return 0f
+        
+        // 创建一个新的 Paint 对象，复制 TextView 的设置
+        val paint = android.graphics.Paint().apply {
+            // 复制 TextView 的 paint 设置
+            typeface = textView.typeface
+            textSize = textView.textSize
+            // 设置抗锯齿
+            isAntiAlias = true
+            // 如果 TextView 是粗体，需要设置 fakeBold
+            if (textView.typeface?.isBold == true || textView.text.toString().isNotEmpty()) {
+                // 检查当前 TextView 的样式
+                val isBold = textView.text.toString() == tvCurrentLine?.text?.toString() && 
+                            textView.id == R.id.tvCurrentLine
+                if (isBold) {
+                    this.isFakeBoldText = true
+                }
+            }
+        }
+        
+        // 测量文本宽度，添加额外空间确保不被截断
+        val width = paint.measureText(text)
+        
+        // 添加额外空间用于阴影效果
+        val shadowRadius = textView.shadowRadius
+        val shadowDx = kotlin.math.abs(textView.shadowDx)
+        
+        return width + shadowRadius + shadowDx + 8 // 额外8像素确保完全显示
     }
 
     private fun removeFloatingWindow() {
@@ -550,6 +695,14 @@ class FloatingLyricsService : Service() {
         }
         floatingView = null
         setRunning(this, false)
+    }
+
+    /**
+     * 发送悬浮窗已关闭的广播通知
+     */
+    private fun sendFloatingLyricsClosedBroadcast() {
+        val intent = Intent(ACTION_FLOATING_LYRICS_CLOSED)
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }
 
     override fun onDestroy() {

@@ -222,10 +222,6 @@ class LyricsActivity : AppCompatActivity() {
             finish()
         }
 
-        binding.btnMore.setOnClickListener {
-            Toast.makeText(this, "更多功能开发中", Toast.LENGTH_SHORT).show()
-        }
-
         // 定位到当前播放歌词按钮
         binding.btnLocateCurrent?.setOnClickListener {
             isUserScrolling = false

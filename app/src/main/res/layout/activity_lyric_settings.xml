@@ -84,41 +84,6 @@
 
         </LinearLayout>
 
-        <!-- 悬浮歌词开关 -->
-        <LinearLayout
-            android:id="@+id/layoutFloatingLyricsSwitch"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:background="@drawable/bg_card_rounded"
-            android:paddingHorizontal="16dp"
-            android:layout_marginTop="12dp"
-            android:clickable="true"
-            android:focusable="true">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_floating_lyrics"
-                app:tint="@color/primary" />
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="16dp"
-                android:text="启用悬浮歌词"
-                android:textSize="15sp"
-                android:textColor="@color/text_primary" />
-
-            <androidx.appcompat.widget.SwitchCompat
-                android:id="@+id/switchFloatingLyrics"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
-
-        </LinearLayout>
-
         <!-- 悬浮歌词颜色设置 -->
         <LinearLayout
             android:id="@+id/layoutFloatingLyricColor"

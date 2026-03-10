@@ -2,18 +2,22 @@ package com.tacke.music.util
 
 import android.content.Context
 import android.util.Log
+import java.io.BufferedReader
 import java.io.File
 import java.io.FileWriter
 import java.io.IOException
+import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 应用日志管理器
  * 支持记录应用运行日志，包括不同级别的日志（DEBUG、INFO、WARN、ERROR）
+ * 自动捕获系统日志并写入本地文件
  */
 class AppLogger private constructor(context: Context) {
 
@@ -52,14 +56,21 @@ class AppLogger private constructor(context: Context) {
 
     private val logExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
+    private val appContext: Context = context.applicationContext
     private val logDir: File = File(context.getExternalFilesDir(null), "logs")
     private val logFile: File = File(logDir, LOG_FILE_NAME)
 
     // 当前日志级别，低于此级别的日志不会记录到文件
     private var currentLogLevel: Int = LEVEL_DEBUG
 
+    // 系统日志捕获相关
+    private var logcatProcess: Process? = null
+    private var logcatReader: BufferedReader? = null
+    private val isCapturingLogcat = AtomicBoolean(false)
+
     init {
         createLogDirectory()
+        startLogcatCapture()
         i(TAG, "AppLogger initialized")
     }
 
@@ -272,6 +283,120 @@ class AppLogger private constructor(context: Context) {
                 Log.e(TAG, "Failed to export logs", e)
                 callback(false)
             }
+        }
+    }
+
+    /**
+     * 启动系统日志捕获
+     * 自动捕获当前应用的所有日志输出并写入文件
+     */
+    private fun startLogcatCapture() {
+        if (isCapturingLogcat.get()) return
+
+        logExecutor.execute {
+            try {
+                isCapturingLogcat.set(true)
+
+                // 获取当前应用包名和进程ID
+                val packageName = try {
+                    appContext.packageName
+                } catch (e: Exception) {
+                    "com.tacke.music"
+                }
+                val myPid = android.os.Process.myPid()
+
+                // 清除旧日志，避免重复记录
+                Runtime.getRuntime().exec("logcat -c")
+
+                // 启动 logcat 进程，捕获所有日志
+                val processBuilder = ProcessBuilder(
+                    "logcat",
+                    "-v", "threadtime",  // 显示线程时间和进程信息
+                    "*:D"                 // 捕获所有 DEBUG 及以上级别的日志
+                )
+                logcatProcess = processBuilder.start()
+                logcatReader = BufferedReader(InputStreamReader(logcatProcess?.inputStream))
+
+                // 读取并记录日志
+                var line: String? = null
+                while (isCapturingLogcat.get() && logcatReader?.readLine().also { line = it } != null) {
+                    line?.let { logLine ->
+                        // 只记录当前应用的日志
+                        // 通过进程ID或包名来判断是否属于当前应用
+                        if (isCurrentAppLog(logLine, myPid, packageName)) {
+                            writeSystemLogToFile(logLine)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start logcat capture", e)
+            } finally {
+                isCapturingLogcat.set(false)
+            }
+        }
+    }
+
+    /**
+     * 判断日志是否属于当前应用
+     * 通过检查进程ID或包名来过滤
+     */
+    private fun isCurrentAppLog(logLine: String, myPid: Int, packageName: String): Boolean {
+        // logcat -v threadtime 格式: "MM-DD HH:MM:SS.mmm PID TID L TAG: message"
+        // 例如: "03-10 14:23:45.678  1234  5678 D MyTag: log message"
+        return try {
+            // 检查是否包含当前进程的 PID
+            val pidStr = myPid.toString()
+            // 匹配 PID 在日志中的位置（通常是第3个字段）
+            val parts = logLine.trim().split(Regex("\\s+"))
+            if (parts.size >= 3) {
+                // 检查第3个字段是否是当前 PID
+                val logPid = parts[2]
+                if (logPid == pidStr) {
+                    return true
+                }
+            }
+            // 如果不匹配 PID，检查是否包含包名
+            logLine.contains(packageName) ||
+            // 或者检查是否是常见的应用相关 TAG
+            logLine.contains("AndroidRuntime") ||  // 崩溃日志
+            logLine.contains("System.err")         // 错误输出
+        } catch (e: Exception) {
+            // 如果解析失败，默认记录该日志（避免遗漏）
+            true
+        }
+    }
+
+    /**
+     * 将系统日志直接写入文件（不打印到 Logcat）
+     */
+    private fun writeSystemLogToFile(logMessage: String) {
+        try {
+            // 检查文件大小，如果超过限制则轮转日志
+            if (logFile.exists() && logFile.length() > MAX_LOG_FILE_SIZE) {
+                rotateLogFiles()
+            }
+
+            // 追加写入日志
+            FileWriter(logFile, true).use { writer ->
+                writer.write(logMessage)
+                writer.write("\n")
+                writer.flush()
+            }
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to write system log to file", e)
+        }
+    }
+
+    /**
+     * 停止系统日志捕获
+     */
+    fun stopLogcatCapture() {
+        isCapturingLogcat.set(false)
+        try {
+            logcatReader?.close()
+            logcatProcess?.destroy()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop logcat capture", e)
         }
     }
 }

@@ -46,6 +46,9 @@ import com.tacke.music.ui.adapter.PlaylistDialogAdapter
 import android.net.Uri
 import android.provider.Settings
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -74,6 +77,7 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var gestureDetector: GestureDetector
     private lateinit var seekReceiver: BroadcastReceiver
     private lateinit var playbackControlReceiver: BroadcastReceiver
+    private lateinit var floatingLyricsClosedReceiver: BroadcastReceiver
     private var loadingToast: Toast? = null
 
     private lateinit var playlistManager: PlaylistManager
@@ -81,6 +85,9 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var playbackManager: PlaybackManager
     private lateinit var recentPlayRepository: RecentPlayRepository
     private var isFromEmptyState = false
+
+    // 悬浮歌词权限申请标志
+    private var isRequestingOverlayPermission = false
 
     // Service connection
     private var musicService: MusicPlaybackService? = null
@@ -205,6 +212,9 @@ class PlayerActivity : AppCompatActivity() {
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Android 16: 适配 Edge-to-Edge 模式，确保底部控制栏不被导航栏遮挡
+        setupEdgeToEdge()
+
         playlistManager = PlaylistManager.getInstance(this)
         playbackPreferences = PlaybackPreferences.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
@@ -216,6 +226,7 @@ class PlayerActivity : AppCompatActivity() {
         setupGestureDetector()
         setupSeekReceiver()
         setupPlaybackControlReceiver()
+        setupFloatingLyricsClosedReceiver()
         setupPlayer()
 
         // 启动并绑定服务
@@ -718,6 +729,19 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupFloatingLyricsClosedReceiver() {
+        floatingLyricsClosedReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    FloatingLyricsService.ACTION_FLOATING_LYRICS_CLOSED -> {
+                        // 悬浮窗已关闭，更新按钮状态
+                        updateFloatingLyricsButtonState()
+                    }
+                }
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         val filter = IntentFilter().apply {
@@ -732,8 +756,28 @@ class PlayerActivity : AppCompatActivity() {
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(playbackControlReceiver, controlFilter)
 
+        // 注册悬浮窗关闭广播接收器
+        val floatingLyricsClosedFilter = IntentFilter().apply {
+            addAction(FloatingLyricsService.ACTION_FLOATING_LYRICS_CLOSED)
+        }
+        LocalBroadcastManager.getInstance(this).registerReceiver(floatingLyricsClosedReceiver, floatingLyricsClosedFilter)
+
         // 从后台恢复时，同步当前播放的歌曲信息
         syncCurrentPlaybackState()
+
+        // 更新悬浮歌词按钮状态
+        updateFloatingLyricsButtonState()
+
+        // 检查是否是从权限设置页返回，如果是且权限已授予，自动启动悬浮歌词
+        if (isRequestingOverlayPermission) {
+            isRequestingOverlayPermission = false
+            if (Settings.canDrawOverlays(this)) {
+                // 权限已授予，自动启动悬浮歌词
+                if (!FloatingLyricsService.isRunning(this)) {
+                    startFloatingLyrics()
+                }
+            }
+        }
     }
 
     /**
@@ -806,6 +850,12 @@ class PlayerActivity : AppCompatActivity() {
         // 注销播放控制广播接收器
         try {
             LocalBroadcastManager.getInstance(this).unregisterReceiver(playbackControlReceiver)
+        } catch (e: Exception) {
+            // 忽略未注册的错误
+        }
+        // 注销悬浮窗关闭广播接收器
+        try {
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(floatingLyricsClosedReceiver)
         } catch (e: Exception) {
             // 忽略未注册的错误
         }
@@ -890,14 +940,6 @@ class PlayerActivity : AppCompatActivity() {
             finish()
         }
 
-        binding.btnShare.setOnClickListener {
-            if (isFromEmptyState) {
-                Toast.makeText(this, "暂无歌曲可分享", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "分享功能开发中", Toast.LENGTH_SHORT).show()
-            }
-        }
-
         binding.btnPlayPause.setOnClickListener {
             if (isFromEmptyState) {
                 Toast.makeText(this, "播放列表为空", Toast.LENGTH_SHORT).show()
@@ -954,12 +996,12 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
 
-        // 点击音质标识可以切换音质
-        binding.tvQuality.setOnClickListener {
+        // 悬浮歌词按钮点击事件 - 显示/隐藏悬浮歌词窗口
+        binding.btnFloatingLyrics.setOnClickListener {
             if (isFromEmptyState) {
                 Toast.makeText(this, "暂无歌曲", Toast.LENGTH_SHORT).show()
             } else {
-                showQualityDialog()
+                toggleFloatingLyrics()
             }
         }
     }
@@ -1193,7 +1235,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun showMoreOptions() {
-        val options = arrayOf("下载", "选择音质", "添加到歌单", "查看歌手", getFloatingLyricsMenuText())
+        val options = arrayOf("下载", "选择音质", "添加到歌单")
         AlertDialog.Builder(this)
             .setTitle("更多选项")
             .setItems(options) { _, which ->
@@ -1201,21 +1243,9 @@ class PlayerActivity : AppCompatActivity() {
                     0 -> showQualityDialogForDownload()
                     1 -> showQualityDialog()
                     2 -> Toast.makeText(this, "添加到歌单", Toast.LENGTH_SHORT).show()
-                    3 -> Toast.makeText(this, "查看歌手", Toast.LENGTH_SHORT).show()
-                    4 -> toggleFloatingLyrics()
                 }
             }
             .show()
-    }
-
-    private fun getFloatingLyricsMenuText(): String {
-        return if (!LyricSettingsActivity.isFloatingLyricsEnabled(this)) {
-            "悬浮歌词（未开启）"
-        } else if (FloatingLyricsService.isRunning(this)) {
-            "关闭悬浮歌词"
-        } else {
-            "开启悬浮歌词"
-        }
     }
 
     private fun updatePlayPauseButton(isPlaying: Boolean) {
@@ -1625,6 +1655,7 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun updateQualityDisplay(quality: String) {
+        // 音质显示已移至"更多选项"菜单内，此方法保留用于记录当前音质
         val qualityText = when (quality.lowercase()) {
             "128k" -> "LQ"
             "320k" -> "HQ"
@@ -1632,7 +1663,7 @@ class PlayerActivity : AppCompatActivity() {
             "flac24bit" -> "HR"
             else -> "HQ"
         }
-        binding.tvQuality.text = qualityText
+        // 可以在这里添加日志记录或其他逻辑
     }
 
     private fun showQualityDialogForDownload() {
@@ -1751,6 +1782,16 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnShuffle.setImageResource(iconRes)
     }
 
+    /**
+     * 更新悬浮歌词按钮状态
+     * 移除状态回显，按钮始终保持默认样式
+     */
+    private fun updateFloatingLyricsButtonState() {
+        // 按钮始终保持默认样式，不显示状态回显
+        binding.btnFloatingLyrics.setColorFilter(ContextCompat.getColor(this, R.color.text_secondary))
+        binding.btnFloatingLyrics.alpha = 1.0f
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         savePlaybackState()
@@ -1771,13 +1812,11 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     // 悬浮歌词相关方法
+    /**
+     * 显示/隐藏悬浮歌词窗口
+     * 仅检测悬浮窗权限，默认功能已开启
+     */
     private fun toggleFloatingLyrics() {
-        // 检查是否启用了悬浮歌词功能
-        if (!LyricSettingsActivity.isFloatingLyricsEnabled(this)) {
-            Toast.makeText(this, "请先前往设置-歌词设置中启用悬浮歌词", Toast.LENGTH_LONG).show()
-            return
-        }
-
         // 检查悬浮窗权限
         if (!Settings.canDrawOverlays(this)) {
             requestOverlayPermission()
@@ -1793,10 +1832,14 @@ class PlayerActivity : AppCompatActivity() {
             // 启动悬浮歌词
             startFloatingLyrics()
         }
+
+        // 更新悬浮歌词按钮状态
+        updateFloatingLyricsButtonState()
     }
 
     private fun requestOverlayPermission() {
         Toast.makeText(this, "需要悬浮窗权限才能显示悬浮歌词", Toast.LENGTH_LONG).show()
+        isRequestingOverlayPermission = true
         val intent = Intent(
             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
             Uri.parse("package:$packageName")
@@ -1854,6 +1897,22 @@ class PlayerActivity : AppCompatActivity() {
                 putExtra(FloatingLyricsService.EXTRA_LYRIC_COLOR, LyricSettingsActivity.getFloatingLyricColor(this@PlayerActivity))
             }
             startService(intent)
+        }
+    }
+
+    /**
+     * Android 16: 设置 Edge-to-Edge 模式
+     * 处理系统栏（状态栏和导航栏）的 insets，确保底部控制按钮不被导航栏遮挡
+     */
+    private fun setupEdgeToEdge() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            // 为根视图设置 padding，避免内容被系统栏遮挡
+            view.updatePadding(
+                top = insets.top,
+                bottom = insets.bottom
+            )
+            windowInsets
         }
     }
 }

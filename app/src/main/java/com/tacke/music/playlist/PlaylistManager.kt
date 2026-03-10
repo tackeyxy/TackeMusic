@@ -148,6 +148,11 @@ class PlaylistManager private constructor(context: Context) {
         }
     }
 
+    // 获取播放列表大小
+    fun getPlaylistSize(): Int {
+        return _currentPlaylist.value.size
+    }
+
     // 下一首
     fun next(): PlaylistSong? {
         val playlist = _currentPlaylist.value

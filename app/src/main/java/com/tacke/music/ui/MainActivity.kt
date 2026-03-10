@@ -15,6 +15,9 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 
 import androidx.recyclerview.widget.GridLayoutManager
@@ -106,6 +109,9 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Android 16: 适配 Edge-to-Edge 模式
+        setupEdgeToEdge()
 
         currentPlatform = SettingsActivity.getDefaultSource(this)
         playlistRepository = PlaylistRepository(this)
@@ -511,7 +517,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 首页榜单卡片歌曲点击：添加到播放列表并播放
+     * 首页榜单卡片歌曲点击：添加到当前播放列表并立即播放（不清空现有列表）
      */
     private fun playChartSong(chartType: ChartType, index: Int) {
         val songs = chartSongsMap[chartType]
@@ -535,7 +541,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (detail != null) {
-                    // 创建播放列表歌曲
+                    // 创建Song对象
                     val song = Song(
                         index = index,
                         id = chartSong.id,
@@ -545,10 +551,16 @@ class MainActivity : AppCompatActivity() {
                     )
                     val playlistSong = playlistManager.convertToPlaylistSong(song, platform)
 
+                    // 获取添加前的播放列表大小，用于设置当前播放索引
+                    val currentPlaylistSize = playlistManager.currentPlaylist.value.size
+
                     // 添加到播放列表（不清空现有列表）
                     playlistManager.addSong(playlistSong)
 
-                    // 播放歌曲（使用playFromPlaylist，不清空播放列表）
+                    // 设置为当前播放的歌曲（新添加的歌曲索引）
+                    playlistManager.setCurrentIndex(currentPlaylistSize)
+
+                    // 播放歌曲
                     playbackManager.playFromPlaylist(
                         context = this@MainActivity,
                         song = playlistSong,
@@ -1315,6 +1327,22 @@ class MainActivity : AppCompatActivity() {
                     Toast.LENGTH_SHORT
                 ).show()
             }
+        }
+    }
+
+    /**
+     * Android 16: 设置 Edge-to-Edge 模式
+     * 处理系统栏（状态栏和导航栏）的 insets
+     */
+    private fun setupEdgeToEdge() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            // 为根视图设置 padding，避免内容被系统栏遮挡
+            view.updatePadding(
+                top = insets.top,
+                bottom = insets.bottom
+            )
+            windowInsets
         }
     }
 }

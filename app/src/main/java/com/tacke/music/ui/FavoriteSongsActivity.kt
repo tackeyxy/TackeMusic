@@ -353,9 +353,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                // 清空当前播放列表并添加所有喜欢歌曲
-                playlistManager.clearPlaylist()
-
+                // 添加所有喜欢歌曲到播放列表（不清空原有列表）
                 favoriteSongs.forEach { song ->
                     val playlistSong = com.tacke.music.data.model.PlaylistSong(
                         id = song.id,

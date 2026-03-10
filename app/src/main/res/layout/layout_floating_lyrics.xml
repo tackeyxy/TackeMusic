@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootContainer"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:padding="8dp">
+    android:padding="4dp">
 
     <!-- 歌词容器 -->
     <LinearLayout
@@ -12,16 +13,9 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center"
-        android:padding="16dp"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
         android:background="@drawable/bg_floating_lyrics">
-
-        <!-- 拖动把手（仅作为视觉提示，解锁状态下显示） -->
-        <View
-            android:id="@+id/dragHandle"
-            android:layout_width="40dp"
-            android:layout_height="4dp"
-            android:layout_marginBottom="8dp"
-            android:background="@drawable/bg_drag_handle" />
 
         <!-- 当前歌词行 -->
         <TextView
@@ -33,9 +27,9 @@
             android:textStyle="bold"
             android:textColor="@color/primary"
             android:gravity="center"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:paddingHorizontal="16dp"
+            android:singleLine="true"
+            android:ellipsize="none"
+            android:paddingHorizontal="8dp"
             android:shadowColor="#80000000"
             android:shadowDx="1"
             android:shadowDy="1"
@@ -46,14 +40,14 @@
             android:id="@+id/tvNextLine"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
+            android:layout_marginTop="2dp"
             android:text=""
             android:textSize="13sp"
             android:textColor="#80FFFFFF"
             android:gravity="center"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:paddingHorizontal="16dp"
+            android:singleLine="true"
+            android:ellipsize="none"
+            android:paddingHorizontal="8dp"
             android:shadowColor="#80000000"
             android:shadowDx="1"
             android:shadowDy="1"
@@ -65,15 +59,16 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="8dp"
-            android:gravity="center">
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:visibility="gone">
 
             <!-- 锁定/解锁按钮 -->
             <ImageView
                 android:id="@+id/btnLock"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:padding="6dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:padding="5dp"
                 android:src="@drawable/ic_lock_open"
                 android:background="@android:color/transparent"
                 app:tint="#CCFFFFFF"
@@ -82,10 +77,10 @@
             <!-- 关闭按钮 -->
             <ImageView
                 android:id="@+id/btnClose"
-                android:layout_width="32dp"
-                android:layout_height="32dp"
-                android:layout_marginStart="8dp"
-                android:padding="6dp"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="6dp"
+                android:padding="5dp"
                 android:src="@drawable/ic_close"
                 android:background="@android:color/transparent"
                 app:tint="#CCFFFFFF"

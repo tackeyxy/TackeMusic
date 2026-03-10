@@ -62,17 +62,17 @@ class PlaylistAdapter(
                         .into(ivCover)
                 }
                 else -> {
-                    // 本地文件 - 直接使用 BitmapFactory 加载
+                    // 本地文件 - 使用 Glide 加载本地文件
                     showCoverImage()
                     try {
                         val file = java.io.File(coverPath)
                         if (file.exists()) {
-                            val bitmap = android.graphics.BitmapFactory.decodeFile(coverPath)
-                            if (bitmap != null) {
-                                ivCover.setImageBitmap(bitmap)
-                            } else {
-                                showDefaultCover(playlist)
-                            }
+                            Glide.with(itemView.context)
+                                .load(file)
+                                .placeholder(R.drawable.ic_music_note)
+                                .error(R.drawable.ic_music_note)
+                                .centerCrop()
+                                .into(ivCover)
                         } else {
                             showDefaultCover(playlist)
                         }
