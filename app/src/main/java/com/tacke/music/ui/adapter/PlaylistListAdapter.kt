@@ -49,10 +49,7 @@ class PlaylistListAdapter(
             tvName.text = playlist.name
             tvCount.text = "${playlist.songCount}首"
 
-            // 设置图标背景颜色
-            setupIconBackground(playlist)
-
-            // 加载歌单封面（只使用歌曲封面）
+            // 加载歌单封面（优先显示最新歌曲封面）
             loadCoverImage(playlist)
 
             itemView.setOnClickListener { onItemClick(playlist) }
@@ -66,55 +63,69 @@ class PlaylistListAdapter(
             }
         }
 
-        private fun setupIconBackground(playlist: Playlist) {
-            val colorString = playlist.iconColor
-            if (!colorString.isNullOrEmpty()) {
-                try {
-                    val color = Color.parseColor(colorString)
-                    cvIconBackground.setCardBackgroundColor(color)
-                } catch (e: IllegalArgumentException) {
-                    // 颜色解析失败，使用默认颜色
-                    cvIconBackground.setCardBackgroundColor(Color.parseColor("#2D2D4A"))
-                }
-            } else {
-                // 没有颜色时使用默认颜色
-                cvIconBackground.setCardBackgroundColor(Color.parseColor("#2D2D4A"))
-            }
-        }
-
         private fun loadCoverImage(playlist: Playlist) {
             val coverPath = playlist.coverUrl
 
             when {
                 coverPath.isNullOrEmpty() -> {
-                    // 无封面，使用默认图标
-                    ivCover.setImageResource(R.drawable.ic_playlist)
+                    // 无封面，显示默认背景和图标
+                    showDefaultCover(playlist)
                 }
                 coverPath.startsWith("http") -> {
                     // 网络图片 - 使用 Glide
+                    showCoverImage()
                     Glide.with(itemView.context)
                         .load(coverPath)
                         .placeholder(R.drawable.ic_playlist)
+                        .error(R.drawable.ic_playlist)
+                        .centerCrop()
                         .into(ivCover)
                 }
                 else -> {
-                    // 本地文件 - 直接使用 BitmapFactory 加载
+                    // 本地文件 - 使用 Glide 加载本地文件
+                    showCoverImage()
                     try {
                         val file = java.io.File(coverPath)
                         if (file.exists()) {
-                            val bitmap = android.graphics.BitmapFactory.decodeFile(coverPath)
-                            if (bitmap != null) {
-                                ivCover.setImageBitmap(bitmap)
-                            } else {
-                                ivCover.setImageResource(R.drawable.ic_playlist)
-                            }
+                            Glide.with(itemView.context)
+                                .load(file)
+                                .placeholder(R.drawable.ic_playlist)
+                                .error(R.drawable.ic_playlist)
+                                .centerCrop()
+                                .into(ivCover)
                         } else {
-                            ivCover.setImageResource(R.drawable.ic_playlist)
+                            showDefaultCover(playlist)
                         }
                     } catch (e: Exception) {
-                        ivCover.setImageResource(R.drawable.ic_playlist)
+                        showDefaultCover(playlist)
                     }
                 }
+            }
+        }
+
+        private fun showCoverImage() {
+            ivCover.visibility = View.VISIBLE
+            ivCover.setImageDrawable(null) // 清除之前的图片
+            cvIconBackground.setCardBackgroundColor(Color.TRANSPARENT)
+        }
+
+        private fun showDefaultCover(playlist: Playlist) {
+            ivCover.visibility = View.GONE
+            ivCover.setImageDrawable(null) // 清除之前的图片
+            cvIconBackground.visibility = View.VISIBLE
+            cvIconBackground.setCardBackgroundColor(getIconColor(playlist))
+        }
+
+        private fun getIconColor(playlist: Playlist): Int {
+            val colorString = playlist.iconColor
+            return if (!colorString.isNullOrEmpty()) {
+                try {
+                    Color.parseColor(colorString)
+                } catch (e: IllegalArgumentException) {
+                    Color.parseColor("#2D2D4A")
+                }
+            } else {
+                Color.parseColor("#2D2D4A")
             }
         }
     }

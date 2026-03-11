@@ -16,17 +16,33 @@ import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.tacke.music.R
+import com.tacke.music.data.model.PlaylistSong
+import com.tacke.music.data.model.SongDetail
+import com.tacke.music.data.preferences.PlaybackPreferences
+import com.tacke.music.data.repository.MusicRepository
+import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.PlayerActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MusicPlaybackService : Service() {
 
     private var exoPlayer: ExoPlayer? = null
     private lateinit var mediaSession: MediaSessionCompat
     private val binder = MusicBinder()
+    private lateinit var playlistManager: PlaylistManager
+    private lateinit var playbackPreferences: PlaybackPreferences
+    private val repository = MusicRepository()
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var currentQuality = "320k"
 
     companion object {
         const val CHANNEL_ID = "music_playback_channel"
@@ -35,6 +51,12 @@ class MusicPlaybackService : Service() {
         const val ACTION_NEXT = "com.tacke.music.ACTION_NEXT"
         const val ACTION_PREVIOUS = "com.tacke.music.ACTION_PREVIOUS"
         const val ACTION_STOP = "com.tacke.music.ACTION_STOP"
+        const val ACTION_SONG_CHANGED = "com.tacke.music.ACTION_SONG_CHANGED"
+        const val EXTRA_SONG_ID = "song_id"
+        const val EXTRA_SONG_NAME = "song_name"
+        const val EXTRA_SONG_ARTISTS = "song_artists"
+        const val EXTRA_SONG_URL = "song_url"
+        const val EXTRA_SONG_COVER = "song_cover"
     }
 
     inner class MusicBinder : Binder() {
@@ -44,10 +66,73 @@ class MusicPlaybackService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        playlistManager = PlaylistManager.getInstance(this)
+        playbackPreferences = PlaybackPreferences.getInstance(this)
+        currentQuality = playbackPreferences.currentQuality
         createNotificationChannel()
         initializePlayer()
         initializeMediaSession()
         registerBroadcastReceiver()
+    }
+
+    // 加载并播放指定歌曲
+    private suspend fun loadAndPlaySong(playlistSong: PlaylistSong) {
+        val platform = try {
+            MusicRepository.Platform.valueOf(playlistSong.platform.uppercase())
+        } catch (e: Exception) {
+            MusicRepository.Platform.KUWO
+        }
+
+        // 获取歌曲详情
+        val detail = withContext(Dispatchers.IO) {
+            repository.getSongDetail(platform, playlistSong.id, currentQuality)
+        }
+
+        if (detail != null) {
+            playSong(detail, playlistSong)
+        }
+    }
+
+    // 播放歌曲
+    private fun playSong(detail: SongDetail, playlistSong: PlaylistSong) {
+        val player = exoPlayer ?: return
+
+        // 更新MediaSession元数据
+        updateMediaMetadata(
+            playlistSong.name,
+            playlistSong.artists,
+            null // 封面Bitmap可以后续添加
+        )
+
+        // 设置MediaItem并播放
+        val mediaItem = MediaItem.Builder()
+            .setUri(detail.url)
+            .setMediaId(playlistSong.id)
+            .setMediaMetadata(
+                androidx.media3.common.MediaMetadata.Builder()
+                    .setTitle(playlistSong.name)
+                    .setArtist(playlistSong.artists)
+                    .build()
+            )
+            .build()
+
+        player.setMediaItem(mediaItem)
+        player.prepare()
+        player.play()
+
+        // 保存播放状态
+        playbackPreferences.currentSongId = playlistSong.id
+        playbackPreferences.saveSongDetail(playlistSong.id, detail)
+
+        // 发送广播通知UI更新
+        val intent = Intent(ACTION_SONG_CHANGED).apply {
+            putExtra(EXTRA_SONG_ID, playlistSong.id)
+            putExtra(EXTRA_SONG_NAME, playlistSong.name)
+            putExtra(EXTRA_SONG_ARTISTS, playlistSong.artists)
+            putExtra(EXTRA_SONG_URL, detail.url)
+            putExtra(EXTRA_SONG_COVER, detail.cover ?: playlistSong.coverUrl)
+        }
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }
 
     private fun initializePlayer() {
@@ -60,8 +145,52 @@ class MusicPlaybackService : Service() {
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 updateMediaSessionState()
+                if (playbackState == Player.STATE_ENDED) {
+                    handlePlaybackEnded()
+                }
             }
         })
+    }
+
+    private fun handlePlaybackEnded() {
+        // 播放完成，根据播放模式处理
+        when (playlistManager.playMode.value) {
+            PlaylistManager.PLAY_MODE_REPEAT_ONE -> {
+                // 单曲循环：重新播放当前歌曲
+                exoPlayer?.seekTo(0)
+                exoPlayer?.play()
+            }
+            else -> {
+                // 其他模式：播放下一首
+                serviceScope.launch {
+                    playNextSong()
+                }
+            }
+        }
+    }
+
+    private suspend fun playNextSong() {
+        // 确保播放列表已加载
+        if (playlistManager.currentPlaylist.value.isEmpty()) {
+            playlistManager.loadPlaylist()
+        }
+
+        val nextSong = playlistManager.next()
+        if (nextSong != null) {
+            loadAndPlaySong(nextSong)
+        }
+    }
+
+    private suspend fun playPreviousSong() {
+        // 确保播放列表已加载
+        if (playlistManager.currentPlaylist.value.isEmpty()) {
+            playlistManager.loadPlaylist()
+        }
+
+        val previousSong = playlistManager.previous()
+        if (previousSong != null) {
+            loadAndPlaySong(previousSong)
+        }
     }
 
     private fun initializeMediaSession() {
@@ -76,11 +205,15 @@ class MusicPlaybackService : Service() {
                 }
 
                 override fun onSkipToNext() {
-                    sendBroadcast(Intent(ACTION_NEXT))
+                    serviceScope.launch {
+                        playNextSong()
+                    }
                 }
 
                 override fun onSkipToPrevious() {
-                    sendBroadcast(Intent(ACTION_PREVIOUS))
+                    serviceScope.launch {
+                        playPreviousSong()
+                    }
                 }
 
                 override fun onStop() {
@@ -98,7 +231,11 @@ class MusicPlaybackService : Service() {
             addAction(ACTION_PREVIOUS)
             addAction(ACTION_STOP)
         }
-        registerReceiver(controlReceiver, filter)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            registerReceiver(controlReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(controlReceiver, filter)
+        }
     }
 
     private val controlReceiver = object : BroadcastReceiver() {
@@ -109,8 +246,16 @@ class MusicPlaybackService : Service() {
                         if (it.isPlaying) it.pause() else it.play()
                     }
                 }
-                ACTION_NEXT -> sendBroadcast(Intent(ACTION_NEXT))
-                ACTION_PREVIOUS -> sendBroadcast(Intent(ACTION_PREVIOUS))
+                ACTION_NEXT -> {
+                    serviceScope.launch {
+                        playNextSong()
+                    }
+                }
+                ACTION_PREVIOUS -> {
+                    serviceScope.launch {
+                        playPreviousSong()
+                    }
+                }
                 ACTION_STOP -> stopSelf()
             }
         }

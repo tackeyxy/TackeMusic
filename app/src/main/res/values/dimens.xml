@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <dimen name="delete_button_width">80dp</dimen>
+    <!-- 搜索栏顶部间距（除状态栏外的额外间距） -->
+    <dimen name="search_bar_margin_top">16dp</dimen>
 </resources>

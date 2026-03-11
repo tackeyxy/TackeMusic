@@ -6,6 +6,9 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -38,6 +41,9 @@ class DownloadActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityDownloadBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Android 16: 适配 Edge-to-Edge 模式
+        setupEdgeToEdge()
 
         downloadManager = DownloadManager.getInstance(this)
         favoriteRepository = FavoriteRepository(this)
@@ -383,8 +389,12 @@ class DownloadActivity : AppCompatActivity() {
         // 根据当前标签页设置适配器
         if (binding.tabLayout.selectedTabPosition == 0) {
             downloadingAdapter.setMultiSelectMode(true)
+            // 正在下载页面显示下载按钮（用于删除任务）
+            binding.batchActionBarContainer.btnBatchDownload.visibility = View.VISIBLE
         } else {
             historyAdapter.setMultiSelectMode(true)
+            // 下载历史页面隐藏下载按钮（已下载的文件不需要再下载）
+            binding.batchActionBarContainer.btnBatchDownload.visibility = View.GONE
         }
 
         updateSelectedCount(0)
@@ -397,6 +407,9 @@ class DownloadActivity : AppCompatActivity() {
 
         downloadingAdapter.setMultiSelectMode(false)
         historyAdapter.setMultiSelectMode(false)
+
+        // 恢复下载按钮的可见性
+        binding.batchActionBarContainer.btnBatchDownload.visibility = View.VISIBLE
     }
 
     private fun updateSelectedCount(count: Int) {
@@ -609,6 +622,26 @@ class DownloadActivity : AppCompatActivity() {
     companion object {
         fun start(context: android.content.Context) {
             context.startActivity(Intent(context, DownloadActivity::class.java))
+        }
+    }
+
+    /**
+     * Android 16: 设置 Edge-to-Edge 模式
+     * 处理系统栏（状态栏和导航栏）的 insets
+     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
+     */
+    private fun setupEdgeToEdge() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            // 为顶部 Toolbar 添加状态栏高度 padding
+            binding.toolbar.updatePadding(
+                top = insets.top
+            )
+            // 为底部设置 padding
+            view.updatePadding(
+                bottom = insets.bottom
+            )
+            windowInsets
         }
     }
 }

@@ -13,6 +13,7 @@ import android.widget.SeekBar
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.tacke.music.util.ImmersiveStatusBarHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.LinearSmoothScroller
 import androidx.recyclerview.widget.RecyclerView
@@ -76,6 +77,15 @@ class LyricsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityLyricsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // 设置沉浸式状态栏 - 透明状态栏，背景延伸到状态栏
+        ImmersiveStatusBarHelper.setup(
+            activity = this,
+            lightStatusBar = false,
+            lightNavigationBar = true
+        )
+        // 为顶部工具栏设置状态栏高度 padding
+        ImmersiveStatusBarHelper.setStatusBarPadding(binding.toolbar)
 
         setupRecyclerView()
         setupSeekBar()
@@ -220,10 +230,6 @@ class LyricsActivity : AppCompatActivity() {
     private fun setupClickListeners() {
         binding.btnBack.setOnClickListener {
             finish()
-        }
-
-        binding.btnMore.setOnClickListener {
-            Toast.makeText(this, "更多功能开发中", Toast.LENGTH_SHORT).show()
         }
 
         // 定位到当前播放歌词按钮
@@ -421,4 +427,5 @@ class LyricsActivity : AppCompatActivity() {
     override fun onTouchEvent(event: MotionEvent): Boolean {
         return gestureDetector.onTouchEvent(event) || super.onTouchEvent(event)
     }
+
 }

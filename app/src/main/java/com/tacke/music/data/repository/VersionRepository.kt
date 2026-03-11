@@ -2,6 +2,7 @@ package com.tacke.music.data.repository
 
 import android.content.Context
 import com.tacke.music.data.model.VersionInfo
+import com.tacke.music.ui.NewVersionActivity
 import com.tacke.music.util.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -10,12 +11,17 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
+/**
+ * 版本检查仓库
+ * 负责从远程服务器获取最新版本信息并与当前版本进行比较
+ */
 class VersionRepository(private val context: Context) {
 
     companion object {
         private const val TAG = "VersionRepository"
-        private const val VERSION_URL = "https://gh-proxy.org/https://github.com/tackeyxy/TackeMusic/blob/master/version.json"
-        private const val PREFS_NAME = "version_preferences"
+        // 默认使用稳定版 URL
+        private const val DEFAULT_VERSION_URL = "https://raw.githubusercontent.com/tackeyxy/TackeMusic/main/version.json"
+        private const val PREFS_NAME = "update_settings"
         private const val KEY_IGNORED_VERSION_CODE = "ignored_version_code"
 
         @Volatile
@@ -38,6 +44,18 @@ class VersionRepository(private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    // 动态版本检查 URL
+    private var versionUrl: String = DEFAULT_VERSION_URL
+
+    /**
+     * 设置版本检查 URL
+     * @param url 版本检查 URL
+     */
+    fun setVersionUrl(url: String) {
+        versionUrl = url
+        AppLogger.d(TAG, "Version URL set to: $url")
+    }
+
     /**
      * 检查版本更新
      * @param currentVersionCode 当前APP版本号
@@ -48,20 +66,21 @@ class VersionRepository(private val context: Context) {
             AppLogger.d(TAG, "Checking for update, current version: $currentVersionCode")
 
             val request = Request.Builder()
-                .url(VERSION_URL)
-                .header("User-Agent", "TackeMusic-Android")
+                .url(versionUrl)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; TackeMusic)")
                 .build()
 
             val response = client.newCall(request).execute()
 
             if (!response.isSuccessful) {
+                AppLogger.e(TAG, "Update check failed: HTTP ${response.code}")
                 return@withContext Result.failure(Exception("HTTP ${response.code}"))
             }
 
             val responseBody = response.body?.string()
                 ?: return@withContext Result.failure(Exception("Empty response"))
 
-            AppLogger.d(TAG, "Version response: $responseBody")
+            AppLogger.d(TAG, "Version response length: ${responseBody.length}")
 
             val versionResponse = json.decodeFromString<com.tacke.music.data.model.VersionResponse>(responseBody)
 
@@ -91,6 +110,7 @@ class VersionRepository(private val context: Context) {
 
     /**
      * 获取被忽略的版本号
+     * 使用与 NewVersionActivity 相同的 SharedPreferences
      */
     fun getIgnoredVersionCode(): Int {
         return prefs.getInt(KEY_IGNORED_VERSION_CODE, 0)
@@ -98,6 +118,7 @@ class VersionRepository(private val context: Context) {
 
     /**
      * 设置忽略的版本号
+     * 使用与 NewVersionActivity 相同的 SharedPreferences
      */
     fun setIgnoredVersionCode(versionCode: Int) {
         prefs.edit().putInt(KEY_IGNORED_VERSION_CODE, versionCode).apply()

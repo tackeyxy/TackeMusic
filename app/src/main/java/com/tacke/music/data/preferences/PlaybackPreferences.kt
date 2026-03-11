@@ -72,7 +72,7 @@ class PlaybackPreferences(context: Context) {
 
     // 播放模式: 0-顺序播放, 1-随机播放, 2-列表循环, 3-单曲循环
     var playMode: Int
-        get() = prefs.getInt(KEY_PLAY_MODE, 0)
+        get() = prefs.getInt(KEY_PLAY_MODE, 2) // 默认列表循环
         set(value) = prefs.edit().putInt(KEY_PLAY_MODE, value).apply()
 
     // 保存播放列表

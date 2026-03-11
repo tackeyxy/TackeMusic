@@ -5,11 +5,12 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background"
+    android:fitsSystemWindows="true"
     tools:context=".ui.ProfileActivity">
 
     <!-- 顶部标题栏 -->
     <LinearLayout
-        android:id="@+id/headerLayout"
+        android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:orientation="horizontal"
@@ -34,7 +35,7 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginBottom="80dp"
-        app:layout_constraintTop_toBottomOf="@id/headerLayout"
+        app:layout_constraintTop_toBottomOf="@id/toolbar"
         app:layout_constraintBottom_toBottomOf="parent">
 
         <LinearLayout
@@ -61,7 +62,6 @@
                     android:orientation="vertical"
                     android:gravity="center_vertical"
                     android:padding="16dp"
-                    android:background="@drawable/bg_card_local_music"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground">
@@ -102,7 +102,6 @@
                     android:orientation="vertical"
                     android:gravity="center_vertical"
                     android:padding="16dp"
-                    android:background="@drawable/bg_card_download"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground">
@@ -143,7 +142,6 @@
                     android:orientation="vertical"
                     android:gravity="center_vertical"
                     android:padding="16dp"
-                    android:background="@drawable/bg_card_favorite"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground">
@@ -184,7 +182,6 @@
                     android:orientation="vertical"
                     android:gravity="center_vertical"
                     android:padding="16dp"
-                    android:background="@drawable/bg_card_history"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?attr/selectableItemBackground">

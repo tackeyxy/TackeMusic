@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootContainer"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:padding="4dp">
+
+    <!-- 歌词容器 -->
+    <LinearLayout
+        android:id="@+id/lyricsContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
+        android:background="@drawable/bg_floating_lyrics">
+
+        <!-- 当前歌词行 -->
+        <TextView
+            android:id="@+id/tvCurrentLine"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="歌词加载中..."
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="@color/primary"
+            android:gravity="center"
+            android:singleLine="true"
+            android:ellipsize="none"
+            android:paddingHorizontal="8dp"
+            android:shadowColor="#80000000"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="2" />
+
+        <!-- 下一句歌词 -->
+        <TextView
+            android:id="@+id/tvNextLine"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text=""
+            android:textSize="13sp"
+            android:textColor="#80FFFFFF"
+            android:gravity="center"
+            android:singleLine="true"
+            android:ellipsize="none"
+            android:paddingHorizontal="8dp"
+            android:shadowColor="#80000000"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="2" />
+
+        <!-- 控制按钮容器 -->
+        <LinearLayout
+            android:id="@+id/controlContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
+            android:visibility="gone">
+
+            <!-- 锁定/解锁按钮 -->
+            <ImageView
+                android:id="@+id/btnLock"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:padding="5dp"
+                android:src="@drawable/ic_lock_open"
+                android:background="@android:color/transparent"
+                app:tint="#CCFFFFFF"
+                android:contentDescription="锁定/解锁" />
+
+            <!-- 关闭按钮 -->
+            <ImageView
+                android:id="@+id/btnClose"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="6dp"
+                android:padding="5dp"
+                android:src="@drawable/ic_close"
+                android:background="@android:color/transparent"
+                app:tint="#CCFFFFFF"
+                android:contentDescription="关闭" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</FrameLayout>

@@ -1,5 +1,8 @@
 package com.tacke.music.ui
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ObjectAnimator
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -12,8 +15,11 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
-import com.tacke.music.BuildConfig
+
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -35,9 +41,9 @@ import com.tacke.music.ui.adapter.SongAdapter
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
-import com.tacke.music.update.UpdateDialogManager
+
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -50,7 +56,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playlistManager: PlaylistManager
     private lateinit var playbackManager: PlaybackManager
-    private lateinit var updateDialogManager: UpdateDialogManager
     private lateinit var currentPlatform: MusicRepository.Platform
     private var currentSongList: MutableList<Song> = mutableListOf()
     private var isMultiSelectMode = false
@@ -105,30 +110,129 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Android 16: 适配 Edge-to-Edge 模式
+        setupEdgeToEdge()
+
         currentPlatform = SettingsActivity.getDefaultSource(this)
         playlistRepository = PlaylistRepository(this)
         favoriteRepository = FavoriteRepository(this)
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
-        updateDialogManager = UpdateDialogManager(this, lifecycleScope)
         setupRecyclerView()
         setupPlaylistRecyclerView()
         setupClickListeners()
         setupBottomNavigation()
         setupChartCards()
+        setupSwipeRefresh()
         updateSourceSelectorUI()
-        loadAllChartData()
-        loadPlaylistTags()
-
-        // 延迟检查更新，避免影响启动速度
         lifecycleScope.launch {
-            delay(3000) // 延迟3秒后检查更新
-            checkForUpdateAuto()
+            loadAllChartData()
+        }
+        loadPlaylistTags()
+    }
+
+    /**
+     * 设置下拉刷新
+     */
+    private fun setupSwipeRefresh() {
+        binding.swipeRefreshLayout.apply {
+            // 设置刷新指示器颜色
+            setColorSchemeResources(
+                R.color.primary,
+                R.color.accent_cyan,
+                R.color.accent_purple
+            )
+            // 设置刷新监听器
+            setOnRefreshListener {
+                refreshAllData()
+            }
         }
     }
 
-    private fun checkForUpdateAuto() {
-        updateDialogManager.checkForUpdate(BuildConfig.VERSION_CODE, isManualCheck = false)
+    /**
+     * 刷新所有数据
+     */
+    private fun refreshAllData() {
+        lifecycleScope.launch {
+            try {
+                // 重置推荐歌单状态
+                playlistLastTime = 0
+                hasMorePlaylists = true
+                recommendPlaylistAdapter.submitList(emptyList())
+
+                // 并行加载所有数据
+                val chartJob = launch { loadAllChartData() }
+                val playlistJob = launch { loadRecommendPlaylists(currentPlaylistCategory, isLoadMore = false) }
+
+                // 等待所有数据加载完成
+                chartJob.join()
+                playlistJob.join()
+
+                // 显示刷新成功提示
+                showRefreshSuccessTip()
+
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "刷新失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                // 停止刷新动画
+                binding.swipeRefreshLayout.isRefreshing = false
+            }
+        }
+    }
+
+    /**
+     * 显示刷新成功提示 - 现代化透明背景TIPS
+     */
+    private fun showRefreshSuccessTip() {
+        val tipContainer = binding.refreshTipContainer
+        val tipText = binding.tvRefreshTip
+
+        // 更新提示文本
+        tipText.text = "刷新数据成功"
+
+        // 取消之前的动画
+        tipContainer.animate().cancel()
+
+        // 显示提示
+        tipContainer.visibility = View.VISIBLE
+        tipContainer.alpha = 0f
+        tipContainer.translationY = -50f
+
+        // 入场动画
+        tipContainer.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(300)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .withEndAction {
+                // 停留2秒后淡出
+                tipContainer.postDelayed({
+                    hideRefreshTip()
+                }, 2000)
+            }
+            .start()
+    }
+
+    /**
+     * 隐藏刷新提示
+     */
+    private fun hideRefreshTip() {
+        val tipContainer = binding.refreshTipContainer
+
+        // 如果已经隐藏则直接返回
+        if (tipContainer.visibility != View.VISIBLE) return
+
+        // 出场动画
+        tipContainer.animate()
+            .alpha(0f)
+            .translationY(-30f)
+            .setDuration(250)
+            .setInterpolator(android.view.animation.AccelerateInterpolator())
+            .withEndAction {
+                tipContainer.visibility = View.GONE
+                tipContainer.translationY = 0f
+            }
+            .start()
     }
 
     override fun onBackPressed() {
@@ -413,7 +517,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 首页榜单卡片歌曲点击：添加到播放列表并播放
+     * 首页榜单卡片歌曲点击：添加到当前播放列表并立即播放（不清空现有列表）
      */
     private fun playChartSong(chartType: ChartType, index: Int) {
         val songs = chartSongsMap[chartType]
@@ -437,7 +541,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (detail != null) {
-                    // 创建播放列表歌曲
+                    // 创建Song对象
                     val song = Song(
                         index = index,
                         id = chartSong.id,
@@ -447,10 +551,16 @@ class MainActivity : AppCompatActivity() {
                     )
                     val playlistSong = playlistManager.convertToPlaylistSong(song, platform)
 
+                    // 获取添加前的播放列表大小，用于设置当前播放索引
+                    val currentPlaylistSize = playlistManager.currentPlaylist.value.size
+
                     // 添加到播放列表（不清空现有列表）
                     playlistManager.addSong(playlistSong)
 
-                    // 播放歌曲（使用playFromPlaylist，不清空播放列表）
+                    // 设置为当前播放的歌曲（新添加的歌曲索引）
+                    playlistManager.setCurrentIndex(currentPlaylistSize)
+
+                    // 播放歌曲
                     playbackManager.playFromPlaylist(
                         context = this@MainActivity,
                         song = playlistSong,
@@ -477,8 +587,8 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun loadAllChartData() {
-        lifecycleScope.launch {
+    private suspend fun loadAllChartData() {
+        coroutineScope {
             ChartType.values().forEach { chartType ->
                 launch {
                     try {
@@ -1217,6 +1327,32 @@ class MainActivity : AppCompatActivity() {
                     Toast.LENGTH_SHORT
                 ).show()
             }
+        }
+    }
+
+    /**
+     * Android 16: 设置 Edge-to-Edge 模式
+     * 处理系统栏（状态栏和导航栏）的 insets
+     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
+     */
+    private fun setupEdgeToEdge() {
+        // 使用 WindowInsetsCompat 处理系统栏 insets
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+
+            // 为顶部 Toolbar 设置状态栏高度的 marginTop
+            // 注意：使用 margin 而不是 padding，因为 toolbar 有固定的背景样式
+            val toolbarLayoutParams = binding.toolbar.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
+            toolbarLayoutParams.topMargin = insets.top + resources.getDimensionPixelSize(R.dimen.search_bar_margin_top)
+            binding.toolbar.layoutParams = toolbarLayoutParams
+
+            // 为底部导航栏区域设置 padding
+            view.updatePadding(
+                bottom = insets.bottom
+            )
+
+            // 消费掉系统栏 insets，防止子视图重复处理
+            WindowInsetsCompat.CONSUMED
         }
     }
 }

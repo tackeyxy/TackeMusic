@@ -4,6 +4,9 @@ import android.os.Bundle
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -17,6 +20,7 @@ import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.data.repository.RecentPlayRepository
 import com.tacke.music.databinding.ActivityRecentPlayBinding
+import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.RecentPlayAdapter
@@ -32,6 +36,7 @@ class RecentPlayActivity : AppCompatActivity() {
     private lateinit var playlistRepository: PlaylistRepository
     private lateinit var playbackManager: PlaybackManager
     private lateinit var playlistManager: PlaylistManager
+    private lateinit var downloadManager: DownloadManager
     private lateinit var adapter: RecentPlayAdapter
 
     private var isMultiSelectMode = false
@@ -42,11 +47,15 @@ class RecentPlayActivity : AppCompatActivity() {
         binding = ActivityRecentPlayBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Android 16: 适配 Edge-to-Edge 模式
+        setupEdgeToEdge()
+
         recentPlayRepository = RecentPlayRepository(this)
         favoriteRepository = FavoriteRepository(this)
         playlistRepository = PlaylistRepository(this)
         playbackManager = PlaybackManager.getInstance(this)
         playlistManager = PlaylistManager.getInstance(this)
+        downloadManager = DownloadManager.getInstance(this)
 
         setupRecyclerView()
         setupClickListeners()
@@ -147,8 +156,18 @@ class RecentPlayActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        // 删除按钮 - 使用下载按钮的位置
+        // 下载按钮 - 真正的下载功能
         binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
+            val selectedSongs = adapter.getAllRecentPlays().filter { selectedItems.contains(it.id) }
+            if (selectedSongs.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showBatchDownloadQualityDialog(selectedSongs)
+        }
+
+        // 移除按钮 - 删除播放记录
+        binding.batchActionBarContainer.btnBatchRemove.setOnClickListener {
             showDeleteConfirm()
         }
 
@@ -225,6 +244,8 @@ class RecentPlayActivity : AppCompatActivity() {
         adapter.setMultiSelectMode(true)
         selectedItems.clear()
         updateSelectedCount()
+        // 显示"移除"按钮
+        binding.batchActionBarContainer.btnBatchRemove.visibility = View.VISIBLE
         setupBatchActionListeners()
     }
 
@@ -234,6 +255,8 @@ class RecentPlayActivity : AppCompatActivity() {
         binding.btnPlayAll.visibility = View.VISIBLE
         adapter.setMultiSelectMode(false)
         selectedItems.clear()
+        // 隐藏"移除"按钮
+        binding.batchActionBarContainer.btnBatchRemove.visibility = View.GONE
     }
 
     private fun toggleSelection(id: String) {
@@ -336,8 +359,7 @@ class RecentPlayActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                // 清空当前播放列表并添加所有歌曲
-                playlistManager.clearPlaylist()
+                // 添加所有歌曲到播放列表（不清空原有列表）
                 recentPlays.forEach { recentPlay ->
                     playlistManager.addSong(recentPlay.toPlaylistSong())
                 }
@@ -513,11 +535,89 @@ class RecentPlayActivity : AppCompatActivity() {
         }
     }
 
+    private fun showBatchDownloadQualityDialog(recentPlays: List<RecentPlay>) {
+        val qualities = arrayOf("HR (24bit/96kHz)", "CDQ (16bit/44.1kHz)", "HQ (320kbps)", "LQ (128kbps)")
+        val qualityValues = arrayOf("flac24bit", "flac", "320k", "128k")
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("批量下载")
+            .setItems(qualities) { _, which ->
+                batchDownloadSongs(recentPlays, qualityValues[which])
+            }
+            .show()
+    }
+
+    private fun batchDownloadSongs(recentPlays: List<RecentPlay>, quality: String) {
+        lifecycleScope.launch {
+            var successCount = 0
+            var failCount = 0
+
+            recentPlays.forEach { recentPlay ->
+                try {
+                    val platform = try {
+                        MusicRepository.Platform.valueOf(recentPlay.platform.uppercase())
+                    } catch (e: Exception) {
+                        MusicRepository.Platform.KUWO
+                    }
+                    val detail = MusicRepository().getSongDetail(platform, recentPlay.id, quality)
+                    if (detail != null) {
+                        val task = downloadManager.createDownloadTask(
+                            Song(
+                                index = 0,
+                                id = recentPlay.id,
+                                name = recentPlay.name,
+                                artists = recentPlay.artists,
+                                coverUrl = recentPlay.coverUrl
+                            ),
+                            detail,
+                            quality,
+                            recentPlay.platform
+                        )
+                        downloadManager.startDownload(task)
+                        successCount++
+                    } else {
+                        failCount++
+                    }
+                } catch (e: Exception) {
+                    failCount++
+                }
+            }
+
+            Toast.makeText(
+                this@RecentPlayActivity,
+                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
+                Toast.LENGTH_LONG
+            ).show()
+
+            exitMultiSelectMode()
+        }
+    }
+
     override fun onBackPressed() {
         if (isMultiSelectMode) {
             exitMultiSelectMode()
         } else {
             super.onBackPressed()
+        }
+    }
+
+    /**
+     * Android 16: 设置 Edge-to-Edge 模式
+     * 处理系统栏（状态栏和导航栏）的 insets
+     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
+     */
+    private fun setupEdgeToEdge() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            // 为顶部 Toolbar 添加状态栏高度 padding
+            binding.toolbar.updatePadding(
+                top = insets.top
+            )
+            // 为底部设置 padding
+            view.updatePadding(
+                bottom = insets.bottom
+            )
+            windowInsets
         }
     }
 }

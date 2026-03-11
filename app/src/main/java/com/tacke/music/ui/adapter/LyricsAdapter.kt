@@ -7,7 +7,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.tacke.music.R
-import com.tacke.music.ui.SettingsActivity
+import com.tacke.music.ui.LyricSettingsActivity
 
 /**
  * 歌词列表适配器
@@ -43,7 +43,7 @@ class LyricsAdapter(
             tvLyricLine.text = lyric
 
             // 获取用户设置的歌词颜色
-            val lyricColor = SettingsActivity.getLyricColor(itemView.context)
+            val lyricColor = LyricSettingsActivity.getPlayerLyricColor(itemView.context)
 
             // 当前播放的歌词高亮显示（使用自定义颜色）
             if (position == currentPosition) {

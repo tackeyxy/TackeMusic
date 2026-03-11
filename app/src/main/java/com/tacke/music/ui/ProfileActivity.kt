@@ -1,11 +1,16 @@
 package com.tacke.music.ui
 
 import android.content.Intent
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -19,6 +24,7 @@ import com.tacke.music.databinding.ActivityProfileBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.ui.adapter.PlaylistListAdapter
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 class ProfileActivity : AppCompatActivity() {
 
@@ -30,15 +36,43 @@ class ProfileActivity : AppCompatActivity() {
     private var isShowingAllPlaylists = true
     private var allPlaylists: List<com.tacke.music.data.model.Playlist> = emptyList()
 
+    // 预定义的渐变色组合（起始色，结束色）
+    private val gradientColors = listOf(
+        Pair(0xFF5B6B8C.toInt(), 0xFF4A5568.toInt()), // 蓝灰
+        Pair(0xFF38A169.toInt(), 0xFF2F855A.toInt()), // 绿色
+        Pair(0xFFE53E3E.toInt(), 0xFFC53030.toInt()), // 红色
+        Pair(0xFF6B5B95.toInt(), 0xFF5A4A7A.toInt()), // 紫色
+        Pair(0xFF3182CE.toInt(), 0xFF2B6CB0.toInt()), // 蓝色
+        Pair(0xFFD69E2E.toInt(), 0xFFB7791F.toInt()), // 黄色
+        Pair(0xFFDD6B20.toInt(), 0xFFC05621.toInt()), // 橙色
+        Pair(0xFF38B2AC.toInt(), 0xFF319795.toInt()), // 青色
+        Pair(0xFF805AD5.toInt(), 0xFF6B46C1.toInt()), // 紫罗兰
+        Pair(0xFFE53E8C.toInt(), 0xFFD53F8C.toInt()), // 粉色
+        Pair(0xFF00A3C4.toInt(), 0xFF0987A0.toInt()), // 天蓝
+        Pair(0xFF9F7AEA.toInt(), 0xFF805AD5.toInt()), // 浅紫
+        Pair(0xFFF56565.toInt(), 0xFFE53E3E.toInt()), // 浅红
+        Pair(0xFF48BB78.toInt(), 0xFF38A169.toInt()), // 浅绿
+        Pair(0xFF4299E1.toInt(), 0xFF3182CE.toInt()), // 浅蓝
+        Pair(0xFFED8936.toInt(), 0xFFDD6B20.toInt()), // 浅橙
+        Pair(0xFF0BC5EA.toInt(), 0xFF00A3C4.toInt()), // 青蓝
+        Pair(0xFF9F7AEA.toInt(), 0xFF6B46C1.toInt()), // 深紫
+        Pair(0xFFF687B3.toInt(), 0xFFD53F8C.toInt()), // 桃粉
+        Pair(0xFF4FD1C7.toInt(), 0xFF38B2AC.toInt())  // 薄荷绿
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityProfileBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Android 16: 适配 Edge-to-Edge 模式
+        setupEdgeToEdge()
+
         downloadManager = DownloadManager.getInstance(this)
         playlistRepository = PlaylistRepository(this)
         favoriteRepository = FavoriteRepository(this)
 
+        setupCardBackgrounds()
         setupClickListeners()
         setupBottomNavigation()
         setupPlaylistRecyclerView()
@@ -51,6 +85,45 @@ class ProfileActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshPlaylistList()
+        // 每次进入页面时刷新卡片背景色
+        setupCardBackgrounds()
+    }
+
+    private fun setupCardBackgrounds() {
+        // 随机选择4个不同的渐变色
+        val selectedColors = gradientColors.shuffled().take(4)
+
+        // 本地音乐卡片
+        val localMusicGradient = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(selectedColors[0].first, selectedColors[0].second)
+        )
+        localMusicGradient.cornerRadius = 16f * resources.displayMetrics.density
+        binding.btnLocalMusic.background = localMusicGradient
+
+        // 下载管理卡片
+        val downloadGradient = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(selectedColors[1].first, selectedColors[1].second)
+        )
+        downloadGradient.cornerRadius = 16f * resources.displayMetrics.density
+        binding.btnDownloadManager.background = downloadGradient
+
+        // 我喜欢的卡片
+        val favoriteGradient = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(selectedColors[2].first, selectedColors[2].second)
+        )
+        favoriteGradient.cornerRadius = 16f * resources.displayMetrics.density
+        binding.btnFavorites.background = favoriteGradient
+
+        // 播放历史卡片
+        val historyGradient = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(selectedColors[3].first, selectedColors[3].second)
+        )
+        historyGradient.cornerRadius = 16f * resources.displayMetrics.density
+        binding.btnRecent.background = historyGradient
     }
 
     private fun setupClickListeners() {
@@ -286,6 +359,26 @@ class ProfileActivity : AppCompatActivity() {
                     binding.tvFavoriteCount.text = "${count}首"
                 }
             }
+        }
+    }
+
+    /**
+     * Android 16: 设置 Edge-to-Edge 模式
+     * 处理系统栏（状态栏和导航栏）的 insets
+     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
+     */
+    private fun setupEdgeToEdge() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            // 为顶部 Toolbar 添加状态栏高度 padding
+            binding.toolbar.updatePadding(
+                top = insets.top
+            )
+            // 为底部设置 padding
+            view.updatePadding(
+                bottom = insets.bottom
+            )
+            windowInsets
         }
     }
 }

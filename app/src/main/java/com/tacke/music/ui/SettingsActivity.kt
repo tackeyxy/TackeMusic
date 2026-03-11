@@ -9,13 +9,15 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import com.tacke.music.BuildConfig
 import com.tacke.music.R
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.databinding.ActivitySettingsBinding
 import com.tacke.music.databinding.DialogDownloadPathBinding
-import com.tacke.music.update.UpdateDialogManager
 import java.io.File
 
 class SettingsActivity : AppCompatActivity() {
@@ -113,8 +115,6 @@ class SettingsActivity : AppCompatActivity() {
         MusicRepository.Platform.NETEASE to "网易"
     )
 
-    private lateinit var updateDialogManager: UpdateDialogManager
-
     private var pendingCustomPath = false
 
     private val openDocumentTree = registerForActivityResult(
@@ -147,7 +147,8 @@ class SettingsActivity : AppCompatActivity() {
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        updateDialogManager = UpdateDialogManager(this, lifecycleScope)
+        // Android 16: 适配 Edge-to-Edge 模式
+        setupEdgeToEdge()
 
         setupClickListeners()
         updateDefaultSourceText()
@@ -155,6 +156,10 @@ class SettingsActivity : AppCompatActivity() {
         updateLyricColorPreview()
         updateConcurrentDownloadsText()
         updateCurrentVersionText()
+    }
+
+    private fun updateCurrentVersionText() {
+        binding.tvCurrentVersion.text = "v${BuildConfig.VERSION_NAME}"
     }
 
     private fun setupClickListeners() {
@@ -175,7 +180,7 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         binding.layoutLyricColor.setOnClickListener {
-            showLyricColorPickerDialog()
+            startActivity(Intent(this, LyricSettingsActivity::class.java))
         }
 
         binding.layoutLogViewer.setOnClickListener {
@@ -187,23 +192,11 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         binding.layoutCheckUpdate.setOnClickListener {
-            checkForUpdate()
+            startActivity(Intent(this, UpdateCheckActivity::class.java))
         }
     }
 
-    private fun updateCurrentVersionText() {
-        binding.tvCurrentVersion.text = "v${BuildConfig.VERSION_NAME}"
-    }
 
-    private fun checkForUpdate() {
-        Toast.makeText(this, "正在检查更新...", Toast.LENGTH_SHORT).show()
-        updateDialogManager.checkForUpdate(BuildConfig.VERSION_CODE, isManualCheck = true)
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        updateDialogManager.release()
-    }
 
     private fun updateConcurrentDownloadsText() {
         val currentCount = getConcurrentDownloads(this)
@@ -408,5 +401,25 @@ class SettingsActivity : AppCompatActivity() {
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    /**
+     * Android 16: 设置 Edge-to-Edge 模式
+     * 处理系统栏（状态栏和导航栏）的 insets
+     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
+     */
+    private fun setupEdgeToEdge() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            // 为顶部 Toolbar 添加状态栏高度 padding
+            binding.toolbar.updatePadding(
+                top = insets.top
+            )
+            // 为底部设置 padding
+            view.updatePadding(
+                bottom = insets.bottom
+            )
+            windowInsets
+        }
     }
 }

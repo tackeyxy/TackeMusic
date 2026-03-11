@@ -64,10 +64,9 @@ class PlaybackManager private constructor(context: Context) {
             platform = platform.name
         )
 
-        // 添加到播放列表并设置为当前播放
-        playlistManager.clearPlaylist()  // 清空旧列表，搜索播放时创建新列表
+        // 添加到播放列表并设置为当前播放（不清空原有列表）
         playlistManager.addSong(playlistSong)
-        playlistManager.setCurrentIndex(0)  // 设置为当前播放
+        playlistManager.setCurrentIndex(playlistManager.getPlaylistSize() - 1)  // 设置为当前播放（新添加的歌曲）
 
         // 保存播放状态（新歌曲从头开始播放，位置为0）
         savePlaybackState(
@@ -388,10 +387,9 @@ class PlaybackManager private constructor(context: Context) {
                 platform = platform.name
             )
 
-            // 添加到播放列表并设置为当前播放
-            playlistManager.clearPlaylist()
+            // 添加到播放列表并设置为当前播放（不清空原有列表）
             playlistManager.addSong(playlistSong)
-            playlistManager.setCurrentIndex(0)
+            playlistManager.setCurrentIndex(playlistManager.getPlaylistSize() - 1)
 
             // 保存播放状态
             savePlaybackState(

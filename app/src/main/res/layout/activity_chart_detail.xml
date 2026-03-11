@@ -3,11 +3,12 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background">
+    android:background="@color/background"
+    android:fitsSystemWindows="true">
 
     <!-- 固定的顶部标题区块 - 不会随滑动隐藏 -->
     <FrameLayout
-        android:id="@+id/headerContainer"
+        android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="120dp"
         android:background="@drawable/bg_chart_soaring"
