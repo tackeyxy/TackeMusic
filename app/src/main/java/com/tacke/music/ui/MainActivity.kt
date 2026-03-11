@@ -1336,17 +1336,23 @@ class MainActivity : AppCompatActivity() {
      * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
      */
     private fun setupEdgeToEdge() {
+        // 使用 WindowInsetsCompat 处理系统栏 insets
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 为顶部 Toolbar 添加状态栏高度 padding
-            binding.toolbar.updatePadding(
-                top = insets.top
-            )
+
+            // 为顶部 Toolbar 设置状态栏高度的 marginTop
+            // 注意：使用 margin 而不是 padding，因为 toolbar 有固定的背景样式
+            val toolbarLayoutParams = binding.toolbar.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
+            toolbarLayoutParams.topMargin = insets.top + resources.getDimensionPixelSize(R.dimen.search_bar_margin_top)
+            binding.toolbar.layoutParams = toolbarLayoutParams
+
             // 为底部导航栏区域设置 padding
             view.updatePadding(
                 bottom = insets.bottom
             )
-            windowInsets
+
+            // 消费掉系统栏 insets，防止子视图重复处理
+            WindowInsetsCompat.CONSUMED
         }
     }
 }
