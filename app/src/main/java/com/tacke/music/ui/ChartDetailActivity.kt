@@ -135,20 +135,7 @@ class ChartDetailActivity : AppCompatActivity() {
                     false
                 }
             },
-            lifecycleScope = lifecycleScope,
-            onCoverLoaded = { songId, coverPath ->
-                // 更新歌曲封面URL
-                val song = songs.find { it.id == songId }
-                song?.let {
-                    // 更新本地列表中的封面
-                    val index = songs.indexOf(it)
-                    if (index != -1) {
-                        songs = songs.toMutableList().apply {
-                            set(index, it.copy(cover = coverPath))
-                        }
-                    }
-                }
-            }
+            lifecycleScope = lifecycleScope
         )
         binding.rvChartSongs.layoutManager = LinearLayoutManager(this)
         binding.rvChartSongs.adapter = adapter
@@ -286,14 +273,15 @@ class ChartDetailActivity : AppCompatActivity() {
                 }
 
                 val cachedRepository = CachedMusicRepository(this@ChartDetailActivity)
-                // 优先使用榜单数据中的封面，如果为空则尝试从网易云搜索获取
-                val coverUrl = if (!song.cover.isNullOrEmpty()) {
-                    song.cover
-                } else {
-                    withContext(Dispatchers.IO) {
+                
+                // 如果歌曲没有封面，尝试从网易云搜索获取封面
+                var coverUrl = song.cover
+                if (coverUrl.isNullOrEmpty()) {
+                    coverUrl = withContext(Dispatchers.IO) {
                         cachedRepository.getCoverUrlFromNetease(song.name, song.artist)
                     }
                 }
+                
                 // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
                 val detail = withContext(Dispatchers.IO) {
                     cachedRepository.getSongUrlWithCache(
@@ -302,7 +290,8 @@ class ChartDetailActivity : AppCompatActivity() {
                         quality = "320k",
                         songName = song.name,
                         artists = song.artist,
-                        useCache = true
+                        useCache = true,
+                        coverUrlFromSearch = coverUrl
                     )
                 }
 

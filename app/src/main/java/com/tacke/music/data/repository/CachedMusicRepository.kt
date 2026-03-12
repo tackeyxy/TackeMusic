@@ -170,6 +170,49 @@ class CachedMusicRepository(context: Context) {
     }
 
     /**
+     * 仅获取歌曲播放URL（强制从网络获取，不缓存其他信息）
+     * 用于快速播放场景，只获取URL，封面和歌词使用已缓存的数据
+     *
+     * @param platform 音乐平台
+     * @param songId 歌曲ID
+     * @param quality 音质
+     * @return 仅包含URL的歌曲详情（cover和lyrics可能为空）
+     */
+    suspend fun getSongUrlOnly(
+        platform: MusicRepository.Platform,
+        songId: String,
+        quality: String = "320k"
+    ): SongDetail? = withContext(Dispatchers.IO) {
+        // 强制从网络获取最新的URL，不传递封面URL以减少请求时间
+        Log.d(TAG, "快速获取播放URL: $songId")
+        val freshDetail = musicRepository.getSongDetail(platform, songId, quality, null)
+        freshDetail
+    }
+
+    /**
+     * 获取缓存的封面和歌词（不获取URL）
+     * 用于播放页面快速显示已缓存的信息
+     *
+     * @param songId 歌曲ID
+     * @return 包含封面和歌词的缓存数据，如果没有缓存返回null
+     */
+    suspend fun getCachedCoverAndLyrics(songId: String): SongDetail? = withContext(Dispatchers.IO) {
+        val cachedDetail = songDetailRepository.getSongDetail(songId)
+        if (cachedDetail != null) {
+            Log.d(TAG, "从缓存获取封面和歌词: $songId")
+            // 返回一个只有cover和lyrics的SongDetail，url为空
+            SongDetail(
+                url = "",
+                info = cachedDetail.info,
+                cover = cachedDetail.cover,
+                lyrics = cachedDetail.lyrics
+            )
+        } else {
+            null
+        }
+    }
+
+    /**
      * 获取搜索音乐方法（透传给MusicRepository）
      */
     suspend fun searchMusic(platform: MusicRepository.Platform, keyword: String, page: Int = 0): List<com.tacke.music.data.model.Song> {

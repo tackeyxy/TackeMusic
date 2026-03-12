@@ -560,7 +560,8 @@ class MainActivity : AppCompatActivity() {
                         quality = "320k",
                         songName = chartSong.name,
                         artists = chartSong.artist,
-                        useCache = true
+                        useCache = true,
+                        coverUrlFromSearch = coverUrl
                     )
                 }
 
@@ -1021,42 +1022,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 添加歌曲到播放列表并播放（搜索列表使用）
-     * 非下载管理页面，需要重新请求URL进行播放
+     * 添加歌曲到播放列表并播放（搜索列表使用）- 优化版本
+     * 使用快速播放模式：优先使用本地缓存，快速进入播放页，后台加载完整信息
      */
     private fun addToNowPlayingAndPlay(song: Song) {
-        binding.progressBar.visibility = View.VISIBLE
-
         lifecycleScope.launch {
             try {
-                val cachedRepository = CachedMusicRepository(this@MainActivity)
-                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
-                // 传递 song.coverUrl 用于酷我平台的相对路径封面解析
-                val detail = withContext(Dispatchers.IO) {
-                    cachedRepository.getSongUrlWithCache(
-                        platform = currentPlatform,
-                        songId = song.id,
-                        quality = "320k",
-                        songName = song.name,
-                        artists = song.artists,
-                        useCache = true,
-                        coverUrlFromSearch = song.coverUrl
-                    )
-                }
-                if (detail != null) {
-                    // 先添加到播放列表
-                    val playlistSong = playlistManager.convertToPlaylistSong(song, currentPlatform)
-                    playlistManager.addSong(playlistSong)
-                    // 然后播放
-                    playbackManager.playFromSearch(this@MainActivity, song, currentPlatform, detail)
-                } else {
-                    Toast.makeText(this@MainActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
-                }
+                // 使用快速播放方法，优先使用本地缓存，立即进入播放页
+                playbackManager.playFromSearchFast(this@MainActivity, song, currentPlatform)
             } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "加载失败: ${e.message}", Toast.LENGTH_SHORT).show()
-            } finally {
-                binding.progressBar.visibility = View.GONE
+                Toast.makeText(this@MainActivity, "播放失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    /**
+     * 添加歌曲到播放列表但不立即播放
+     * 在后台自动预加载歌词和封面
+     */
+    private fun addToPlaylistWithoutPlay(song: Song) {
+        lifecycleScope.launch {
+            playbackManager.addToPlaylistWithoutPlay(song, currentPlatform)
+            Toast.makeText(this@MainActivity, "已添加到播放列表", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1082,23 +1069,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addToNowPlaying(song: Song) {
-        lifecycleScope.launch {
-            try {
-                val playlistSong = playlistManager.convertToPlaylistSong(song, currentPlatform)
-                playlistManager.addSong(playlistSong)
-                Toast.makeText(
-                    this@MainActivity,
-                    "已添加到正在播放列表",
-                    Toast.LENGTH_SHORT
-                ).show()
-            } catch (e: Exception) {
-                Toast.makeText(
-                    this@MainActivity,
-                    "添加失败: ${e.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
+        // 使用新的方法：添加到播放列表并在后台预加载
+        addToPlaylistWithoutPlay(song)
     }
 
     private fun showQualityDialog(song: Song) {

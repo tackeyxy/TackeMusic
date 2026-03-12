@@ -64,25 +64,6 @@
                 android:textStyle="bold"
                 android:textColor="@color/text_primary" />
 
-            <!-- 歌曲封面 -->
-            <androidx.cardview.widget.CardView
-                android:id="@+id/cvCover"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
-                android:layout_marginStart="12dp"
-                android:layout_marginEnd="12dp"
-                app:cardCornerRadius="8dp"
-                app:cardElevation="0dp">
-
-                <ImageView
-                    android:id="@+id/ivCover"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/ic_music_note" />
-
-            </androidx.cardview.widget.CardView>
-
             <!-- 歌曲信息（歌名+歌手） -->
             <LinearLayout
                 android:id="@+id/llSongInfo"

@@ -2,6 +2,7 @@ package com.tacke.music.playback
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import android.widget.Toast
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.RecentPlay
@@ -10,6 +11,7 @@ import com.tacke.music.data.model.SongDetail
 import com.tacke.music.data.preferences.PlaybackPreferences
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.MusicRepository
+import com.tacke.music.data.repository.SongPreloadManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.PlayerActivity
 import kotlinx.coroutines.Dispatchers
@@ -18,14 +20,23 @@ import kotlinx.coroutines.withContext
 /**
  * 统一播放管理器
  * 负责统一处理所有播放入口的逻辑，确保播放进度存储的一致性
+ * 
+ * 优化后的播放流程：
+ * 1. 优先使用本地缓存的封面和歌词
+ * 2. 快速获取URL后立即进入播放页
+ * 3. 歌词和图片在后台加载完成后刷新显示
+ * 4. 添加到播放列表的歌曲在后台自动预加载
  */
 class PlaybackManager private constructor(context: Context) {
 
     private val appContext = context.applicationContext
     private val playlistManager = PlaylistManager.getInstance(appContext)
     private val playbackPreferences = PlaybackPreferences.getInstance(appContext)
+    private val preloadManager = SongPreloadManager.getInstance(appContext)
 
     companion object {
+        private const val TAG = "PlaybackManager"
+
         @Volatile
         private var instance: PlaybackManager? = null
 
@@ -44,7 +55,9 @@ class PlaybackManager private constructor(context: Context) {
     private val repository = MusicRepository()
 
     /**
-     * 播放歌曲（从搜索列表）
+     * 播放歌曲（从搜索列表）- 优化版本
+     * 快速启动播放页面，后台加载歌词和图片
+     * 
      * @param context 上下文
      * @param song 搜索结果的歌曲
      * @param platform 音乐平台
@@ -67,7 +80,7 @@ class PlaybackManager private constructor(context: Context) {
 
         // 添加到播放列表并设置为当前播放（不清空原有列表）
         playlistManager.addSong(playlistSong)
-        playlistManager.setCurrentIndex(playlistManager.getPlaylistSize() - 1)  // 设置为当前播放（新添加的歌曲）
+        playlistManager.setCurrentIndex(playlistManager.getPlaylistSize() - 1)
 
         // 关键修复：彻底清除之前的播放状态，确保新歌曲从头开始播放
         clearPlaybackState()
@@ -99,6 +112,95 @@ class PlaybackManager private constructor(context: Context) {
             songCover = songDetail.cover ?: song.coverUrl,
             songLyrics = songDetail.lyrics
         )
+    }
+
+    /**
+     * 快速播放歌曲（从搜索列表）- 极速版本
+     * 优先使用本地缓存，快速进入播放页，后台加载完整信息
+     * 
+     * @param context 上下文
+     * @param song 搜索结果的歌曲
+     * @param platform 音乐平台
+     */
+    suspend fun playFromSearchFast(
+        context: Context,
+        song: Song,
+        platform: MusicRepository.Platform
+    ) {
+        Log.d(TAG, "快速播放歌曲: ${song.name}")
+
+        // 1. 先检查本地缓存
+        val cachedRepository = CachedMusicRepository(context)
+        val cachedDetail = cachedRepository.getCachedCoverAndLyrics(song.id)
+
+        // 2. 快速获取URL（只获取URL，不获取封面和歌词）
+        val urlDetail = withContext(Dispatchers.IO) {
+            cachedRepository.getSongUrlOnly(platform, song.id, "320k")
+        }
+
+        if (urlDetail == null) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "获取歌曲链接失败", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        // 3. 合并缓存的封面和歌词
+        val mergedCover = cachedDetail?.cover ?: song.coverUrl
+        val mergedLyrics = cachedDetail?.lyrics
+
+        // 4. 创建完整的SongDetail
+        val finalDetail = SongDetail(
+            url = urlDetail.url,
+            info = urlDetail.info,
+            cover = mergedCover,
+            lyrics = mergedLyrics
+        )
+
+        // 5. 创建播放列表歌曲
+        val playlistSong = PlaylistSong(
+            id = song.id,
+            name = song.name,
+            artists = song.artists,
+            coverUrl = mergedCover ?: "",
+            platform = platform.name
+        )
+
+        // 6. 添加到播放列表
+        playlistManager.addSong(playlistSong)
+        playlistManager.setCurrentIndex(playlistManager.getPlaylistSize() - 1)
+
+        // 7. 清除之前的播放状态
+        clearPlaybackState()
+        playbackPreferences.currentPosition = 0L
+        playbackPreferences.isPlaying = false
+
+        // 8. 保存播放状态
+        savePlaybackState(
+            songId = song.id,
+            position = 0L,
+            isPlaying = true,
+            quality = "320k",
+            songDetail = finalDetail
+        )
+
+        // 9. 启动播放页面（快速进入）
+        startPlayerActivity(
+            context = context,
+            songId = song.id,
+            songName = song.name,
+            songArtists = song.artists,
+            platform = platform,
+            songUrl = finalDetail.url,
+            songCover = mergedCover,
+            songLyrics = mergedLyrics
+        )
+
+        // 10. 后台预加载完整信息（如果缓存不完整）
+        if (cachedDetail?.cover == null || cachedDetail.lyrics == null) {
+            Log.d(TAG, "后台预加载歌曲完整信息: ${song.name}")
+            preloadManager.preloadSongInfo(song, platform)
+        }
     }
 
     /**
@@ -156,7 +258,7 @@ class PlaybackManager private constructor(context: Context) {
     }
 
     /**
-     * 播放歌曲（从歌单）
+     * 播放歌曲（从歌单）- 优化版本
      * @param context 上下文
      * @param song 歌单中的歌曲
      * @param playUrl 播放URL（本地文件路径或在线URL）
@@ -210,6 +312,31 @@ class PlaybackManager private constructor(context: Context) {
         // 再次确保位置为0
         playbackPreferences.currentPosition = 0L
 
+        // 确定封面URL：优先使用 songDetail 中的封面，其次使用 song 中的封面
+        var finalCoverUrl = songDetail?.cover ?: song.coverUrl
+        
+        // 如果封面URL为空，尝试从网络获取
+        if (finalCoverUrl.isNullOrEmpty()) {
+            Log.d(TAG, "封面URL为空，尝试从网络获取: ${song.name}")
+            finalCoverUrl = withContext(Dispatchers.IO) {
+                try {
+                    val cachedRepository = CachedMusicRepository(context)
+                    // 尝试获取歌曲详情以获取封面
+                    val detail = cachedRepository.getSongDetail(
+                        platform = platform,
+                        songId = song.id,
+                        quality = "320k",
+                        songName = song.name,
+                        artists = song.artists
+                    )
+                    detail?.cover
+                } catch (e: Exception) {
+                    Log.e(TAG, "获取封面失败: ${e.message}")
+                    null
+                }
+            }
+        }
+
         // 启动播放页面
         startPlayerActivity(
             context = context,
@@ -218,9 +345,116 @@ class PlaybackManager private constructor(context: Context) {
             songArtists = song.artists,
             platform = platform,
             songUrl = playUrl,
-            songCover = songDetail?.cover ?: song.coverUrl,
+            songCover = finalCoverUrl,
             songLyrics = songDetail?.lyrics
         )
+    }
+
+    /**
+     * 快速播放歌曲（从歌单）- 极速版本
+     * 优先使用本地缓存，快速进入播放页
+     * 
+     * @param context 上下文
+     * @param song 歌单中的歌曲
+     */
+    suspend fun playFromPlaylistFast(
+        context: Context,
+        song: PlaylistSong
+    ) {
+        Log.d(TAG, "快速播放歌单歌曲: ${song.name}")
+
+        val platform = try {
+            MusicRepository.Platform.valueOf(song.platform.uppercase())
+        } catch (e: Exception) {
+            MusicRepository.Platform.KUWO
+        }
+
+        // 1. 先检查本地缓存
+        val cachedRepository = CachedMusicRepository(context)
+        val cachedDetail = cachedRepository.getCachedCoverAndLyrics(song.id)
+
+        // 2. 快速获取URL
+        val urlDetail = withContext(Dispatchers.IO) {
+            cachedRepository.getSongUrlOnly(platform, song.id, "320k")
+        }
+
+        if (urlDetail == null) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "获取歌曲链接失败", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
+        // 3. 合并缓存的封面和歌词
+        var mergedCover = cachedDetail?.cover ?: song.coverUrl
+        val mergedLyrics = cachedDetail?.lyrics
+
+        // 4. 如果封面URL为空，尝试从网络获取
+        if (mergedCover.isNullOrEmpty()) {
+            Log.d(TAG, "封面URL为空，尝试从网络获取: ${song.name}")
+            mergedCover = withContext(Dispatchers.IO) {
+                try {
+                    // 尝试获取歌曲详情以获取封面
+                    val detail = cachedRepository.getSongDetail(
+                        platform = platform,
+                        songId = song.id,
+                        quality = "320k",
+                        songName = song.name,
+                        artists = song.artists
+                    )
+                    detail?.cover
+                } catch (e: Exception) {
+                    Log.e(TAG, "获取封面失败: ${e.message}")
+                    null
+                }
+            }
+        }
+
+        // 5. 更新播放列表歌曲信息
+        val updatedSong = song.copy(coverUrl = mergedCover ?: song.coverUrl)
+        playlistManager.addSong(updatedSong)
+
+        val songIndex = playlistManager.currentPlaylist.value.indexOfFirst { it.id == updatedSong.id }
+        if (songIndex != -1) {
+            playlistManager.setCurrentIndex(songIndex)
+        }
+
+        // 6. 清除播放状态
+        clearPlaybackState()
+        playbackPreferences.currentPosition = 0L
+        playbackPreferences.isPlaying = false
+
+        // 7. 保存播放状态
+        val finalDetail = SongDetail(
+            url = urlDetail.url,
+            info = urlDetail.info,
+            cover = mergedCover,
+            lyrics = mergedLyrics
+        )
+        savePlaybackState(
+            songId = song.id,
+            position = 0L,
+            isPlaying = true,
+            quality = "320k",
+            songDetail = finalDetail
+        )
+
+        // 8. 启动播放页面
+        startPlayerActivity(
+            context = context,
+            songId = song.id,
+            songName = song.name,
+            songArtists = song.artists,
+            platform = platform,
+            songUrl = urlDetail.url,
+            songCover = mergedCover,
+            songLyrics = mergedLyrics
+        )
+
+        // 9. 后台预加载（如果缓存不完整）
+        if (cachedDetail?.cover == null || cachedDetail.lyrics == null) {
+            preloadManager.preloadPlaylistSong(song)
+        }
     }
 
     /**
@@ -263,6 +497,31 @@ class PlaybackManager private constructor(context: Context) {
         // 再次确保位置为0
         playbackPreferences.currentPosition = 0L
 
+        // 确定封面URL：优先使用 songDetail 中的封面，其次使用 song 中的封面
+        var finalCoverUrl = songDetail?.cover ?: song.coverUrl
+        
+        // 如果封面URL为空，尝试从网络获取
+        if (finalCoverUrl.isNullOrEmpty()) {
+            Log.d(TAG, "封面URL为空，尝试从网络获取: ${song.name}")
+            finalCoverUrl = withContext(Dispatchers.IO) {
+                try {
+                    val cachedRepository = CachedMusicRepository(context)
+                    // 尝试获取歌曲详情以获取封面
+                    val detail = cachedRepository.getSongDetail(
+                        platform = platform,
+                        songId = song.id,
+                        quality = "320k",
+                        songName = song.name,
+                        artists = song.artists
+                    )
+                    detail?.cover
+                } catch (e: Exception) {
+                    Log.e(TAG, "获取封面失败: ${e.message}")
+                    null
+                }
+            }
+        }
+
         // 启动播放页面
         startPlayerActivity(
             context = context,
@@ -271,9 +530,53 @@ class PlaybackManager private constructor(context: Context) {
             songArtists = song.artists,
             platform = platform,
             songUrl = playUrl,
-            songCover = songDetail?.cover ?: song.coverUrl,
+            songCover = finalCoverUrl,
             songLyrics = songDetail?.lyrics
         )
+    }
+
+    /**
+     * 添加歌曲到播放列表但不立即播放
+     * 在后台自动预加载歌词和封面
+     * 
+     * @param song 歌曲
+     * @param platform 平台
+     */
+    suspend fun addToPlaylistWithoutPlay(
+        song: Song,
+        platform: MusicRepository.Platform
+    ) {
+        // 创建播放列表歌曲
+        val playlistSong = PlaylistSong(
+            id = song.id,
+            name = song.name,
+            artists = song.artists,
+            coverUrl = song.coverUrl ?: "",
+            platform = platform.name
+        )
+
+        // 添加到播放列表
+        playlistManager.addSong(playlistSong)
+
+        // 后台预加载歌曲信息
+        preloadManager.preloadSongInfo(song, platform)
+
+        Log.d(TAG, "添加歌曲到播放列表并后台预加载: ${song.name}")
+    }
+
+    /**
+     * 添加播放列表歌曲但不立即播放
+     * 
+     * @param song 播放列表歌曲
+     */
+    suspend fun addPlaylistSongWithoutPlay(song: PlaylistSong) {
+        // 添加到播放列表
+        playlistManager.addSong(song)
+
+        // 后台预加载
+        preloadManager.preloadPlaylistSong(song)
+
+        Log.d(TAG, "添加播放列表歌曲并后台预加载: ${song.name}")
     }
 
     /**
@@ -389,7 +692,7 @@ class PlaybackManager private constructor(context: Context) {
     }
 
     /**
-     * 播放歌曲（从最近播放记录）
+     * 播放歌曲（从最近播放记录）- 优化版本
      * @param context 上下文
      * @param recentPlay 最近播放记录
      */

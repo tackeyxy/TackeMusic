@@ -369,7 +369,8 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                         quality = "320k",
                         songName = track.name,
                         artists = artistName,
-                        useCache = true
+                        useCache = true,
+                        coverUrlFromSearch = coverUrl
                     )
                 }
 
@@ -685,7 +686,8 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                         quality = quality,
                         songName = track.name,
                         artists = artistName,
-                        useCache = true
+                        useCache = true,
+                        coverUrlFromSearch = coverUrl
                     )
                 }
                 if (detail != null) {
@@ -732,7 +734,8 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                             quality = quality,
                             songName = track.name,
                             artists = artistName,
-                            useCache = true
+                            useCache = true,
+                            coverUrlFromSearch = coverUrl
                         )
                     }
                     if (detail != null) {

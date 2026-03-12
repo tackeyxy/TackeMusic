@@ -122,73 +122,89 @@ class SongAdapter(
         }
 
         private fun loadCover(song: Song, ivCover: ImageView) {
-            val coverUrl = song.coverUrl
-
-            when {
-                coverUrl.isNullOrEmpty() -> {
-                    // 没有封面URL，尝试从网络获取
-                    ivCover.setImageResource(R.drawable.ic_music_note)
-                    downloadAndCacheCover(song, ivCover)
+            lifecycleScope?.launch {
+                // 1. 首先尝试从本地缓存获取封面图片（最高优先级）
+                val localCoverPath = withContext(Dispatchers.IO) {
+                    CoverImageManager.getCoverPath(itemView.context, song.id, song.platform)
                 }
-                coverUrl.startsWith("http") -> {
-                    // 网络图片，使用 Glide 加载
-                    // 添加错误处理，如果加载失败尝试其他方式
+
+                if (localCoverPath != null) {
+                    // 本地有缓存，直接使用本地图片
                     Glide.with(itemView.context)
-                        .load(coverUrl)
+                        .load(File(localCoverPath))
                         .placeholder(R.drawable.ic_music_note)
                         .error(R.drawable.ic_music_note)
-                        .listener(object : com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable> {
-                            override fun onLoadFailed(
-                                e: com.bumptech.glide.load.engine.GlideException?,
-                                model: Any?,
-                                target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>,
-                                isFirstResource: Boolean
-                            ): Boolean {
-                                // 如果网络图片加载失败，尝试解析或下载封面
-                                if (song.platform.equals("kuwo", ignoreCase = true)) {
-                                    resolveAndLoadCover(song, ivCover, coverUrl)
-                                } else {
-                                    downloadAndCacheCover(song, ivCover)
-                                }
-                                return false
-                            }
-
-                            override fun onResourceReady(
-                                resource: android.graphics.drawable.Drawable,
-                                model: Any,
-                                target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>,
-                                dataSource: com.bumptech.glide.load.DataSource,
-                                isFirstResource: Boolean
-                            ): Boolean {
-                                return false
-                            }
-                        })
                         .into(ivCover)
+                    return@launch
                 }
-                coverUrl.startsWith("/") -> {
-                    // 本地图片路径（以/开头的绝对路径）
-                    try {
-                        val file = File(coverUrl)
-                        if (file.exists()) {
-                            Glide.with(itemView.context)
-                                .load(file)
-                                .placeholder(R.drawable.ic_music_note)
-                                .error(R.drawable.ic_music_note)
-                                .into(ivCover)
-                        } else {
-                            // 本地文件不存在，尝试重新下载
-                            ivCover.setImageResource(R.drawable.ic_music_note)
-                            downloadAndCacheCover(song, ivCover)
-                        }
-                    } catch (e: Exception) {
+
+                // 2. 本地没有缓存，使用传入的coverUrl
+                val coverUrl = song.coverUrl
+                when {
+                    coverUrl.isNullOrEmpty() -> {
+                        // 没有封面URL，尝试从网络获取
                         ivCover.setImageResource(R.drawable.ic_music_note)
                         downloadAndCacheCover(song, ivCover)
                     }
-                }
-                else -> {
-                    // 相对路径（如酷我音乐的封面URL），需要解析为完整URL
-                    ivCover.setImageResource(R.drawable.ic_music_note)
-                    resolveAndLoadCover(song, ivCover, coverUrl)
+                    coverUrl.startsWith("http") -> {
+                        // 网络图片，使用 Glide 加载
+                        Glide.with(itemView.context)
+                            .load(coverUrl)
+                            .placeholder(R.drawable.ic_music_note)
+                            .error(R.drawable.ic_music_note)
+                            .listener(object : com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable> {
+                                override fun onLoadFailed(
+                                    e: com.bumptech.glide.load.engine.GlideException?,
+                                    model: Any?,
+                                    target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>,
+                                    isFirstResource: Boolean
+                                ): Boolean {
+                                    // 如果网络图片加载失败，尝试解析或下载封面
+                                    if (song.platform.equals("kuwo", ignoreCase = true)) {
+                                        resolveAndLoadCover(song, ivCover, coverUrl)
+                                    } else {
+                                        downloadAndCacheCover(song, ivCover)
+                                    }
+                                    return false
+                                }
+
+                                override fun onResourceReady(
+                                    resource: android.graphics.drawable.Drawable,
+                                    model: Any,
+                                    target: com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable>,
+                                    dataSource: com.bumptech.glide.load.DataSource,
+                                    isFirstResource: Boolean
+                                ): Boolean {
+                                    return false
+                                }
+                            })
+                            .into(ivCover)
+                    }
+                    coverUrl.startsWith("/") -> {
+                        // 本地图片路径（以/开头的绝对路径）
+                        try {
+                            val file = File(coverUrl)
+                            if (file.exists()) {
+                                Glide.with(itemView.context)
+                                    .load(file)
+                                    .placeholder(R.drawable.ic_music_note)
+                                    .error(R.drawable.ic_music_note)
+                                    .into(ivCover)
+                            } else {
+                                // 本地文件不存在，尝试重新下载
+                                ivCover.setImageResource(R.drawable.ic_music_note)
+                                downloadAndCacheCover(song, ivCover)
+                            }
+                        } catch (e: Exception) {
+                            ivCover.setImageResource(R.drawable.ic_music_note)
+                            downloadAndCacheCover(song, ivCover)
+                        }
+                    }
+                    else -> {
+                        // 相对路径（如酷我音乐的封面URL），需要解析为完整URL
+                        ivCover.setImageResource(R.drawable.ic_music_note)
+                        resolveAndLoadCover(song, ivCover, coverUrl)
+                    }
                 }
             }
         }

@@ -11,6 +11,7 @@ import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
@@ -51,9 +52,11 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import com.tacke.music.util.ImmersiveStatusBarHelper
 import com.tacke.music.utils.CoverUrlResolver
+import com.tacke.music.utils.CoverImageManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -151,6 +154,8 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val TAG = "PlayerActivity"
+
         const val ACTION_PLAYBACK_UPDATE = "com.tacke.music.PLAYBACK_UPDATE"
         const val ACTION_SEEK_TO = "com.tacke.music.SEEK_TO"
         const val EXTRA_CURRENT_POSITION = "current_position"
@@ -616,8 +621,8 @@ class PlayerActivity : AppCompatActivity() {
             binding.tvSongName.text = songName
             binding.tvArtist.text = songArtists
 
-            // 加载封面和背景
-            loadCoverAndBackground(songCover)
+            // 优先使用本地缓存的封面图片
+            loadCoverWithCachePriority()
 
             // 解析歌词
             songLyrics?.let { lyricsText ->
@@ -626,6 +631,137 @@ class PlayerActivity : AppCompatActivity() {
 
             // 初始化音质显示
             updateQualityDisplay(currentQuality)
+
+            // 如果歌词或封面为空，后台加载完整信息
+            if (songLyrics == null || songCover == null) {
+                loadMissingInfoInBackground()
+            }
+        }
+    }
+
+    /**
+     * 优先使用本地缓存加载封面
+     * 如果本地有缓存，直接使用本地图片
+     * 如果没有本地缓存，使用传入的URL
+     */
+    private fun loadCoverWithCachePriority() {
+        lifecycleScope.launch {
+            // 1. 首先尝试从本地缓存获取封面图片
+            val localCoverPath = withContext(Dispatchers.IO) {
+                CoverImageManager.getCoverPath(this@PlayerActivity, songId, platform.name)
+            }
+
+            if (localCoverPath != null) {
+                // 本地有缓存，使用本地图片
+                Log.d(TAG, "使用本地缓存封面: $localCoverPath")
+                loadCoverAndBackground(localCoverPath)
+                songCover = localCoverPath
+            } else if (!songCover.isNullOrEmpty()) {
+                // 本地没有缓存，使用传入的URL
+                // 检查是否是相对路径（酷我平台）
+                if (!songCover!!.startsWith("http") && !songCover!!.startsWith("/")) {
+                    // 相对路径，需要解析
+                    resolveAndLoadCover(songCover!!)
+                } else {
+                    loadCoverAndBackground(songCover)
+                }
+            } else {
+                // 没有封面，使用默认
+                loadCoverAndBackground(null)
+            }
+        }
+    }
+
+    /**
+     * 解析相对路径封面URL并加载
+     */
+    private fun resolveAndLoadCover(relativeUrl: String) {
+        lifecycleScope.launch {
+            try {
+                val resolvedUrl = withContext(Dispatchers.IO) {
+                    CoverUrlResolver.resolveCoverUrl(
+                        this@PlayerActivity,
+                        relativeUrl,
+                        songId,
+                        platform.name,
+                        songName,
+                        songArtists
+                    )
+                }
+                if (resolvedUrl != null) {
+                    songCover = resolvedUrl
+                    loadCoverAndBackground(resolvedUrl)
+                } else {
+                    loadCoverAndBackground(null)
+                }
+            } catch (e: Exception) {
+                loadCoverAndBackground(null)
+            }
+        }
+    }
+
+    /**
+     * 后台加载缺失的歌曲信息（歌词和封面）
+     * 当从快速播放进入时，可能缺少歌词或封面，需要在后台加载
+     */
+    private fun loadMissingInfoInBackground() {
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "后台加载缺失的歌曲信息: $songName")
+
+                val cachedRepository = CachedMusicRepository(this@PlayerActivity)
+
+                // 从网络获取完整信息（URL已经获取过了，这里主要是为了封面和歌词）
+                val detail = withContext(Dispatchers.IO) {
+                    cachedRepository.getSongDetail(
+                        platform = platform,
+                        songId = songId,
+                        quality = currentQuality,
+                        coverUrlFromSearch = if (songCover.isNullOrEmpty()) null else songCover,
+                        songName = songName,
+                        artists = songArtists
+                    )
+                }
+
+                if (detail != null) {
+                    // 更新歌词
+                    if (songLyrics == null && detail.lyrics != null) {
+                        songLyrics = detail.lyrics
+                        parsedLyrics = parseLyrics(detail.lyrics)
+                        Log.d(TAG, "歌词加载完成")
+                    }
+
+                    // 更新封面
+                    if (detail.cover != null) {
+                        val newCover = detail.cover
+                        if (newCover != songCover) {
+                            songCover = newCover
+                            loadCoverAndBackground(newCover)
+                            Log.d(TAG, "封面加载完成: $newCover")
+
+                            // 同时下载并缓存封面图片到本地
+                            withContext(Dispatchers.IO) {
+                                CoverImageManager.downloadAndCacheCover(
+                                    context = this@PlayerActivity,
+                                    songId = songId,
+                                    platform = platform.name,
+                                    quality = currentQuality,
+                                    songName = songName,
+                                    artist = songArtists
+                                )
+                            }
+                        }
+                    }
+
+                    // 更新歌曲详情
+                    songDetail = detail
+
+                    // 保存到Preferences
+                    playbackPreferences.saveSongDetail(songId, detail)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "后台加载歌曲信息失败: ${e.message}")
+            }
         }
     }
 
