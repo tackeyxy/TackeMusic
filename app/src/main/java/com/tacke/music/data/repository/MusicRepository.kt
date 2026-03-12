@@ -206,88 +206,108 @@ class MusicRepository {
     }
     
     suspend fun getSongDetail(platform: Platform, songId: String, quality: String, coverUrlFromSearch: String? = null): SongDetail? {
+        val platformStr = when (platform) {
+            Platform.KUWO -> "kuwo"
+            Platform.NETEASE -> "netease"
+        }
+
+        // 使用 GdStudio API 获取歌曲详情
         return try {
-            val platformStr = when (platform) {
-                Platform.KUWO -> "kuwo"
-                Platform.NETEASE -> "netease"
-            }
-
-            val br = when (quality) {
-                "flac24bit" -> "999"
-                "flac" -> "740"
-                "320k" -> "320"
-                "192k" -> "192"
-                "128k" -> "128"
-                else -> "999"
-            }
-            
-            // 网易平台的音质参数可能需要调整
-            val effectiveBr = if (platformStr == "netease" && br == "740") {
-                // 网易平台可能不支持 740，使用 320 代替
-                "320"
-            } else {
-                br
-            }
-
-            Log.d("MusicRepository", "Getting song URL: platform=$platformStr, songId=$songId, br=$effectiveBr")
-            val urlResponse = RetrofitClient.gdStudioApi.getSongUrl(
-                source = platformStr,
-                id = songId,
-                br = effectiveBr
-            )
-
-            Log.d("MusicRepository", "Song URL response: ${urlResponse.url}")
-
-            if (urlResponse.url.isNullOrEmpty()) {
-                Log.e("MusicRepository", "Failed to get song url: platform=$platformStr, songId=$songId, response=${urlResponse.url}")
-                return null
-            }
-
-            val lyricResponse = RetrofitClient.gdStudioApi.getLyric(
-                source = platformStr,
-                id = songId
-            )
-
-            Log.d("MusicRepository", "getSongDetail: platform=$platform, songId=$songId, coverUrlFromSearch=$coverUrlFromSearch")
-
-            // 获取封面URL - 简化逻辑，只尝试使用coverUrlFromSearch获取
-            // 详细的平台特定逻辑在CachedMusicRepository中处理
-            val coverUrl = if (!coverUrlFromSearch.isNullOrEmpty()) {
-                if (coverUrlFromSearch.startsWith("http://") || coverUrlFromSearch.startsWith("https://")) {
-                    // 已经是完整URL，直接使用
-                    coverUrlFromSearch
-                } else {
-                    // 相对路径（如酷我的 web_albumpic_short），尝试使用GdStudio API获取
-                    try {
-                        Log.d("MusicRepository", "尝试使用web_albumpic_short获取封面: $coverUrlFromSearch")
-                        val picResponse = RetrofitClient.gdStudioApi.getAlbumPic(
-                            source = platformStr,
-                            id = coverUrlFromSearch,
-                            size = "500"
-                        )
-                        picResponse.url
-                    } catch (e: Exception) {
-                        Log.e("MusicRepository", "使用web_albumpic_short获取封面失败", e)
-                        null
-                    }
-                }
-            } else {
-                // 没有提供封面URL，返回null，由上层根据平台使用不同的获取逻辑
-                null
-            }
-
-            SongDetail(
-                url = urlResponse.url ?: "",
-                info = SongInfo(
-                    name = "",
-                    artist = ""
-                ),
-                cover = coverUrl,
-                lyrics = lyricResponse.lyric
-            )
+            getSongDetailFromGdStudio(platformStr, songId, quality, coverUrlFromSearch)
         } catch (e: Exception) {
-            Log.e("MusicRepository", "Get song detail failed", e)
+            Log.e("MusicRepository", "Get song detail failed from GdStudio API", e)
             null
         }
+    }
+
+    /**
+     * 从 GdStudio API 获取歌曲详情
+     */
+    private suspend fun getSongDetailFromGdStudio(
+        platformStr: String,
+        songId: String,
+        quality: String,
+        coverUrlFromSearch: String?
+    ): SongDetail? {
+        val br = when (quality) {
+            "flac24bit" -> "999"
+            "flac" -> "740"
+            "320k" -> "320"
+            "192k" -> "192"
+            "128k" -> "128"
+            else -> "999"
+        }
+
+        // 网易平台的音质参数可能需要调整
+        val effectiveBr = if (platformStr == "netease" && br == "740") {
+            // 网易平台可能不支持 740，使用 320 代替
+            "320"
+        } else {
+            br
+        }
+
+        Log.d("MusicRepository", "Getting song URL from GdStudio: platform=$platformStr, songId=$songId, br=$effectiveBr")
+
+        val urlResponse = RetrofitClient.gdStudioApi.getSongUrl(
+            source = platformStr,
+            id = songId,
+            br = effectiveBr
+        )
+
+        Log.d("MusicRepository", "Song URL response: ${urlResponse.url}")
+
+        if (urlResponse.url.isNullOrEmpty()) {
+            Log.e("MusicRepository", "Failed to get song url: platform=$platformStr, songId=$songId, response=${urlResponse.url}")
+            return null
+        }
+
+        // 检查URL是否有效（不是HTML错误页面）
+        if (urlResponse.url.contains("<html") || urlResponse.url.contains("<!DOCTYPE")) {
+            Log.e("MusicRepository", "Invalid song URL (HTML response): platform=$platformStr, songId=$songId")
+            return null
+        }
+
+        val lyricResponse = RetrofitClient.gdStudioApi.getLyric(
+            source = platformStr,
+            id = songId
+        )
+
+        Log.d("MusicRepository", "getSongDetail: platform=$platformStr, songId=$songId, coverUrlFromSearch=$coverUrlFromSearch")
+
+        // 获取封面URL - 简化逻辑，只尝试使用coverUrlFromSearch获取
+        // 详细的平台特定逻辑在CachedMusicRepository中处理
+        val coverUrl = if (!coverUrlFromSearch.isNullOrEmpty()) {
+            if (coverUrlFromSearch.startsWith("http://") || coverUrlFromSearch.startsWith("https://")) {
+                // 已经是完整URL，直接使用
+                coverUrlFromSearch
+            } else {
+                // 相对路径（如酷我的 web_albumpic_short），尝试使用GdStudio API获取
+                try {
+                    Log.d("MusicRepository", "尝试使用web_albumpic_short获取封面: $coverUrlFromSearch")
+                    val picResponse = RetrofitClient.gdStudioApi.getAlbumPic(
+                        source = platformStr,
+                        id = coverUrlFromSearch,
+                        size = "500"
+                    )
+                    picResponse.url
+                } catch (e: Exception) {
+                    Log.e("MusicRepository", "使用web_albumpic_short获取封面失败", e)
+                    null
+                }
+            }
+        } else {
+            // 没有提供封面URL，返回null，由上层根据平台使用不同的获取逻辑
+            null
+        }
+
+        return SongDetail(
+            url = urlResponse.url ?: "",
+            info = SongInfo(
+                name = "",
+                artist = ""
+            ),
+            cover = coverUrl,
+            lyrics = lyricResponse.lyric
+        )
     }
 }

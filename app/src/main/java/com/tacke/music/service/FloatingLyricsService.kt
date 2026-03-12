@@ -40,6 +40,10 @@ class FloatingLyricsService : Service() {
     private var btnLock: ImageView? = null
     private var btnClose: ImageView? = null
     private var controlContainer: LinearLayout? = null
+    private var playbackControlContainer: LinearLayout? = null
+    private var btnPrevious: ImageView? = null
+    private var btnPlayPause: ImageView? = null
+    private var btnNext: ImageView? = null
 
     private var layoutParams: WindowManager.LayoutParams? = null
     private var isLocked = false
@@ -78,6 +82,11 @@ class FloatingLyricsService : Service() {
 
         // 悬浮窗关闭广播通知
         const val ACTION_FLOATING_LYRICS_CLOSED = "com.tacke.music.ACTION_FLOATING_LYRICS_CLOSED"
+
+        // 播放控制广播Action（与MusicPlaybackService保持一致）
+        const val ACTION_PLAY_PAUSE = "com.tacke.music.ACTION_PLAY_PAUSE"
+        const val ACTION_NEXT = "com.tacke.music.ACTION_NEXT"
+        const val ACTION_PREVIOUS = "com.tacke.music.ACTION_PREVIOUS"
 
         const val EXTRA_LYRICS = "lyrics"
         const val EXTRA_POSITION = "position"
@@ -234,6 +243,7 @@ class FloatingLyricsService : Service() {
                 }
                 ACTION_PLAYBACK_STATE_CHANGED -> {
                     isPlaying = intent.getBooleanExtra(EXTRA_IS_PLAYING, false)
+                    updatePlayPauseButtonIcon()
                 }
                 ACTION_TOGGLE_LOCK -> toggleLock()
                 ACTION_UPDATE_SIZE -> {
@@ -264,6 +274,10 @@ class FloatingLyricsService : Service() {
         btnLock = floatingView?.findViewById(R.id.btnLock)
         btnClose = floatingView?.findViewById(R.id.btnClose)
         controlContainer = floatingView?.findViewById(R.id.controlContainer)
+        playbackControlContainer = floatingView?.findViewById(R.id.playbackControlContainer)
+        btnPrevious = floatingView?.findViewById(R.id.btnPrevious)
+        btnPlayPause = floatingView?.findViewById(R.id.btnPlayPause)
+        btnNext = floatingView?.findViewById(R.id.btnNext)
 
         // 设置歌词颜色
         updateLyricColor(currentLyricColor)
@@ -285,6 +299,25 @@ class FloatingLyricsService : Service() {
             // 发送广播通知播放页悬浮窗已关闭
             sendFloatingLyricsClosedBroadcast()
             stopSelf()
+        }
+
+        // 设置播放控制按钮点击事件
+        btnPrevious?.setOnClickListener {
+            android.util.Log.d("FloatingLyrics", "Previous button clicked")
+            sendPlaybackControlBroadcast(ACTION_PREVIOUS)
+        }
+
+        btnPlayPause?.setOnClickListener {
+            android.util.Log.d("FloatingLyrics", "Play/Pause button clicked")
+            // 立即切换本地播放状态，提供即时视觉反馈
+            isPlaying = !isPlaying
+            updatePlayPauseButtonIcon()
+            sendPlaybackControlBroadcast(ACTION_PLAY_PAUSE)
+        }
+
+        btnNext?.setOnClickListener {
+            android.util.Log.d("FloatingLyrics", "Next button clicked")
+            sendPlaybackControlBroadcast(ACTION_NEXT)
         }
 
         // 设置触摸事件 - 全区域长按拖动，点击显示/隐藏控件
@@ -456,7 +489,11 @@ class FloatingLyricsService : Service() {
 
     private fun showControls() {
         controlContainer?.visibility = View.VISIBLE
+        playbackControlContainer?.visibility = View.VISIBLE
         isControlsVisible = true
+
+        // 更新播放按钮图标
+        updatePlayPauseButtonIcon()
 
         // 取消之前的隐藏任务
         hideControlsRunnable?.let { hideControlsHandler.removeCallbacks(it) }
@@ -470,6 +507,7 @@ class FloatingLyricsService : Service() {
 
     private fun hideControls() {
         controlContainer?.visibility = View.GONE
+        playbackControlContainer?.visibility = View.GONE
         isControlsVisible = false
         hideControlsRunnable?.let { hideControlsHandler.removeCallbacks(it) }
     }
@@ -703,6 +741,24 @@ class FloatingLyricsService : Service() {
     private fun sendFloatingLyricsClosedBroadcast() {
         val intent = Intent(ACTION_FLOATING_LYRICS_CLOSED)
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+    }
+
+    /**
+     * 发送播放控制广播到MusicPlaybackService
+     */
+    private fun sendPlaybackControlBroadcast(action: String) {
+        val intent = Intent(action)
+        // 使用LocalBroadcastManager发送广播，确保应用内通信
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+    }
+
+    /**
+     * 更新播放/暂停按钮图标
+     */
+    private fun updatePlayPauseButtonIcon() {
+        btnPlayPause?.setImageResource(
+            if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
+        )
     }
 
     override fun onDestroy() {

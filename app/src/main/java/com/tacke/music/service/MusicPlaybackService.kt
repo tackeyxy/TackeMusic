@@ -141,6 +141,21 @@ class MusicPlaybackService : Service() {
             putExtra(EXTRA_SONG_COVER, detail.cover ?: playlistSong.coverUrl)
         }
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+
+        // 直接发送歌词更新广播给悬浮歌词服务（确保悬浮歌词能及时更新）
+        sendFloatingLyricsUpdate(detail, playlistSong)
+    }
+
+    /**
+     * 发送歌词更新广播给悬浮歌词服务
+     */
+    private fun sendFloatingLyricsUpdate(detail: SongDetail, playlistSong: PlaylistSong) {
+        val intent = Intent(FloatingLyricsService.ACTION_UPDATE_LYRICS).apply {
+            putExtra(FloatingLyricsService.EXTRA_LYRICS, detail.lyrics)
+            putExtra(FloatingLyricsService.EXTRA_SONG_NAME, playlistSong.name)
+            putExtra(FloatingLyricsService.EXTRA_ARTISTS, playlistSong.artists)
+        }
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }
 
     private fun initializePlayer() {
@@ -149,6 +164,8 @@ class MusicPlaybackService : Service() {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 updateNotification()
                 updateMediaSessionState()
+                // 发送播放状态变化广播给悬浮歌词
+                sendPlaybackStateChangedBroadcast(isPlaying)
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -158,6 +175,16 @@ class MusicPlaybackService : Service() {
                 }
             }
         })
+    }
+
+    /**
+     * 发送播放状态变化广播给悬浮歌词服务
+     */
+    private fun sendPlaybackStateChangedBroadcast(isPlaying: Boolean) {
+        val intent = Intent(FloatingLyricsService.ACTION_PLAYBACK_STATE_CHANGED).apply {
+            putExtra(FloatingLyricsService.EXTRA_IS_PLAYING, isPlaying)
+        }
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }
 
     private fun handlePlaybackEnded() {
@@ -233,6 +260,7 @@ class MusicPlaybackService : Service() {
     }
 
     private fun registerBroadcastReceiver() {
+        // 注册全局广播接收器（用于通知栏控制）
         val filter = IntentFilter().apply {
             addAction(ACTION_PLAY_PAUSE)
             addAction(ACTION_NEXT)
@@ -244,6 +272,14 @@ class MusicPlaybackService : Service() {
         } else {
             registerReceiver(controlReceiver, filter)
         }
+
+        // 注册LocalBroadcastManager接收器（用于应用内组件通信，如悬浮窗）
+        val localFilter = IntentFilter().apply {
+            addAction(ACTION_PLAY_PAUSE)
+            addAction(ACTION_NEXT)
+            addAction(ACTION_PREVIOUS)
+        }
+        LocalBroadcastManager.getInstance(this).registerReceiver(localControlReceiver, localFilter)
     }
 
     private val controlReceiver = object : BroadcastReceiver() {
@@ -265,6 +301,28 @@ class MusicPlaybackService : Service() {
                     }
                 }
                 ACTION_STOP -> stopSelf()
+            }
+        }
+    }
+
+    private val localControlReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                ACTION_PLAY_PAUSE -> {
+                    exoPlayer?.let {
+                        if (it.isPlaying) it.pause() else it.play()
+                    }
+                }
+                ACTION_NEXT -> {
+                    serviceScope.launch {
+                        playNextSong()
+                    }
+                }
+                ACTION_PREVIOUS -> {
+                    serviceScope.launch {
+                        playPreviousSong()
+                    }
+                }
             }
         }
     }
@@ -399,6 +457,11 @@ class MusicPlaybackService : Service() {
         super.onDestroy()
         try {
             unregisterReceiver(controlReceiver)
+        } catch (e: Exception) {
+            // Ignore if not registered
+        }
+        try {
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(localControlReceiver)
         } catch (e: Exception) {
             // Ignore if not registered
         }

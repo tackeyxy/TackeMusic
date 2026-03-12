@@ -53,6 +53,52 @@
             android:shadowDy="1"
             android:shadowRadius="2" />
 
+        <!-- 播放控制按钮容器 -->
+        <LinearLayout
+            android:id="@+id/playbackControlContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:visibility="gone">
+
+            <!-- 上一首按钮 -->
+            <ImageView
+                android:id="@+id/btnPrevious"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:padding="6dp"
+                android:src="@drawable/ic_skip_previous"
+                android:background="@drawable/bg_control_button"
+                app:tint="#CCFFFFFF"
+                android:contentDescription="上一首" />
+
+            <!-- 播放/暂停按钮 -->
+            <ImageView
+                android:id="@+id/btnPlayPause"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginHorizontal="12dp"
+                android:padding="6dp"
+                android:src="@drawable/ic_play"
+                android:background="@drawable/bg_control_button"
+                app:tint="#CCFFFFFF"
+                android:contentDescription="播放/暂停" />
+
+            <!-- 下一首按钮 -->
+            <ImageView
+                android:id="@+id/btnNext"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:padding="6dp"
+                android:src="@drawable/ic_skip_next"
+                android:background="@drawable/bg_control_button"
+                app:tint="#CCFFFFFF"
+                android:contentDescription="下一首" />
+
+        </LinearLayout>
+
         <!-- 控制按钮容器 -->
         <LinearLayout
             android:id="@+id/controlContainer"
@@ -66,23 +112,23 @@
             <!-- 锁定/解锁按钮 -->
             <ImageView
                 android:id="@+id/btnLock"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:padding="5dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:padding="6dp"
                 android:src="@drawable/ic_lock_open"
-                android:background="@android:color/transparent"
+                android:background="@drawable/bg_control_button"
                 app:tint="#CCFFFFFF"
                 android:contentDescription="锁定/解锁" />
 
             <!-- 关闭按钮 -->
             <ImageView
                 android:id="@+id/btnClose"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:layout_marginStart="6dp"
-                android:padding="5dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="12dp"
+                android:padding="6dp"
                 android:src="@drawable/ic_close"
-                android:background="@android:color/transparent"
+                android:background="@drawable/bg_control_button"
                 app:tint="#CCFFFFFF"
                 android:contentDescription="关闭" />
 

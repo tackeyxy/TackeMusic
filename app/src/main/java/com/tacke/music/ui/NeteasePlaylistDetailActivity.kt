@@ -375,7 +375,7 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                     )
                 }
 
-                if (detail != null) {
+                if (detail != null && detail.url.isNotEmpty()) {
                     val song = Song(
                         index = 0,
                         id = track.id.toString(),
@@ -387,10 +387,20 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
 
                     playbackManager.playFromSearch(this@NeteasePlaylistDetailActivity, song, platform, detail)
                 } else {
-                    Toast.makeText(this@NeteasePlaylistDetailActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
+                    // 检查是否是API服务问题
+                    Toast.makeText(
+                        this@NeteasePlaylistDetailActivity,
+                        "无法获取歌曲播放链接，音乐服务可能暂时不可用，请稍后重试",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             } catch (e: Exception) {
-                Toast.makeText(this@NeteasePlaylistDetailActivity, "播放失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                val errorMessage = when {
+                    e.message?.contains("403") == true -> "音乐服务暂时不可用(403)，请稍后重试"
+                    e.message?.contains("HTTP") == true -> "网络服务异常，请稍后重试"
+                    else -> "播放失败: ${e.message}"
+                }
+                Toast.makeText(this@NeteasePlaylistDetailActivity, errorMessage, Toast.LENGTH_LONG).show()
             } finally {
                 binding.progressBar.visibility = View.GONE
             }

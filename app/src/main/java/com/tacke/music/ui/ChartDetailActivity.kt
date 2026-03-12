@@ -274,7 +274,7 @@ class ChartDetailActivity : AppCompatActivity() {
                 }
 
                 val cachedRepository = CachedMusicRepository(this@ChartDetailActivity)
-                
+
                 // 如果歌曲没有封面，尝试从网易云搜索获取封面
                 var coverUrl = song.cover
                 if (coverUrl.isNullOrEmpty()) {
@@ -282,7 +282,7 @@ class ChartDetailActivity : AppCompatActivity() {
                         cachedRepository.getCoverUrlFromNetease(song.name, song.artist)
                     }
                 }
-                
+
                 // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
                 val detail = withContext(Dispatchers.IO) {
                     cachedRepository.getSongUrlWithCache(
@@ -296,7 +296,7 @@ class ChartDetailActivity : AppCompatActivity() {
                     )
                 }
 
-                if (detail != null) {
+                if (detail != null && detail.url.isNotEmpty()) {
                     // 先添加到播放列表
                     val playlistManager = PlaylistManager.getInstance(this@ChartDetailActivity)
                     val songModel = com.tacke.music.data.model.Song(
@@ -312,10 +312,20 @@ class ChartDetailActivity : AppCompatActivity() {
                     // 然后播放 - 使用 playFromPlaylist 确保能重新开始播放
                     playbackManager.playFromPlaylist(this@ChartDetailActivity, playlistSong, detail.url, detail)
                 } else {
-                    Toast.makeText(this@ChartDetailActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
+                    // 检查是否是API服务问题
+                    Toast.makeText(
+                        this@ChartDetailActivity,
+                        "无法获取歌曲播放链接，音乐服务可能暂时不可用，请稍后重试",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             } catch (e: Exception) {
-                Toast.makeText(this@ChartDetailActivity, "播放失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                val errorMessage = when {
+                    e.message?.contains("403") == true -> "音乐服务暂时不可用(403)，请稍后重试"
+                    e.message?.contains("HTTP") == true -> "网络服务异常，请稍后重试"
+                    else -> "播放失败: ${e.message}"
+                }
+                Toast.makeText(this@ChartDetailActivity, errorMessage, Toast.LENGTH_LONG).show()
             } finally {
                 binding.progressBar.visibility = View.GONE
             }

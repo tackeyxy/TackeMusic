@@ -1785,6 +1785,9 @@ class PlayerActivity : AppCompatActivity() {
             songDetail?.let { detail ->
                 playbackPreferences.saveSongDetail(songId, detail)
             }
+
+            // 更新悬浮歌词 - 切换歌曲后立即更新歌词显示
+            sendFloatingLyricsUpdate()
         }
     }
 
@@ -1836,6 +1839,9 @@ class PlayerActivity : AppCompatActivity() {
             songDetail?.let { detail ->
                 playbackPreferences.saveSongDetail(songId, detail)
             }
+
+            // 更新悬浮歌词 - 切换歌曲后立即更新歌词显示
+            sendFloatingLyricsUpdate()
         }
     }
 
