@@ -34,6 +34,7 @@ import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.utils.CoverImageManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -333,19 +334,28 @@ class FavoriteSongsActivity : AppCompatActivity() {
                     quality = "320k",
                     songName = song.name,
                     artists = song.artists,
-                    useCache = true
+                    useCache = true,
+                    coverUrlFromSearch = song.coverUrl
                 )
 
                 if (detail != null) {
+                    // 使用获取到的封面，如果没有则尝试使用数据库中的封面
+                    val finalCoverUrl = detail.cover ?: song.coverUrl
+
                     // 添加到播放列表
                     val playlistSong = com.tacke.music.data.model.PlaylistSong(
                         id = song.id,
                         name = song.name,
                         artists = song.artists,
-                        coverUrl = detail.cover ?: song.coverUrl,
+                        coverUrl = finalCoverUrl ?: "",
                         platform = song.platform
                     )
                     playlistManager.addSong(playlistSong)
+
+                    // 如果获取到了新的封面URL，更新数据库中的记录
+                    if (detail.cover != null && detail.cover != song.coverUrl) {
+                        favoriteRepository.refreshFavoriteCovers()
+                    }
 
                     // 播放歌曲
                     playbackManager.playFromPlaylist(
@@ -399,17 +409,26 @@ class FavoriteSongsActivity : AppCompatActivity() {
                     quality = "320k",
                     songName = firstSong.name,
                     artists = firstSong.artists,
-                    useCache = true
+                    useCache = true,
+                    coverUrlFromSearch = firstSong.coverUrl
                 )
 
                 if (detail != null) {
+                    // 使用获取到的封面，如果没有则尝试使用数据库中的封面
+                    val finalCoverUrl = detail.cover ?: firstSong.coverUrl
+
                     val playlistSong = com.tacke.music.data.model.PlaylistSong(
                         id = firstSong.id,
                         name = firstSong.name,
                         artists = firstSong.artists,
-                        coverUrl = detail.cover ?: firstSong.coverUrl,
+                        coverUrl = finalCoverUrl ?: "",
                         platform = firstSong.platform
                     )
+
+                    // 如果获取到了新的封面URL，更新数据库中的记录
+                    if (detail.cover != null && detail.cover != firstSong.coverUrl) {
+                        favoriteRepository.refreshFavoriteCovers()
+                    }
 
                     playbackManager.playFromPlaylist(
                         context = this@FavoriteSongsActivity,
@@ -556,59 +575,58 @@ class FavoriteSongsActivity : AppCompatActivity() {
     }
 
     private fun batchDownloadSongs(songs: List<FavoriteSongEntity>, quality: String) {
-        lifecycleScope.launch {
-            var successCount = 0
-            var failCount = 0
+        val context = applicationContext
+        val cachedRepository = CachedMusicRepository(context)
+        val dm = DownloadManager.getInstance(context)
 
-            // 非下载管理页面，强制重新获取最新URL
-            val cachedRepository = CachedMusicRepository(this@FavoriteSongsActivity)
+        // 立即显示添加下载任务提示
+        Toast.makeText(
+            this@FavoriteSongsActivity,
+            "已添加 ${songs.size} 首歌曲到下载队列",
+            Toast.LENGTH_SHORT
+        ).show()
 
+        // 使用 GlobalScope 确保 Activity 销毁后任务继续执行
+        GlobalScope.launch(Dispatchers.IO) {
             songs.forEach { song ->
-                try {
-                    val platform = when (song.platform.uppercase()) {
-                        "KUWO" -> MusicRepository.Platform.KUWO
-                        "NETEASE" -> MusicRepository.Platform.NETEASE
-                        else -> MusicRepository.Platform.KUWO
-                    }
-                    val detail = cachedRepository.getSongUrlWithCache(
-                        platform = platform,
-                        songId = song.id,
-                        quality = quality,
-                        songName = song.name,
-                        artists = song.artists,
-                        useCache = true
-                    )
-                    if (detail != null) {
-                        val task = downloadManager.createDownloadTask(
-                            Song(
-                                index = 0,
-                                id = song.id,
-                                name = song.name,
-                                artists = song.artists,
-                                coverUrl = detail.cover ?: song.coverUrl
-                            ),
-                            detail,
-                            quality,
-                            song.platform
+                launch {
+                    try {
+                        val platform = when (song.platform.uppercase()) {
+                            "KUWO" -> MusicRepository.Platform.KUWO
+                            "NETEASE" -> MusicRepository.Platform.NETEASE
+                            else -> MusicRepository.Platform.KUWO
+                        }
+                        val detail = cachedRepository.getSongUrlWithCache(
+                            platform = platform,
+                            songId = song.id,
+                            quality = quality,
+                            songName = song.name,
+                            artists = song.artists,
+                            useCache = true
                         )
-                        downloadManager.startDownload(task)
-                        successCount++
-                    } else {
-                        failCount++
+                        if (detail != null) {
+                            val task = dm.createDownloadTask(
+                                Song(
+                                    index = 0,
+                                    id = song.id,
+                                    name = song.name,
+                                    artists = song.artists,
+                                    coverUrl = detail.cover ?: song.coverUrl
+                                ),
+                                detail,
+                                quality,
+                                song.platform
+                            )
+                            dm.startDownload(task)
+                        }
+                    } catch (e: Exception) {
+                        // 忽略异常，继续处理下一首
                     }
-                } catch (e: Exception) {
-                    failCount++
                 }
             }
-
-            Toast.makeText(
-                this@FavoriteSongsActivity,
-                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
-                Toast.LENGTH_LONG
-            ).show()
-
-            exitMultiSelectMode()
         }
+
+        exitMultiSelectMode()
     }
 
     override fun onBackPressed() {

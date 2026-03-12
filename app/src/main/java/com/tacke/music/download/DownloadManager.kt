@@ -148,7 +148,8 @@ class DownloadManager private constructor(private val context: Context) {
             url = detail.url,
             fileName = sanitizedFileName,
             filePath = filePath,
-            platform = platform
+            platform = platform,
+            quality = quality
         )
     }
 

@@ -28,7 +28,7 @@ class CachedMusicRepository(context: Context) {
      * @param platform 音乐平台
      * @param songId 歌曲ID
      * @param quality 音质
-     * @param coverUrlFromSearch 从搜索获取的封面URL
+     * @param coverUrlFromSearch 从搜索获取的封面URL（酷我平台的web_albumpic_short字段）
      * @param songName 歌曲名称（用于保存缓存）
      * @param artists 艺术家（用于保存缓存）
      * @param forceRefresh 是否强制刷新缓存
@@ -53,27 +53,56 @@ class CachedMusicRepository(context: Context) {
         }
 
         // 从网络获取
-        Log.d(TAG, "从网络获取歌曲详情: $songId")
+        Log.d(TAG, "从网络获取歌曲详情: $songId, platform=$platform, coverUrlFromSearch=$coverUrlFromSearch")
+        
+        // 获取歌曲URL和歌词
         val detail = musicRepository.getSongDetail(platform, songId, quality, coverUrlFromSearch)
-
-        // 保存到本地缓存
-        if (detail != null && songName.isNotEmpty()) {
-            try {
-                songDetailRepository.saveSongDetail(
-                    songId = songId,
-                    name = songName,
-                    artists = artists,
-                    platform = platform.name,
-                    songDetail = detail,
-                    quality = quality
-                )
-                Log.d(TAG, "保存歌曲详情到本地缓存: $songId")
-            } catch (e: Exception) {
-                Log.e(TAG, "保存歌曲详情到本地缓存失败: $songId", e)
+        
+        if (detail != null) {
+            // 处理封面URL：如果网络请求没有返回封面，根据平台使用不同的获取逻辑
+            val finalCoverUrl = if (detail.cover.isNullOrEmpty()) {
+                Log.d(TAG, "网络请求未返回封面，尝试根据平台获取: $songId, platform=$platform")
+                when (platform) {
+                    MusicRepository.Platform.KUWO -> {
+                        // 酷我平台：使用coverUrlFromSearch（web_albumpic_short）获取封面
+                        if (!coverUrlFromSearch.isNullOrEmpty()) {
+                            musicRepository.getKuwoCoverByAlbumPic(coverUrlFromSearch)
+                        } else null
+                    }
+                    MusicRepository.Platform.NETEASE -> {
+                        // 网易云：使用"歌名+歌手"搜索获取封面
+                        if (songName.isNotEmpty() && artists.isNotEmpty()) {
+                            musicRepository.getCoverUrlFromNetease(songName, artists)
+                        } else null
+                    }
+                }
+            } else {
+                detail.cover
             }
+            
+            val finalDetail = detail.copy(cover = finalCoverUrl)
+            
+            // 保存到本地缓存
+            if (songName.isNotEmpty()) {
+                try {
+                    songDetailRepository.saveSongDetail(
+                        songId = songId,
+                        name = songName,
+                        artists = artists,
+                        platform = platform.name,
+                        songDetail = finalDetail,
+                        quality = quality
+                    )
+                    Log.d(TAG, "保存歌曲详情到本地缓存: $songId, coverUrl=$finalCoverUrl")
+                } catch (e: Exception) {
+                    Log.e(TAG, "保存歌曲详情到本地缓存失败: $songId", e)
+                }
+            }
+            
+            return@withContext finalDetail
         }
 
-        return@withContext detail
+        return@withContext null
     }
 
     /**
@@ -107,7 +136,7 @@ class CachedMusicRepository(context: Context) {
      * @param songName 歌曲名称（用于保存缓存）
      * @param artists 艺术家（用于保存缓存）
      * @param useCache 是否允许使用缓存的封面和歌词
-     * @param coverUrlFromSearch 从搜索获取的封面URL（酷我平台需要）
+     * @param coverUrlFromSearch 从搜索获取的封面URL（酷我平台的web_albumpic_short字段）
      * @return 包含最新URL的歌曲详情
      */
     suspend fun getSongUrlWithCache(
@@ -128,21 +157,48 @@ class CachedMusicRepository(context: Context) {
             if (cachedDetail != null) {
                 cachedCover = cachedDetail.cover
                 cachedLyrics = cachedDetail.lyrics
-                Log.d(TAG, "从缓存获取封面和歌词: $songId")
+                // 检查缓存的音质是否与请求的音质匹配
+                val cachedQuality = songDetailRepository.getSongQuality(songId)
+                if (cachedQuality == quality) {
+                    Log.d(TAG, "缓存音质匹配，直接返回缓存数据: $songId, quality=$quality")
+                    // 音质匹配，直接返回缓存数据
+                    return@withContext cachedDetail
+                } else {
+                    Log.d(TAG, "缓存音质不匹配，需要重新获取: $songId, cached=$cachedQuality, requested=$quality")
+                    // 音质不匹配，继续使用缓存的封面和歌词，但需要从网络获取新URL
+                }
             }
         }
 
-        // 优先使用从搜索传递过来的封面URL（对于酷我平台的相对路径封面）
-        val effectiveCoverUrl = coverUrlFromSearch ?: cachedCover
-
         // 强制从网络获取最新的URL
         Log.d(TAG, "从网络获取最新播放URL: $songId, coverUrlFromSearch=$coverUrlFromSearch")
-        val freshDetail = musicRepository.getSongDetail(platform, songId, quality, effectiveCoverUrl)
+        val freshDetail = musicRepository.getSongDetail(platform, songId, quality, coverUrlFromSearch)
 
         if (freshDetail != null) {
-            // 合并数据：使用最新的URL，但保留缓存的封面和歌词（如果网络请求没有返回）
+            // 处理封面URL：如果网络请求没有返回封面，根据平台使用不同的获取逻辑
+            val finalCoverUrl = if (freshDetail.cover.isNullOrEmpty()) {
+                Log.d(TAG, "网络请求未返回封面，尝试根据平台获取: $songId, platform=$platform")
+                when (platform) {
+                    MusicRepository.Platform.KUWO -> {
+                        // 酷我平台：使用coverUrlFromSearch（web_albumpic_short）获取封面
+                        if (!coverUrlFromSearch.isNullOrEmpty()) {
+                            musicRepository.getKuwoCoverByAlbumPic(coverUrlFromSearch)
+                        } else null
+                    }
+                    MusicRepository.Platform.NETEASE -> {
+                        // 网易云：使用"歌名+歌手"搜索获取封面
+                        if (songName.isNotEmpty() && artists.isNotEmpty()) {
+                            musicRepository.getCoverUrlFromNetease(songName, artists)
+                        } else null
+                    }
+                }
+            } else {
+                freshDetail.cover
+            }
+            
+            // 合并数据：使用最新的URL和封面，但保留缓存的歌词（如果网络请求没有返回）
             val mergedDetail = freshDetail.copy(
-                cover = freshDetail.cover ?: cachedCover,
+                cover = finalCoverUrl,
                 lyrics = freshDetail.lyrics ?: cachedLyrics
             )
 
@@ -157,7 +213,7 @@ class CachedMusicRepository(context: Context) {
                         songDetail = mergedDetail,
                         quality = quality
                     )
-                    Log.d(TAG, "保存合并后的歌曲详情到本地缓存: $songId")
+                    Log.d(TAG, "保存合并后的歌曲详情到本地缓存: $songId, coverUrl=$finalCoverUrl")
                 } catch (e: Exception) {
                     Log.e(TAG, "保存歌曲详情到本地缓存失败: $songId", e)
                 }

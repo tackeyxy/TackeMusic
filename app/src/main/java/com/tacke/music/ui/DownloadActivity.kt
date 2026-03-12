@@ -255,20 +255,42 @@ class DownloadActivity : AppCompatActivity() {
             return
         }
 
-        val title = if (isDownloadingTab) "移除下载任务" else "移除下载记录"
-        val message = if (isDownloadingTab) {
-            "确定要移除选中的 ${selectedTasks.size} 个下载任务吗？\n（不会删除已下载的文件）"
-        } else {
-            "确定要移除选中的 ${selectedTasks.size} 个下载记录吗？\n（不会删除已下载的文件）"
+        // 正在下载页面：直接移除，不删除文件
+        if (isDownloadingTab) {
+            val title = "移除下载任务"
+            val message = "确定要移除选中的 ${selectedTasks.size} 个下载任务吗？\n（不会删除已下载的文件）"
+
+            MaterialAlertDialogBuilder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton("移除") { _, _ ->
+                    downloadManager.deleteDownloads(selectedTasks, deleteFile = false)
+                    Toast.makeText(this, "已移除 ${selectedTasks.size} 个任务", Toast.LENGTH_SHORT).show()
+                    exitMultiSelectMode()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+            return
         }
 
+        // 下载历史页面：显示选项让用户选择操作方式
+        val options = arrayOf("仅清除记录", "同时删除文件")
+        var selectedOption = 0
+
         MaterialAlertDialogBuilder(this)
-            .setTitle(title)
-            .setMessage(message)
-            .setPositiveButton("移除") { _, _ ->
-                // 仅删除记录，不删除文件
-                downloadManager.deleteDownloads(selectedTasks, deleteFile = false)
-                Toast.makeText(this, "已移除 ${selectedTasks.size} 个项目", Toast.LENGTH_SHORT).show()
+            .setTitle("移除下载记录 (${selectedTasks.size} 项)")
+            .setSingleChoiceItems(options, selectedOption) { _, which ->
+                selectedOption = which
+            }
+            .setPositiveButton("确定") { _, _ ->
+                val deleteFile = selectedOption == 1
+                downloadManager.deleteDownloads(selectedTasks, deleteFile)
+                val message = if (deleteFile) {
+                    "已删除 ${selectedTasks.size} 个记录及文件"
+                } else {
+                    "已清除 ${selectedTasks.size} 个记录"
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                 exitMultiSelectMode()
             }
             .setNegativeButton("取消", null)
@@ -546,14 +568,18 @@ class DownloadActivity : AppCompatActivity() {
                 val platform = playbackManager.getValidPlatform(task.platform)
 
                 // 使用带缓存的Repository获取歌曲详情（用于歌词和封面）
+                // 优先使用任务保存的音质，如果没有则使用用户设置的默认音质
+                val quality = task.quality.takeIf { it.isNotBlank() } 
+                    ?: SettingsActivity.getDefaultDownloadQuality(this@DownloadActivity)
                 val cachedRepository = CachedMusicRepository(this@DownloadActivity)
                 val detail = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     cachedRepository.getSongDetail(
                         platform = platform,
                         songId = task.songId,
-                        quality = "320k",
+                        quality = quality,
                         songName = task.songName,
-                        artists = task.artist
+                        artists = task.artist,
+                        coverUrlFromSearch = task.coverUrl
                     )
                 }
 
@@ -563,7 +589,7 @@ class DownloadActivity : AppCompatActivity() {
                         songId = task.songId,
                         songName = task.songName,
                         artist = task.artist,
-                        coverUrl = task.coverUrl,
+                        coverUrl = detail.cover ?: task.coverUrl,
                         playUrl = detail.url,
                         platform = platform,
                         songDetail = detail

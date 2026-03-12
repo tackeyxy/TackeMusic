@@ -64,6 +64,13 @@ class SongDetailRepository(context: Context) {
     }
 
     /**
+     * 获取缓存的歌曲音质
+     */
+    suspend fun getSongQuality(songId: String): String? {
+        return songDetailDao.getSongDetailById(songId)?.quality
+    }
+
+    /**
      * 删除指定歌曲的详情缓存
      */
     suspend fun deleteSongDetail(songId: String) {

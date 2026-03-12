@@ -26,6 +26,7 @@ import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.RecentPlayAdapter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -382,12 +383,19 @@ class RecentPlayActivity : AppCompatActivity() {
                         quality = "320k",
                         songName = firstPlay.name,
                         artists = firstPlay.artists,
-                        useCache = true
+                        useCache = true,
+                        coverUrlFromSearch = firstPlay.coverUrl
                     )
                 }
 
                 if (detail != null) {
-                    val playlistSong = firstPlay.toPlaylistSong()
+                    // 使用获取到的封面，如果没有则尝试使用数据库中的封面
+                    val finalCoverUrl = detail.cover ?: firstPlay.coverUrl
+
+                    val playlistSong = firstPlay.toPlaylistSong().copy(
+                        coverUrl = finalCoverUrl ?: ""
+                    )
+
                     playbackManager.playFromPlaylist(
                         this@RecentPlayActivity,
                         playlistSong,
@@ -557,59 +565,58 @@ class RecentPlayActivity : AppCompatActivity() {
     }
 
     private fun batchDownloadSongs(recentPlays: List<RecentPlay>, quality: String) {
-        lifecycleScope.launch {
-            var successCount = 0
-            var failCount = 0
+        val context = applicationContext
+        val cachedRepository = CachedMusicRepository(context)
+        val dm = DownloadManager.getInstance(context)
 
-            // 非下载管理页面，强制重新获取最新URL
-            val cachedRepository = CachedMusicRepository(this@RecentPlayActivity)
+        // 立即显示添加下载任务提示
+        Toast.makeText(
+            this@RecentPlayActivity,
+            "已添加 ${recentPlays.size} 首歌曲到下载队列",
+            Toast.LENGTH_SHORT
+        ).show()
 
+        // 使用 GlobalScope 确保 Activity 销毁后任务继续执行
+        GlobalScope.launch(Dispatchers.IO) {
             recentPlays.forEach { recentPlay ->
-                try {
-                    val platform = try {
-                        MusicRepository.Platform.valueOf(recentPlay.platform.uppercase())
-                    } catch (e: Exception) {
-                        MusicRepository.Platform.KUWO
-                    }
-                    val detail = cachedRepository.getSongUrlWithCache(
-                        platform = platform,
-                        songId = recentPlay.id,
-                        quality = quality,
-                        songName = recentPlay.name,
-                        artists = recentPlay.artists,
-                        useCache = true
-                    )
-                    if (detail != null) {
-                        val task = downloadManager.createDownloadTask(
-                            Song(
-                                index = 0,
-                                id = recentPlay.id,
-                                name = recentPlay.name,
-                                artists = recentPlay.artists,
-                                coverUrl = detail.cover ?: recentPlay.coverUrl
-                            ),
-                            detail,
-                            quality,
-                            recentPlay.platform
+                launch {
+                    try {
+                        val platform = try {
+                            MusicRepository.Platform.valueOf(recentPlay.platform.uppercase())
+                        } catch (e: Exception) {
+                            MusicRepository.Platform.KUWO
+                        }
+                        val detail = cachedRepository.getSongUrlWithCache(
+                            platform = platform,
+                            songId = recentPlay.id,
+                            quality = quality,
+                            songName = recentPlay.name,
+                            artists = recentPlay.artists,
+                            useCache = true
                         )
-                        downloadManager.startDownload(task)
-                        successCount++
-                    } else {
-                        failCount++
+                        if (detail != null) {
+                            val task = dm.createDownloadTask(
+                                Song(
+                                    index = 0,
+                                    id = recentPlay.id,
+                                    name = recentPlay.name,
+                                    artists = recentPlay.artists,
+                                    coverUrl = detail.cover ?: recentPlay.coverUrl
+                                ),
+                                detail,
+                                quality,
+                                recentPlay.platform
+                            )
+                            dm.startDownload(task)
+                        }
+                    } catch (e: Exception) {
+                        // 忽略异常，继续处理下一首
                     }
-                } catch (e: Exception) {
-                    failCount++
                 }
             }
-
-            Toast.makeText(
-                this@RecentPlayActivity,
-                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
-                Toast.LENGTH_LONG
-            ).show()
-
-            exitMultiSelectMode()
         }
+
+        exitMultiSelectMode()
     }
 
     override fun onBackPressed() {

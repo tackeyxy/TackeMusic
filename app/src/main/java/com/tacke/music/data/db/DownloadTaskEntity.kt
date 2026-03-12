@@ -17,6 +17,7 @@ data class DownloadTaskEntity(
     val fileName: String,
     val filePath: String,
     val platform: String = "KUWO",  // 音源平台
+    val quality: String = "320k",    // 下载音质
     val totalBytes: Long = 0,
     val downloadedBytes: Long = 0,
     val status: DownloadStatus = DownloadStatus.PENDING,
@@ -34,6 +35,7 @@ data class DownloadTaskEntity(
             fileName = fileName,
             filePath = filePath,
             platform = platform,
+            quality = quality,
             totalBytes = totalBytes,
             downloadedBytes = downloadedBytes,
             status = status,
@@ -54,6 +56,7 @@ data class DownloadTaskEntity(
                 fileName = task.fileName,
                 filePath = task.filePath,
                 platform = task.platform,
+                quality = task.quality,
                 totalBytes = task.totalBytes,
                 downloadedBytes = task.downloadedBytes,
                 status = task.status,

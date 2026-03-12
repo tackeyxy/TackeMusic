@@ -31,6 +31,7 @@ import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.NeteasePlaylistTrackAdapter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -714,21 +715,27 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
     }
 
     private fun batchDownloadTracks(tracks: List<PlaylistTrack>, quality: String) {
-        lifecycleScope.launch {
-            var successCount = 0
-            var failCount = 0
+        val context = applicationContext
+        val cachedRepository = CachedMusicRepository(context)
+        val dm = DownloadManager.getInstance(context)
 
-            // 非下载管理页面，强制重新获取最新URL
-            val cachedRepository = CachedMusicRepository(this@NeteasePlaylistDetailActivity)
+        // 立即显示添加下载任务提示
+        Toast.makeText(
+            this@NeteasePlaylistDetailActivity,
+            "已添加 ${tracks.size} 首歌曲到下载队列",
+            Toast.LENGTH_SHORT
+        ).show()
 
+        // 使用 GlobalScope 确保 Activity 销毁后任务继续执行
+        GlobalScope.launch(Dispatchers.IO) {
             tracks.forEach { track ->
-                try {
-                    val platform = MusicRepository.Platform.NETEASE
-                    val artistName = track.ar?.joinToString(",") { it.name } ?: "未知艺人"
-                    val coverUrl = track.al?.picUrl ?: ""
+                launch {
+                    try {
+                        val platform = MusicRepository.Platform.NETEASE
+                        val artistName = track.ar?.joinToString(",") { it.name } ?: "未知艺人"
+                        val coverUrl = track.al?.picUrl ?: ""
 
-                    val detail = withContext(Dispatchers.IO) {
-                        cachedRepository.getSongUrlWithCache(
+                        val detail = cachedRepository.getSongUrlWithCache(
                             platform = platform,
                             songId = track.id.toString(),
                             quality = quality,
@@ -737,35 +744,25 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                             useCache = true,
                             coverUrlFromSearch = coverUrl
                         )
+                        if (detail != null) {
+                            val song = Song(
+                                index = 0,
+                                id = track.id.toString(),
+                                name = track.name,
+                                artists = artistName,
+                                coverUrl = detail.cover ?: coverUrl
+                            )
+                            val task = dm.createDownloadTask(song, detail, quality, MusicRepository.Platform.NETEASE.name)
+                            dm.startDownload(task)
+                        }
+                    } catch (e: Exception) {
+                        // 忽略异常，继续处理下一首
                     }
-                    if (detail != null) {
-                        val song = Song(
-                            index = 0,
-                            id = track.id.toString(),
-                            name = track.name,
-                            artists = artistName,
-                            coverUrl = detail.cover ?: coverUrl
-                        )
-                        val downloadManager = DownloadManager.getInstance(this@NeteasePlaylistDetailActivity)
-                        val task = downloadManager.createDownloadTask(song, detail, quality, MusicRepository.Platform.NETEASE.name)
-                        downloadManager.startDownload(task)
-                        successCount++
-                    } else {
-                        failCount++
-                    }
-                } catch (e: Exception) {
-                    failCount++
                 }
             }
-
-            Toast.makeText(
-                this@NeteasePlaylistDetailActivity,
-                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
-                Toast.LENGTH_LONG
-            ).show()
-
-            exitMultiSelectMode()
         }
+
+        exitMultiSelectMode()
     }
 
     // 扩展函数：将SongDetailInfo转换为PlaylistTrack

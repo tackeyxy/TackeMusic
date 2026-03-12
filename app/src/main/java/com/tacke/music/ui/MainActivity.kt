@@ -44,6 +44,7 @@ import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1175,19 +1176,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun batchDownloadSongs(songs: List<Song>, quality: String) {
-        lifecycleScope.launch {
-            var successCount = 0
-            var failCount = 0
+        val context = applicationContext
+        val dm = DownloadManager.getInstance(context)
+        val cachedRepository = CachedMusicRepository(context)
+        val platform = currentPlatform
 
-            // 非下载管理页面，强制重新获取最新URL
-            val cachedRepository = CachedMusicRepository(this@MainActivity)
+        // 立即显示添加下载任务提示
+        Toast.makeText(
+            this@MainActivity,
+            "已添加 ${songs.size} 首歌曲到下载队列",
+            Toast.LENGTH_SHORT
+        ).show()
 
+        // 使用 GlobalScope 确保 Activity 销毁后任务继续执行
+        GlobalScope.launch(Dispatchers.IO) {
             songs.forEach { song ->
-                try {
-                    // 传递 song.coverUrl 用于酷我平台的相对路径封面解析
-                    val detail = withContext(Dispatchers.IO) {
-                        cachedRepository.getSongUrlWithCache(
-                            platform = currentPlatform,
+                launch {
+                    try {
+                        // 传递 song.coverUrl 用于酷我平台的相对路径封面解析
+                        val detail = cachedRepository.getSongUrlWithCache(
+                            platform = platform,
                             songId = song.id,
                             quality = quality,
                             songName = song.name,
@@ -1195,28 +1203,18 @@ class MainActivity : AppCompatActivity() {
                             useCache = true,
                             coverUrlFromSearch = song.coverUrl
                         )
+                        if (detail != null) {
+                            val task = dm.createDownloadTask(song, detail, quality, platform.name)
+                            dm.startDownload(task)
+                        }
+                    } catch (e: Exception) {
+                        // 忽略异常，继续处理下一首
                     }
-                    if (detail != null) {
-                        val downloadManager = DownloadManager.getInstance(this@MainActivity)
-                        val task = downloadManager.createDownloadTask(song, detail, quality, currentPlatform.name)
-                        downloadManager.startDownload(task)
-                        successCount++
-                    } else {
-                        failCount++
-                    }
-                } catch (e: Exception) {
-                    failCount++
                 }
             }
-
-            Toast.makeText(
-                this@MainActivity,
-                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
-                Toast.LENGTH_LONG
-            ).show()
-
-            exitMultiSelectMode()
         }
+
+        exitMultiSelectMode()
     }
 
     private fun showPlaylistSelectionDialog(songs: List<Song>) {

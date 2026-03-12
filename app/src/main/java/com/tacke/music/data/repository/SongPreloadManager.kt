@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
+import com.tacke.music.ui.SettingsActivity
 import com.tacke.music.utils.CoverImageManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,10 +58,12 @@ class SongPreloadManager private constructor(context: Context) {
                 }
 
                 // 预加载歌曲详情（包含歌词和封面URL）
+                // 使用用户设置的默认下载音质进行预加载
+                val defaultQuality = SettingsActivity.getDefaultDownloadQuality(appContext)
                 val detail = cachedMusicRepository.getSongDetail(
                     platform = platform,
                     songId = song.id,
-                    quality = "320k",
+                    quality = defaultQuality,
                     coverUrlFromSearch = song.coverUrl,
                     songName = song.name,
                     artists = song.artists
@@ -106,10 +109,12 @@ class SongPreloadManager private constructor(context: Context) {
                 }
 
                 // 预加载歌曲详情
+                // 使用用户设置的默认下载音质进行预加载
+                val defaultQuality = SettingsActivity.getDefaultDownloadQuality(appContext)
                 val detail = cachedMusicRepository.getSongDetail(
                     platform = platform,
                     songId = song.id,
-                    quality = "320k",
+                    quality = defaultQuality,
                     coverUrlFromSearch = song.coverUrl,
                     songName = song.name,
                     artists = song.artists

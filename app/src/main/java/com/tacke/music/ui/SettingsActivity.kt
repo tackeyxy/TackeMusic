@@ -30,6 +30,7 @@ class SettingsActivity : AppCompatActivity() {
         const val KEY_DOWNLOAD_PATH = "download_path"
         const val KEY_LYRIC_COLOR = "lyric_color"
         const val KEY_CONCURRENT_DOWNLOADS = "concurrent_downloads"
+        const val KEY_DEFAULT_DOWNLOAD_QUALITY = "default_download_quality"
 
         // 默认歌词颜色（青色）
         const val DEFAULT_LYRIC_COLOR = 0xFF00CED1.toInt()
@@ -38,6 +39,18 @@ class SettingsActivity : AppCompatActivity() {
         const val DEFAULT_CONCURRENT_DOWNLOADS = 3
         const val MIN_CONCURRENT_DOWNLOADS = 1
         const val MAX_CONCURRENT_DOWNLOADS = 5
+
+        // 默认下载音质
+        const val DEFAULT_DOWNLOAD_QUALITY = "320k"
+
+        // 音质选项
+        val QUALITY_OPTIONS = listOf(
+            "flac24bit" to "HR (24bit FLAC)",
+            "flac" to "CDA (FLAC)",
+            "320k" to "HQ (320K)",
+            "192k" to "MQ (192K)",
+            "128k" to "LQ (128K)"
+        )
 
         // 预设歌词颜色列表
         val PRESET_LYRIC_COLORS = listOf(
@@ -102,6 +115,16 @@ class SettingsActivity : AppCompatActivity() {
             prefs.edit().putInt(KEY_CONCURRENT_DOWNLOADS, validCount).apply()
         }
 
+        fun getDefaultDownloadQuality(context: Context): String {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getString(KEY_DEFAULT_DOWNLOAD_QUALITY, DEFAULT_DOWNLOAD_QUALITY) ?: DEFAULT_DOWNLOAD_QUALITY
+        }
+
+        fun setDefaultDownloadQuality(context: Context, quality: String) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putString(KEY_DEFAULT_DOWNLOAD_QUALITY, quality).apply()
+        }
+
         fun getDefaultDownloadPath(context: Context): String {
             return File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -155,6 +178,7 @@ class SettingsActivity : AppCompatActivity() {
         updateDownloadPathText()
         updateLyricColorPreview()
         updateConcurrentDownloadsText()
+        updateDefaultDownloadQualityText()
         updateCurrentVersionText()
     }
 
@@ -191,9 +215,19 @@ class SettingsActivity : AppCompatActivity() {
             showConcurrentDownloadsDialog()
         }
 
+        binding.layoutDefaultDownloadQuality.setOnClickListener {
+            showDefaultDownloadQualityDialog()
+        }
+
         binding.layoutCheckUpdate.setOnClickListener {
             startActivity(Intent(this, UpdateCheckActivity::class.java))
         }
+    }
+
+    private fun updateDefaultDownloadQualityText() {
+        val currentQuality = getDefaultDownloadQuality(this)
+        val qualityLabel = QUALITY_OPTIONS.find { it.first == currentQuality }?.second ?: "HQ (320K)"
+        binding.tvDefaultDownloadQualityValue.text = qualityLabel
     }
 
 
@@ -220,6 +254,25 @@ class SettingsActivity : AppCompatActivity() {
                 downloadManager.updateConcurrentLimit(selectedCount)
 
                 Toast.makeText(this, "同时下载个数已设置为: $selectedCount", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showDefaultDownloadQualityDialog() {
+        val currentQuality = getDefaultDownloadQuality(this)
+        val options = QUALITY_OPTIONS.map { it.second }.toTypedArray()
+        val currentIndex = QUALITY_OPTIONS.indexOfFirst { it.first == currentQuality }.coerceAtLeast(0)
+
+        AlertDialog.Builder(this)
+            .setTitle("选择默认下载音质")
+            .setSingleChoiceItems(options, currentIndex) { dialog, which ->
+                val selectedQuality = QUALITY_OPTIONS[which].first
+                setDefaultDownloadQuality(this, selectedQuality)
+                updateDefaultDownloadQualityText()
+
+                Toast.makeText(this, "默认下载音质已设置为: ${QUALITY_OPTIONS[which].second}", Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
             }
             .setNegativeButton("取消", null)

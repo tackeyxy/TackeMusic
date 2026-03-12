@@ -63,6 +63,51 @@ class MusicRepository {
         }
     }
 
+    /**
+     * 根据酷我的web_albumpic_short字段获取封面URL
+     * 直接将web_albumpic_short传递给GdStudio API获取真实图片链接
+     * @param albumPicShort 酷我平台的web_albumpic_short字段值
+     * @return 完整的封面URL
+     */
+    suspend fun getKuwoCoverByAlbumPic(albumPicShort: String): String? {
+        if (albumPicShort.isEmpty()) return null
+        
+        return try {
+            Log.d("MusicRepository", "使用web_albumpic_short获取酷我封面: $albumPicShort")
+            
+            // 如果已经是完整URL，直接返回
+            if (albumPicShort.startsWith("http://") || albumPicShort.startsWith("https://")) {
+                return albumPicShort
+            }
+            
+            // 使用GdStudio API获取封面，直接将web_albumpic_short作为id参数
+            val picResponse = RetrofitClient.gdStudioApi.getAlbumPic(
+                source = "kuwo",
+                id = albumPicShort,
+                size = "500"
+            )
+            
+            if (!picResponse.url.isNullOrEmpty()) {
+                Log.d("MusicRepository", "获取到酷我封面URL: ${picResponse.url}")
+                picResponse.url
+            } else {
+                // 尝试300尺寸
+                val fallbackPicResponse = RetrofitClient.gdStudioApi.getAlbumPic(
+                    source = "kuwo",
+                    id = albumPicShort,
+                    size = "300"
+                )
+                if (!fallbackPicResponse.url.isNullOrEmpty()) {
+                    Log.d("MusicRepository", "获取到酷我封面URL(300): ${fallbackPicResponse.url}")
+                }
+                fallbackPicResponse.url
+            }
+        } catch (e: Exception) {
+            Log.e("MusicRepository", "使用web_albumpic_short获取酷我封面失败: $albumPicShort", e)
+            null
+        }
+    }
+
     private suspend fun searchKuwoMusic(keyword: String, page: Int = 0, platformStr: String): List<Song> {
         return try {
             val responseBody = RetrofitClient.kuwoApi.searchMusic(
@@ -205,81 +250,30 @@ class MusicRepository {
 
             Log.d("MusicRepository", "getSongDetail: platform=$platform, songId=$songId, coverUrlFromSearch=$coverUrlFromSearch")
 
-            // 获取封面URL
-            // 优先使用从搜索获取的 web_albumpic_short 值，直接传递给 GdStudio API
+            // 获取封面URL - 简化逻辑，只尝试使用coverUrlFromSearch获取
+            // 详细的平台特定逻辑在CachedMusicRepository中处理
             val coverUrl = if (!coverUrlFromSearch.isNullOrEmpty()) {
                 if (coverUrlFromSearch.startsWith("http://") || coverUrlFromSearch.startsWith("https://")) {
                     // 已经是完整URL，直接使用
                     coverUrlFromSearch
                 } else {
-                    // 相对路径（如酷我的 web_albumpic_short），直接传递给 GdStudio API 获取真实图片链接
+                    // 相对路径（如酷我的 web_albumpic_short），尝试使用GdStudio API获取
                     try {
-                        Log.d("MusicRepository", "Calling GdStudio getAlbumPic with web_albumpic_short: $coverUrlFromSearch, source: $platformStr")
+                        Log.d("MusicRepository", "尝试使用web_albumpic_short获取封面: $coverUrlFromSearch")
                         val picResponse = RetrofitClient.gdStudioApi.getAlbumPic(
                             source = platformStr,
                             id = coverUrlFromSearch,
                             size = "500"
                         )
-                        Log.d("MusicRepository", "GdStudio getAlbumPic response: ${picResponse.url}")
-                        if (picResponse.url.isNullOrEmpty()) {
-                            // 尝试300尺寸
-                            val fallbackPicResponse = RetrofitClient.gdStudioApi.getAlbumPic(
-                                source = platformStr,
-                                id = coverUrlFromSearch,
-                                size = "300"
-                            )
-                            fallbackPicResponse.url
-                        } else {
-                            picResponse.url
-                        }
-                    } catch (e: Exception) {
-                        Log.e("MusicRepository", "Failed to get cover with web_albumpic_short, try 300 size", e)
-                        try {
-                            val fallbackPicResponse = RetrofitClient.gdStudioApi.getAlbumPic(
-                                source = platformStr,
-                                id = coverUrlFromSearch,
-                                size = "300"
-                            )
-                            fallbackPicResponse.url
-                        } catch (e2: Exception) {
-                            Log.e("MusicRepository", "Failed to get cover with web_albumpic_short (300)", e2)
-                            null
-                        }
-                    }
-                }
-            } else {
-                // 没有从搜索获取封面URL，使用歌曲ID获取
-                try {
-                    Log.d("MusicRepository", "Calling GdStudio getAlbumPic with songId: $songId, source: $platformStr")
-                    val picResponse = RetrofitClient.gdStudioApi.getAlbumPic(
-                        source = platformStr,
-                        id = songId,
-                        size = "500"
-                    )
-                    if (picResponse.url.isNullOrEmpty()) {
-                        val fallbackPicResponse = RetrofitClient.gdStudioApi.getAlbumPic(
-                            source = platformStr,
-                            id = songId,
-                            size = "300"
-                        )
-                        fallbackPicResponse.url
-                    } else {
                         picResponse.url
-                    }
-                } catch (e: Exception) {
-                    Log.e("MusicRepository", "Failed to get cover with songId, try 300 size", e)
-                    try {
-                        val fallbackPicResponse = RetrofitClient.gdStudioApi.getAlbumPic(
-                            source = platformStr,
-                            id = songId,
-                            size = "300"
-                        )
-                        fallbackPicResponse.url
-                    } catch (e2: Exception) {
-                        Log.e("MusicRepository", "Failed to get cover with songId (300)", e2)
+                    } catch (e: Exception) {
+                        Log.e("MusicRepository", "使用web_albumpic_short获取封面失败", e)
                         null
                     }
                 }
+            } else {
+                // 没有提供封面URL，返回null，由上层根据平台使用不同的获取逻辑
+                null
             }
 
             SongDetail(

@@ -26,6 +26,7 @@ import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.ChartSongAdapter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -616,22 +617,28 @@ class ChartDetailActivity : AppCompatActivity() {
     }
 
     private fun batchDownloadSongs(selectedSongs: List<ChartSong>, quality: String) {
-        lifecycleScope.launch {
-            var successCount = 0
-            var failCount = 0
+        val context = applicationContext
+        val cachedRepository = CachedMusicRepository(context)
+        val dm = DownloadManager.getInstance(context)
 
-            // 非下载管理页面，强制重新获取最新URL
-            val cachedRepository = CachedMusicRepository(this@ChartDetailActivity)
+        // 立即显示添加下载任务提示
+        Toast.makeText(
+            this@ChartDetailActivity,
+            "已添加 ${selectedSongs.size} 首歌曲到下载队列",
+            Toast.LENGTH_SHORT
+        ).show()
 
+        // 使用 GlobalScope 确保 Activity 销毁后任务继续执行
+        GlobalScope.launch(Dispatchers.IO) {
             selectedSongs.forEach { song ->
-                try {
-                    val platform = when (song.source.lowercase()) {
-                        "kuwo" -> MusicRepository.Platform.KUWO
-                        "netease" -> MusicRepository.Platform.NETEASE
-                        else -> MusicRepository.Platform.KUWO
-                    }
-                    val detail = withContext(Dispatchers.IO) {
-                        cachedRepository.getSongUrlWithCache(
+                launch {
+                    try {
+                        val platform = when (song.source.lowercase()) {
+                            "kuwo" -> MusicRepository.Platform.KUWO
+                            "netease" -> MusicRepository.Platform.NETEASE
+                            else -> MusicRepository.Platform.KUWO
+                        }
+                        val detail = cachedRepository.getSongUrlWithCache(
                             platform = platform,
                             songId = song.id,
                             quality = quality,
@@ -639,35 +646,25 @@ class ChartDetailActivity : AppCompatActivity() {
                             artists = song.artist,
                             useCache = true
                         )
+                        if (detail != null) {
+                            val songModel = com.tacke.music.data.model.Song(
+                                index = 0,
+                                id = song.id,
+                                name = song.name,
+                                artists = song.artist,
+                                coverUrl = detail.cover ?: song.cover
+                            )
+                            val task = dm.createDownloadTask(songModel, detail, quality, platform.name)
+                            dm.startDownload(task)
+                        }
+                    } catch (e: Exception) {
+                        // 忽略异常，继续处理下一首
                     }
-                    if (detail != null) {
-                        val songModel = com.tacke.music.data.model.Song(
-                            index = 0,
-                            id = song.id,
-                            name = song.name,
-                            artists = song.artist,
-                            coverUrl = detail.cover ?: song.cover
-                        )
-                        val downloadManager = DownloadManager.getInstance(this@ChartDetailActivity)
-                        val task = downloadManager.createDownloadTask(songModel, detail, quality, platform.name)
-                        downloadManager.startDownload(task)
-                        successCount++
-                    } else {
-                        failCount++
-                    }
-                } catch (e: Exception) {
-                    failCount++
                 }
             }
-
-            Toast.makeText(
-                this@ChartDetailActivity,
-                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
-                Toast.LENGTH_LONG
-            ).show()
-
-            exitMultiSelectMode()
         }
+
+        exitMultiSelectMode()
     }
 
     private fun addSongsToFavorites(selectedSongs: List<ChartSong>) {

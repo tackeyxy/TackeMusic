@@ -109,6 +109,8 @@ class DownloadTaskAdapter(
         private val tvSize: TextView = itemView.findViewById(R.id.tvSize)
         private val tvStatus: TextView = itemView.findViewById(R.id.tvStatus)
         private val btnControl: ImageButton = itemView.findViewById(R.id.btnControl)
+        private val ivSource: ImageView? = itemView.findViewById(R.id.ivSource)
+        private val tvQuality: TextView? = itemView.findViewById(R.id.tvQuality)
 
         private val dateFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
         private var currentTask: DownloadTask? = null
@@ -139,6 +141,9 @@ class DownloadTaskAdapter(
             // 绑定歌曲信息
             tvSongName.text = task.songName
             tvArtist.text = task.artist
+
+            // 设置音源图标和音质
+            setupSourceAndQuality(task)
 
             // 加载封面 - 处理酷我等平台的相对路径
             loadCoverImage(task)
@@ -194,14 +199,16 @@ class DownloadTaskAdapter(
             val context = itemView.context
             val coverUrl = task.coverUrl
 
+            // 先显示默认图标，后台异步加载图片
+            ivCover.setImageResource(R.drawable.ic_music_note)
+
             when {
                 coverUrl.isNullOrEmpty() -> {
-                    // 没有封面URL，尝试从网络获取
-                    ivCover.setImageResource(R.drawable.ic_music_note)
+                    // 没有封面URL，后台尝试获取
                     downloadAndCacheCover(task)
                 }
                 coverUrl.startsWith("http") -> {
-                    // 网络图片，使用 Glide 加载
+                    // 网络图片，使用 Glide 异步加载
                     Glide.with(context)
                         .load(coverUrl)
                         .placeholder(R.drawable.ic_music_note)
@@ -219,18 +226,15 @@ class DownloadTaskAdapter(
                                 .error(R.drawable.ic_music_note)
                                 .into(ivCover)
                         } else {
-                            // 本地文件不存在，尝试重新下载
-                            ivCover.setImageResource(R.drawable.ic_music_note)
+                            // 本地文件不存在，后台尝试重新下载
                             downloadAndCacheCover(task)
                         }
                     } catch (e: Exception) {
-                        ivCover.setImageResource(R.drawable.ic_music_note)
                         downloadAndCacheCover(task)
                     }
                 }
                 else -> {
-                    // 相对路径（如酷我音乐的封面URL），需要解析为完整URL
-                    ivCover.setImageResource(R.drawable.ic_music_note)
+                    // 相对路径（如酷我音乐的封面URL），后台解析并加载
                     resolveAndLoadCover(task)
                 }
             }
@@ -248,6 +252,7 @@ class DownloadTaskAdapter(
                 return
             }
 
+            // 后台异步解析封面URL，不阻塞UI
             lifecycleScope?.launch {
                 try {
                     val context = itemView.context
@@ -271,25 +276,28 @@ class DownloadTaskAdapter(
                             .error(R.drawable.ic_music_note)
                             .into(ivCover)
                     } else {
-                        // 解析失败，尝试下载缓存
+                        // 解析失败，后台尝试下载缓存
                         downloadAndCacheCover(task)
                     }
                 } catch (e: Exception) {
-                    // 解析失败，尝试下载缓存
+                    // 解析失败，后台尝试下载缓存
                     downloadAndCacheCover(task)
                 }
             }
         }
 
         private fun downloadAndCacheCover(task: DownloadTask) {
+            // 后台异步下载封面，不阻塞UI
             lifecycleScope?.launch {
                 try {
                     val context = itemView.context
-                    val localPath = CoverImageManager.downloadAndCacheCover(
-                        context,
-                        task.songId,
-                        task.platform
-                    )
+                    val localPath = withContext(Dispatchers.IO) {
+                        CoverImageManager.downloadAndCacheCover(
+                            context,
+                            task.songId,
+                            task.platform
+                        )
+                    }
 
                     if (localPath != null) {
                         // 下载成功，更新UI
@@ -310,6 +318,30 @@ class DownloadTaskAdapter(
                 itemView.setBackgroundColor(itemView.context.getColor(R.color.light_blue_cyan))
             } else {
                 itemView.setBackgroundResource(android.R.color.transparent)
+            }
+        }
+
+        private fun setupSourceAndQuality(task: DownloadTask) {
+            // 设置音源图标
+            ivSource?.let { imageView ->
+                val iconRes = when (task.platform.uppercase()) {
+                    "KUWO" -> R.drawable.ic_kuwo_logo
+                    "NETEASE" -> R.drawable.ic_netease_logo
+                    else -> R.drawable.ic_music_note
+                }
+                imageView.setImageResource(iconRes)
+            }
+
+            // 设置音质标签
+            tvQuality?.let { textView ->
+                val qualityText = when (task.quality.lowercase()) {
+                    "hr" -> "HR"
+                    "cdq", "flac", "lossless" -> "FLAC"
+                    "320k", "320", "hq" -> "320K"
+                    "128k", "128", "lq" -> "128K"
+                    else -> task.quality.uppercase()
+                }
+                textView.text = qualityText
             }
         }
 

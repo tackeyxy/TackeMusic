@@ -26,6 +26,7 @@ import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.PlaylistSongAdapter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -471,7 +472,8 @@ class PlaylistDetailActivity : AppCompatActivity() {
                             songId = song.id,
                             quality = "320k",
                             songName = song.name,
-                            artists = song.artists
+                            artists = song.artists,
+                            coverUrlFromSearch = song.coverUrl
                         )
                     }
                     playbackManager.playFromPlaylist(this@PlaylistDetailActivity, song, localPath, detail)
@@ -487,7 +489,8 @@ class PlaylistDetailActivity : AppCompatActivity() {
                         quality = "320k",
                         songName = song.name,
                         artists = song.artists,
-                        useCache = true
+                        useCache = true,
+                        coverUrlFromSearch = song.coverUrl
                     )
                 }
 
@@ -539,7 +542,8 @@ class PlaylistDetailActivity : AppCompatActivity() {
                             songId = firstSong.id,
                             quality = "320k",
                             songName = firstSong.name,
-                            artists = firstSong.artists
+                            artists = firstSong.artists,
+                            coverUrlFromSearch = firstSong.coverUrl
                         )
                     }
                     playbackManager.playFromPlaylist(this@PlaylistDetailActivity, firstSong, localPath, detail)
@@ -556,7 +560,8 @@ class PlaylistDetailActivity : AppCompatActivity() {
                         quality = "320k",
                         songName = firstSong.name,
                         artists = firstSong.artists,
-                        useCache = true
+                        useCache = true,
+                        coverUrlFromSearch = firstSong.coverUrl
                     )
                 }
 
@@ -723,59 +728,58 @@ class PlaylistDetailActivity : AppCompatActivity() {
     }
 
     private fun batchDownloadSongs(songs: List<PlaylistSong>, quality: String) {
-        lifecycleScope.launch {
-            var successCount = 0
-            var failCount = 0
+        val context = applicationContext
+        val cachedRepository = CachedMusicRepository(context)
+        val dm = DownloadManager.getInstance(context)
 
-            // 非下载管理页面，强制重新获取最新URL
-            val cachedRepository = CachedMusicRepository(this@PlaylistDetailActivity)
+        // 立即显示添加下载任务提示
+        Toast.makeText(
+            this@PlaylistDetailActivity,
+            "已添加 ${songs.size} 首歌曲到下载队列",
+            Toast.LENGTH_SHORT
+        ).show()
 
+        // 使用 GlobalScope 确保 Activity 销毁后任务继续执行
+        GlobalScope.launch(Dispatchers.IO) {
             songs.forEach { song ->
-                try {
-                    val platform = try {
-                        MusicRepository.Platform.valueOf(song.platform.uppercase())
-                    } catch (e: Exception) {
-                        MusicRepository.Platform.KUWO
-                    }
-                    val detail = cachedRepository.getSongUrlWithCache(
-                        platform = platform,
-                        songId = song.id,
-                        quality = quality,
-                        songName = song.name,
-                        artists = song.artists,
-                        useCache = true
-                    )
-                    if (detail != null) {
-                        val task = downloadManager.createDownloadTask(
-                            Song(
-                                index = 0,
-                                id = song.id,
-                                name = song.name,
-                                artists = song.artists,
-                                coverUrl = detail.cover ?: song.coverUrl
-                            ),
-                            detail,
-                            quality,
-                            song.platform
+                launch {
+                    try {
+                        val platform = try {
+                            MusicRepository.Platform.valueOf(song.platform.uppercase())
+                        } catch (e: Exception) {
+                            MusicRepository.Platform.KUWO
+                        }
+                        val detail = cachedRepository.getSongUrlWithCache(
+                            platform = platform,
+                            songId = song.id,
+                            quality = quality,
+                            songName = song.name,
+                            artists = song.artists,
+                            useCache = true
                         )
-                        downloadManager.startDownload(task)
-                        successCount++
-                    } else {
-                        failCount++
+                        if (detail != null) {
+                            val task = dm.createDownloadTask(
+                                Song(
+                                    index = 0,
+                                    id = song.id,
+                                    name = song.name,
+                                    artists = song.artists,
+                                    coverUrl = detail.cover ?: song.coverUrl
+                                ),
+                                detail,
+                                quality,
+                                song.platform
+                            )
+                            dm.startDownload(task)
+                        }
+                    } catch (e: Exception) {
+                        // 忽略异常，继续处理下一首
                     }
-                } catch (e: Exception) {
-                    failCount++
                 }
             }
-
-            Toast.makeText(
-                this@PlaylistDetailActivity,
-                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
-                Toast.LENGTH_LONG
-            ).show()
-
-            exitMultiSelectMode()
         }
+
+        exitMultiSelectMode()
     }
 
     override fun onBackPressed() {
