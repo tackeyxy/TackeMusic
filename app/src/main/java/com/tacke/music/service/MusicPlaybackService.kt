@@ -24,6 +24,7 @@ import com.tacke.music.R
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.SongDetail
 import com.tacke.music.data.preferences.PlaybackPreferences
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.PlayerActivity
@@ -83,9 +84,16 @@ class MusicPlaybackService : Service() {
             MusicRepository.Platform.KUWO
         }
 
-        // 获取歌曲详情
+        // 使用带缓存的Repository获取歌曲详情
+        val cachedRepository = CachedMusicRepository(this@MusicPlaybackService)
         val detail = withContext(Dispatchers.IO) {
-            repository.getSongDetail(platform, playlistSong.id, currentQuality)
+            cachedRepository.getSongDetail(
+                platform = platform,
+                songId = playlistSong.id,
+                quality = currentQuality,
+                songName = playlistSong.name,
+                artists = playlistSong.artists
+            )
         }
 
         if (detail != null) {

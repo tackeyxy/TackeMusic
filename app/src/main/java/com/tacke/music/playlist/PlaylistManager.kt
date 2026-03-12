@@ -81,12 +81,25 @@ class PlaylistManager private constructor(context: Context) {
     // 添加歌曲到播放列表
     suspend fun addSong(song: PlaylistSong) {
         val currentList = _currentPlaylist.value.toMutableList()
-        if (currentList.none { it.id == song.id }) {
+        val existingIndex = currentList.indexOfFirst { it.id == song.id }
+        if (existingIndex == -1) {
+            // 歌曲不存在，添加新歌曲
             val newSong = song.copy(orderIndex = currentList.size)
             currentList.add(newSong)
             playlistSongDao.insertSong(newSong)
             _currentPlaylist.value = currentList
             playbackPreferences.savePlaylist(currentList)
+        } else {
+            // 歌曲已存在，更新歌曲信息（如封面）
+            val existingSong = currentList[existingIndex]
+            // 如果新歌曲有封面而旧歌曲没有，则更新封面
+            if (!song.coverUrl.isNullOrEmpty() && existingSong.coverUrl.isNullOrEmpty()) {
+                val updatedSong = existingSong.copy(coverUrl = song.coverUrl)
+                currentList[existingIndex] = updatedSong
+                playlistSongDao.insertSong(updatedSong) // 使用 REPLACE 策略更新
+                _currentPlaylist.value = currentList
+                playbackPreferences.savePlaylist(currentList)
+            }
         }
     }
 

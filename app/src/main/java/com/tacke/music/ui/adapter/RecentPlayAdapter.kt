@@ -153,8 +153,8 @@ class RecentPlayAdapter(
                         .error(R.drawable.ic_music_note)
                         .into(ivCover)
                 }
-                else -> {
-                    // 本地图片路径
+                coverUrl.startsWith("/") -> {
+                    // 本地图片路径（以/开头的绝对路径）
                     try {
                         val file = File(coverUrl)
                         if (file.exists()) {
@@ -172,6 +172,45 @@ class RecentPlayAdapter(
                         ivCover.setImageResource(R.drawable.ic_music_note)
                         downloadAndCacheCover(recentPlay)
                     }
+                }
+                else -> {
+                    // 相对路径（如酷我音乐的封面URL），需要解析为完整URL
+                    ivCover.setImageResource(R.drawable.ic_music_note)
+                    resolveAndLoadCover(recentPlay, coverUrl)
+                }
+            }
+        }
+
+        private fun resolveAndLoadCover(recentPlay: RecentPlay, relativeUrl: String) {
+            lifecycleScope?.launch {
+                try {
+                    val context = itemView.context
+                    val resolvedUrl = withContext(Dispatchers.IO) {
+                        com.tacke.music.utils.CoverUrlResolver.resolveCoverUrl(
+                            context,
+                            relativeUrl,
+                            recentPlay.id,
+                            recentPlay.platform
+                        )
+                    }
+
+                    if (resolvedUrl != null) {
+                        // 使用解析后的URL加载封面
+                        Glide.with(context)
+                            .load(resolvedUrl)
+                            .placeholder(R.drawable.ic_music_note)
+                            .error(R.drawable.ic_music_note)
+                            .into(ivCover)
+
+                        // 通知外部封面已加载，更新数据库
+                        onCoverLoaded?.invoke(recentPlay.id, resolvedUrl)
+                    } else {
+                        // 解析失败，尝试下载缓存
+                        downloadAndCacheCover(recentPlay)
+                    }
+                } catch (e: Exception) {
+                    // 解析失败，尝试下载缓存
+                    downloadAndCacheCover(recentPlay)
                 }
             }
         }

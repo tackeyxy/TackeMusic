@@ -16,6 +16,7 @@ import com.tacke.music.R
 import com.tacke.music.data.model.Playlist
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
@@ -460,17 +461,39 @@ class PlaylistDetailActivity : AppCompatActivity() {
                     downloadManager.getLocalSongPath(song.id)
                 }
 
-                // 获取歌曲详情（用于歌词和封面）
+                // 如果本地文件存在，直接播放本地文件
+                if (localPath != null) {
+                    // 使用带缓存的Repository获取歌曲详情（用于歌词和封面）
+                    val cachedRepository = CachedMusicRepository(this@PlaylistDetailActivity)
+                    val detail = withContext(Dispatchers.IO) {
+                        cachedRepository.getSongDetail(
+                            platform = platform,
+                            songId = song.id,
+                            quality = "320k",
+                            songName = song.name,
+                            artists = song.artists
+                        )
+                    }
+                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, song, localPath, detail)
+                    return@launch
+                }
+
+                // 非下载管理页面且本地文件不存在，强制重新获取最新URL
+                val cachedRepository = CachedMusicRepository(this@PlaylistDetailActivity)
                 val detail = withContext(Dispatchers.IO) {
-                    MusicRepository().getSongDetail(platform, song.id, "320k")
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = song.id,
+                        quality = "320k",
+                        songName = song.name,
+                        artists = song.artists,
+                        useCache = true
+                    )
                 }
 
                 if (detail != null) {
-                    // 优先使用本地文件路径，如果没有则使用在线URL
-                    val playUrl = localPath ?: detail.url
-
                     // 使用统一播放管理器播放歌曲
-                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, song, playUrl, detail)
+                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, song, detail.url, detail)
                 } else {
                     Toast.makeText(this@PlaylistDetailActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
                 }
@@ -507,13 +530,38 @@ class PlaylistDetailActivity : AppCompatActivity() {
                     downloadManager.getLocalSongPath(firstSong.id)
                 }
 
+                // 如果本地文件存在，直接播放本地文件
+                if (localPath != null) {
+                    val cachedRepository = CachedMusicRepository(this@PlaylistDetailActivity)
+                    val detail = withContext(Dispatchers.IO) {
+                        cachedRepository.getSongDetail(
+                            platform = platform,
+                            songId = firstSong.id,
+                            quality = "320k",
+                            songName = firstSong.name,
+                            artists = firstSong.artists
+                        )
+                    }
+                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, firstSong, localPath, detail)
+                    Toast.makeText(this@PlaylistDetailActivity, "开始播放全部", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                // 非下载管理页面且本地文件不存在，强制重新获取最新URL
+                val cachedRepository = CachedMusicRepository(this@PlaylistDetailActivity)
                 val detail = withContext(Dispatchers.IO) {
-                    MusicRepository().getSongDetail(platform, firstSong.id, "320k")
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = firstSong.id,
+                        quality = "320k",
+                        songName = firstSong.name,
+                        artists = firstSong.artists,
+                        useCache = true
+                    )
                 }
 
                 if (detail != null) {
-                    val playUrl = localPath ?: detail.url
-                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, firstSong, playUrl, detail)
+                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, firstSong, detail.url, detail)
                     Toast.makeText(this@PlaylistDetailActivity, "开始播放全部", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
@@ -679,6 +727,9 @@ class PlaylistDetailActivity : AppCompatActivity() {
             var successCount = 0
             var failCount = 0
 
+            // 非下载管理页面，强制重新获取最新URL
+            val cachedRepository = CachedMusicRepository(this@PlaylistDetailActivity)
+
             songs.forEach { song ->
                 try {
                     val platform = try {
@@ -686,7 +737,14 @@ class PlaylistDetailActivity : AppCompatActivity() {
                     } catch (e: Exception) {
                         MusicRepository.Platform.KUWO
                     }
-                    val detail = MusicRepository().getSongDetail(platform, song.id, quality)
+                    val detail = cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = song.id,
+                        quality = quality,
+                        songName = song.name,
+                        artists = song.artists,
+                        useCache = true
+                    )
                     if (detail != null) {
                         val task = downloadManager.createDownloadTask(
                             Song(
@@ -694,7 +752,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
                                 id = song.id,
                                 name = song.name,
                                 artists = song.artists,
-                                coverUrl = song.coverUrl
+                                coverUrl = detail.cover ?: song.coverUrl
                             ),
                             detail,
                             quality,

@@ -19,9 +19,10 @@ import com.tacke.music.data.model.RecentPlay
         PlaylistEntity::class,
         PlaylistSongCrossRef::class,
         RecentPlay::class,
-        FavoriteSongEntity::class
+        FavoriteSongEntity::class,
+        SongDetailEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -33,6 +34,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun playlistDao(): PlaylistDao
     abstract fun recentPlayDao(): RecentPlayDao
     abstract fun favoriteSongDao(): FavoriteSongDao
+    abstract fun songDetailDao(): SongDetailDao
 
     companion object {
         @Volatile
@@ -94,6 +96,26 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // 从版本13迁移到版本14：添加song_details表
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // 创建song_details表
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS song_details (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        name TEXT NOT NULL,
+                        artists TEXT NOT NULL,
+                        platform TEXT NOT NULL,
+                        playUrl TEXT NOT NULL,
+                        coverUrl TEXT,
+                        lyrics TEXT,
+                        quality TEXT NOT NULL DEFAULT '320k',
+                        updatedAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """)
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -101,7 +123,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "tacke_music_database"
                 )
-                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

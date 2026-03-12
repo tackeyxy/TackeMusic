@@ -18,6 +18,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.model.DownloadTask
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityDownloadBinding
@@ -113,7 +114,8 @@ class DownloadActivity : AppCompatActivity() {
                 } else {
                     false
                 }
-            }
+            },
+            lifecycleScope = lifecycleScope
         )
 
         // 下载历史适配器
@@ -139,7 +141,8 @@ class DownloadActivity : AppCompatActivity() {
                 } else {
                     false
                 }
-            }
+            },
+            lifecycleScope = lifecycleScope
         )
 
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
@@ -232,6 +235,44 @@ class DownloadActivity : AppCompatActivity() {
         binding.batchActionBarContainer.btnClearAll.setOnClickListener {
             showClearAllConfirmDialog()
         }
+
+        // 移除所选按钮 - 仅移除选中项，不删除文件
+        binding.batchActionBarContainer.btnBatchRemove.setOnClickListener {
+            showBatchRemoveDialog()
+        }
+    }
+
+    private fun showBatchRemoveDialog() {
+        val isDownloadingTab = binding.tabLayout.selectedTabPosition == 0
+        val selectedTasks = if (isDownloadingTab) {
+            downloadingAdapter.getSelectedTasks()
+        } else {
+            historyAdapter.getSelectedTasks()
+        }
+
+        if (selectedTasks.isEmpty()) {
+            Toast.makeText(this, "请先选择要移除的项目", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val title = if (isDownloadingTab) "移除下载任务" else "移除下载记录"
+        val message = if (isDownloadingTab) {
+            "确定要移除选中的 ${selectedTasks.size} 个下载任务吗？\n（不会删除已下载的文件）"
+        } else {
+            "确定要移除选中的 ${selectedTasks.size} 个下载记录吗？\n（不会删除已下载的文件）"
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("移除") { _, _ ->
+                // 仅删除记录，不删除文件
+                downloadManager.deleteDownloads(selectedTasks, deleteFile = false)
+                Toast.makeText(this, "已移除 ${selectedTasks.size} 个项目", Toast.LENGTH_SHORT).show()
+                exitMultiSelectMode()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun showClearAllConfirmDialog() {
@@ -389,12 +430,14 @@ class DownloadActivity : AppCompatActivity() {
         // 根据当前标签页设置适配器
         if (binding.tabLayout.selectedTabPosition == 0) {
             downloadingAdapter.setMultiSelectMode(true)
-            // 正在下载页面显示下载按钮（用于删除任务）
-            binding.batchActionBarContainer.btnBatchDownload.visibility = View.VISIBLE
+            // 正在下载页面：隐藏下载按钮，显示移除按钮
+            binding.batchActionBarContainer.btnBatchDownload.visibility = View.GONE
+            binding.batchActionBarContainer.btnBatchRemove.visibility = View.VISIBLE
         } else {
             historyAdapter.setMultiSelectMode(true)
-            // 下载历史页面隐藏下载按钮（已下载的文件不需要再下载）
+            // 下载历史页面：隐藏下载按钮，显示移除按钮
             binding.batchActionBarContainer.btnBatchDownload.visibility = View.GONE
+            binding.batchActionBarContainer.btnBatchRemove.visibility = View.VISIBLE
         }
 
         updateSelectedCount(0)
@@ -408,8 +451,9 @@ class DownloadActivity : AppCompatActivity() {
         downloadingAdapter.setMultiSelectMode(false)
         historyAdapter.setMultiSelectMode(false)
 
-        // 恢复下载按钮的可见性
+        // 恢复按钮的默认可见性
         binding.batchActionBarContainer.btnBatchDownload.visibility = View.VISIBLE
+        binding.batchActionBarContainer.btnBatchRemove.visibility = View.GONE
     }
 
     private fun updateSelectedCount(count: Int) {
@@ -501,9 +545,16 @@ class DownloadActivity : AppCompatActivity() {
                 // 本地文件不存在，使用平台信息获取在线歌曲
                 val platform = playbackManager.getValidPlatform(task.platform)
 
-                // 获取歌曲详情（用于歌词和封面）
+                // 使用带缓存的Repository获取歌曲详情（用于歌词和封面）
+                val cachedRepository = CachedMusicRepository(this@DownloadActivity)
                 val detail = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.tacke.music.data.repository.MusicRepository().getSongDetail(platform, task.songId, "320k")
+                    cachedRepository.getSongDetail(
+                        platform = platform,
+                        songId = task.songId,
+                        quality = "320k",
+                        songName = task.songName,
+                        artists = task.artist
+                    )
                 }
 
                 if (detail != null) {

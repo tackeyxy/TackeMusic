@@ -24,6 +24,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.db.FavoriteSongEntity
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
@@ -31,7 +32,10 @@ import com.tacke.music.databinding.ActivityPlaylistDetailBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
+import com.tacke.music.utils.CoverImageManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class FavoriteSongsActivity : AppCompatActivity() {
@@ -321,8 +325,16 @@ class FavoriteSongsActivity : AppCompatActivity() {
                     else -> MusicRepository.Platform.KUWO
                 }
 
-                val repository = MusicRepository()
-                val detail = repository.getSongDetail(platform, song.id, "320k")
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                val cachedRepository = CachedMusicRepository(this@FavoriteSongsActivity)
+                val detail = cachedRepository.getSongUrlWithCache(
+                    platform = platform,
+                    songId = song.id,
+                    quality = "320k",
+                    songName = song.name,
+                    artists = song.artists,
+                    useCache = true
+                )
 
                 if (detail != null) {
                     // 添加到播放列表
@@ -330,7 +342,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
                         id = song.id,
                         name = song.name,
                         artists = song.artists,
-                        coverUrl = song.coverUrl,
+                        coverUrl = detail.cover ?: song.coverUrl,
                         platform = song.platform
                     )
                     playlistManager.addSong(playlistSong)
@@ -379,15 +391,23 @@ class FavoriteSongsActivity : AppCompatActivity() {
                     else -> MusicRepository.Platform.KUWO
                 }
 
-                val repository = MusicRepository()
-                val detail = repository.getSongDetail(platform, firstSong.id, "320k")
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                val cachedRepository = CachedMusicRepository(this@FavoriteSongsActivity)
+                val detail = cachedRepository.getSongUrlWithCache(
+                    platform = platform,
+                    songId = firstSong.id,
+                    quality = "320k",
+                    songName = firstSong.name,
+                    artists = firstSong.artists,
+                    useCache = true
+                )
 
                 if (detail != null) {
                     val playlistSong = com.tacke.music.data.model.PlaylistSong(
                         id = firstSong.id,
                         name = firstSong.name,
                         artists = firstSong.artists,
-                        coverUrl = firstSong.coverUrl,
+                        coverUrl = detail.cover ?: firstSong.coverUrl,
                         platform = firstSong.platform
                     )
 
@@ -540,6 +560,9 @@ class FavoriteSongsActivity : AppCompatActivity() {
             var successCount = 0
             var failCount = 0
 
+            // 非下载管理页面，强制重新获取最新URL
+            val cachedRepository = CachedMusicRepository(this@FavoriteSongsActivity)
+
             songs.forEach { song ->
                 try {
                     val platform = when (song.platform.uppercase()) {
@@ -547,7 +570,14 @@ class FavoriteSongsActivity : AppCompatActivity() {
                         "NETEASE" -> MusicRepository.Platform.NETEASE
                         else -> MusicRepository.Platform.KUWO
                     }
-                    val detail = MusicRepository().getSongDetail(platform, song.id, quality)
+                    val detail = cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = song.id,
+                        quality = quality,
+                        songName = song.name,
+                        artists = song.artists,
+                        useCache = true
+                    )
                     if (detail != null) {
                         val task = downloadManager.createDownloadTask(
                             Song(
@@ -555,7 +585,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
                                 id = song.id,
                                 name = song.name,
                                 artists = song.artists,
-                                coverUrl = song.coverUrl
+                                coverUrl = detail.cover ?: song.coverUrl
                             ),
                             detail,
                             quality,
@@ -696,16 +726,20 @@ class FavoriteSongsActivity : AppCompatActivity() {
 
                 when {
                     coverUrl.isNullOrEmpty() -> {
+                        // 没有封面URL，尝试从网络获取
                         ivCover.setImageResource(R.drawable.ic_music_note)
+                        downloadAndCacheCover(song)
                     }
                     coverUrl.startsWith("http") -> {
+                        // 网络图片，使用 Glide 加载
                         Glide.with(itemView.context)
                             .load(coverUrl)
                             .placeholder(R.drawable.ic_music_note)
                             .error(R.drawable.ic_music_note)
                             .into(ivCover)
                     }
-                    else -> {
+                    coverUrl.startsWith("/") -> {
+                        // 本地图片路径（以/开头的绝对路径）
                         try {
                             val file = File(coverUrl)
                             if (file.exists()) {
@@ -715,11 +749,79 @@ class FavoriteSongsActivity : AppCompatActivity() {
                                     .error(R.drawable.ic_music_note)
                                     .into(ivCover)
                             } else {
+                                // 本地文件不存在，尝试重新下载
                                 ivCover.setImageResource(R.drawable.ic_music_note)
+                                downloadAndCacheCover(song)
                             }
                         } catch (e: Exception) {
                             ivCover.setImageResource(R.drawable.ic_music_note)
+                            downloadAndCacheCover(song)
                         }
+                    }
+                    else -> {
+                        // 相对路径（如酷我音乐的封面URL），需要解析为完整URL
+                        ivCover.setImageResource(R.drawable.ic_music_note)
+                        resolveAndLoadCover(song, coverUrl)
+                    }
+                }
+            }
+
+            private fun resolveAndLoadCover(song: FavoriteSongEntity, relativeUrl: String) {
+                lifecycleScope.launch {
+                    try {
+                        val context = itemView.context
+                        val resolvedUrl = withContext(Dispatchers.IO) {
+                            com.tacke.music.utils.CoverUrlResolver.resolveCoverUrl(
+                                context,
+                                relativeUrl,
+                                song.id,
+                                song.platform
+                            )
+                        }
+
+                        if (resolvedUrl != null) {
+                            // 使用解析后的URL加载封面
+                            Glide.with(context)
+                                .load(resolvedUrl)
+                                .placeholder(R.drawable.ic_music_note)
+                                .error(R.drawable.ic_music_note)
+                                .into(ivCover)
+                        } else {
+                            // 解析失败，尝试下载缓存
+                            downloadAndCacheCover(song)
+                        }
+                    } catch (e: Exception) {
+                        // 解析失败，尝试下载缓存
+                        downloadAndCacheCover(song)
+                    }
+                }
+            }
+
+            private fun downloadAndCacheCover(song: FavoriteSongEntity) {
+                lifecycleScope.launch {
+                    try {
+                        val context = itemView.context
+                        val localPath = CoverImageManager.downloadAndCacheCover(
+                            context,
+                            song.id,
+                            song.platform
+                        )
+
+                        if (localPath != null) {
+                            // 下载成功，更新UI
+                            withContext(Dispatchers.Main) {
+                                Glide.with(context)
+                                    .load(File(localPath))
+                                    .placeholder(R.drawable.ic_music_note)
+                                    .error(R.drawable.ic_music_note)
+                                    .into(ivCover)
+                            }
+
+                            // 更新数据库中的封面URL
+                            favoriteRepository.refreshFavoriteCovers()
+                        }
+                    } catch (e: Exception) {
+                        // 下载失败，保持默认图标
                     }
                 }
             }

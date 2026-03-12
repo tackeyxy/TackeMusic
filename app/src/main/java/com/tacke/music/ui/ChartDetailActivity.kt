@@ -16,6 +16,7 @@ import com.tacke.music.R
 import com.tacke.music.data.api.ChartType
 import com.tacke.music.data.api.RetrofitClient
 import com.tacke.music.data.model.ChartSong
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
@@ -133,6 +134,20 @@ class ChartDetailActivity : AppCompatActivity() {
                 } else {
                     false
                 }
+            },
+            lifecycleScope = lifecycleScope,
+            onCoverLoaded = { songId, coverPath ->
+                // 更新歌曲封面URL
+                val song = songs.find { it.id == songId }
+                song?.let {
+                    // 更新本地列表中的封面
+                    val index = songs.indexOf(it)
+                    if (index != -1) {
+                        songs = songs.toMutableList().apply {
+                            set(index, it.copy(cover = coverPath))
+                        }
+                    }
+                }
             }
         )
         binding.rvChartSongs.layoutManager = LinearLayoutManager(this)
@@ -162,6 +177,8 @@ class ChartDetailActivity : AppCompatActivity() {
     private fun showBatchActionBar() {
         binding.batchActionBarContainer.root.visibility = View.VISIBLE
         binding.btnPlayAll.visibility = View.GONE
+        // 隐藏清空按钮（榜单列表不需要清空功能）
+        binding.batchActionBarContainer.btnClearAll.visibility = View.GONE
         updateBatchActionBar()
         setupBatchActionListeners()
     }
@@ -256,6 +273,7 @@ class ChartDetailActivity : AppCompatActivity() {
 
     /**
      * 添加歌曲到播放列表并播放（榜单列表使用）
+     * 非下载管理页面，需要重新请求URL进行播放
      */
     private fun addToNowPlayingAndPlay(song: ChartSong) {
         lifecycleScope.launch {
@@ -267,9 +285,25 @@ class ChartDetailActivity : AppCompatActivity() {
                     else -> MusicRepository.Platform.KUWO
                 }
 
-                val repository = MusicRepository()
+                val cachedRepository = CachedMusicRepository(this@ChartDetailActivity)
+                // 优先使用榜单数据中的封面，如果为空则尝试从网易云搜索获取
+                val coverUrl = if (!song.cover.isNullOrEmpty()) {
+                    song.cover
+                } else {
+                    withContext(Dispatchers.IO) {
+                        cachedRepository.getCoverUrlFromNetease(song.name, song.artist)
+                    }
+                }
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
                 val detail = withContext(Dispatchers.IO) {
-                    repository.getSongDetail(platform, song.id, "320k")
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = song.id,
+                        quality = "320k",
+                        songName = song.name,
+                        artists = song.artist,
+                        useCache = true
+                    )
                 }
 
                 if (detail != null) {
@@ -280,13 +314,13 @@ class ChartDetailActivity : AppCompatActivity() {
                         id = song.id,
                         name = song.name,
                         artists = song.artist,
-                        coverUrl = song.cover
+                        coverUrl = detail.cover ?: coverUrl ?: song.cover
                     )
                     val playlistSong = playlistManager.convertToPlaylistSong(songModel, platform)
                     playlistManager.addSong(playlistSong)
 
-                    // 然后播放
-                    playbackManager.playFromSearch(this@ChartDetailActivity, songModel, platform, detail)
+                    // 然后播放 - 使用 playFromPlaylist 确保能重新开始播放
+                    playbackManager.playFromPlaylist(this@ChartDetailActivity, playlistSong, detail.url, detail)
                 } else {
                     Toast.makeText(this@ChartDetailActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
                 }
@@ -552,9 +586,17 @@ class ChartDetailActivity : AppCompatActivity() {
                     "netease" -> MusicRepository.Platform.NETEASE
                     else -> MusicRepository.Platform.KUWO
                 }
-                val repository = MusicRepository()
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                val cachedRepository = CachedMusicRepository(this@ChartDetailActivity)
                 val detail = withContext(Dispatchers.IO) {
-                    repository.getSongDetail(platform, song.id, quality)
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = song.id,
+                        quality = quality,
+                        songName = song.name,
+                        artists = song.artist,
+                        useCache = true
+                    )
                 }
                 if (detail != null) {
                     val platform = when (song.source.lowercase()) {
@@ -567,7 +609,7 @@ class ChartDetailActivity : AppCompatActivity() {
                         id = song.id,
                         name = song.name,
                         artists = song.artist,
-                        coverUrl = song.cover
+                        coverUrl = detail.cover ?: song.cover
                     )
                     val downloadManager = DownloadManager.getInstance(this@ChartDetailActivity)
                     val task = downloadManager.createDownloadTask(songModel, detail, quality, platform.name)
@@ -589,6 +631,9 @@ class ChartDetailActivity : AppCompatActivity() {
             var successCount = 0
             var failCount = 0
 
+            // 非下载管理页面，强制重新获取最新URL
+            val cachedRepository = CachedMusicRepository(this@ChartDetailActivity)
+
             selectedSongs.forEach { song ->
                 try {
                     val platform = when (song.source.lowercase()) {
@@ -596,9 +641,15 @@ class ChartDetailActivity : AppCompatActivity() {
                         "netease" -> MusicRepository.Platform.NETEASE
                         else -> MusicRepository.Platform.KUWO
                     }
-                    val repository = MusicRepository()
                     val detail = withContext(Dispatchers.IO) {
-                        repository.getSongDetail(platform, song.id, quality)
+                        cachedRepository.getSongUrlWithCache(
+                            platform = platform,
+                            songId = song.id,
+                            quality = quality,
+                            songName = song.name,
+                            artists = song.artist,
+                            useCache = true
+                        )
                     }
                     if (detail != null) {
                         val songModel = com.tacke.music.data.model.Song(
@@ -606,7 +657,7 @@ class ChartDetailActivity : AppCompatActivity() {
                             id = song.id,
                             name = song.name,
                             artists = song.artist,
-                            coverUrl = song.cover
+                            coverUrl = detail.cover ?: song.cover
                         )
                         val downloadManager = DownloadManager.getInstance(this@ChartDetailActivity)
                         val task = downloadManager.createDownloadTask(songModel, detail, quality, platform.name)

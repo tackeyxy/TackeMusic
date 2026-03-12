@@ -21,6 +21,7 @@ import com.tacke.music.data.api.SongDetailInfo
 import com.tacke.music.data.api.TrackArtist
 import com.tacke.music.data.api.TrackAlbum
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
@@ -41,6 +42,7 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
     private lateinit var playlistRepository: PlaylistRepository
     private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playbackManager: PlaybackManager
+    private val repository = MusicRepository()
 
     private var playlistId: Long = 0
     private var playlistName: String = ""
@@ -224,6 +226,8 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
 
     private fun showBatchActionBar() {
         binding.batchActionBarContainer.root.visibility = View.VISIBLE
+        // 隐藏清空按钮（歌单列表不需要清空功能）
+        binding.batchActionBarContainer.btnClearAll.visibility = View.GONE
         updateBatchActionBar()
         setupBatchActionListeners()
     }
@@ -346,37 +350,39 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
 
     /**
      * 添加歌曲到播放列表并播放（推荐歌单列表使用）
+     * 非下载管理页面，需要重新请求URL进行播放
      */
     private fun addToNowPlayingAndPlay(track: PlaylistTrack) {
         lifecycleScope.launch {
             binding.progressBar.visibility = View.VISIBLE
             try {
                 val platform = MusicRepository.Platform.NETEASE
+                val artistName = track.ar?.joinToString(",") { it.name } ?: "未知艺人"
+                val coverUrl = track.al?.picUrl ?: ""
 
-                // 获取歌曲详情
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                val cachedRepository = CachedMusicRepository(this@NeteasePlaylistDetailActivity)
                 val detail = withContext(Dispatchers.IO) {
-                    MusicRepository().getSongDetail(platform, track.id.toString(), "320k")
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = track.id.toString(),
+                        quality = "320k",
+                        songName = track.name,
+                        artists = artistName,
+                        useCache = true
+                    )
                 }
 
                 if (detail != null) {
-                    // 先添加到播放列表
-                    val playlistSong = com.tacke.music.data.model.PlaylistSong(
-                        id = track.id.toString(),
-                        name = track.name,
-                        artists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
-                        coverUrl = track.al?.picUrl ?: "",
-                        platform = "netease"
-                    )
-                    playlistManager.addSong(playlistSong)
-
-                    // 然后播放
                     val song = Song(
                         index = 0,
                         id = track.id.toString(),
                         name = track.name,
-                        artists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
-                        coverUrl = track.al?.picUrl ?: ""
+                        artists = artistName,
+                        coverUrl = detail.cover ?: coverUrl
                     )
+                    playlistManager.addSong(playlistManager.convertToPlaylistSong(song, platform))
+
                     playbackManager.playFromSearch(this@NeteasePlaylistDetailActivity, song, platform, detail)
                 } else {
                     Toast.makeText(this@NeteasePlaylistDetailActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
@@ -667,17 +673,28 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             binding.progressBar.visibility = View.VISIBLE
             try {
                 val platform = MusicRepository.Platform.NETEASE
-                val repository = MusicRepository()
+                val artistName = track.ar?.joinToString(",") { it.name } ?: "未知艺人"
+                val coverUrl = track.al?.picUrl ?: ""
+
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                val cachedRepository = CachedMusicRepository(this@NeteasePlaylistDetailActivity)
                 val detail = withContext(Dispatchers.IO) {
-                    repository.getSongDetail(platform, track.id.toString(), quality)
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = track.id.toString(),
+                        quality = quality,
+                        songName = track.name,
+                        artists = artistName,
+                        useCache = true
+                    )
                 }
                 if (detail != null) {
                     val song = Song(
                         index = 0,
                         id = track.id.toString(),
                         name = track.name,
-                        artists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
-                        coverUrl = track.al?.picUrl ?: ""
+                        artists = artistName,
+                        coverUrl = detail.cover ?: coverUrl
                     )
                     val downloadManager = DownloadManager.getInstance(this@NeteasePlaylistDetailActivity)
                     val task = downloadManager.createDownloadTask(song, detail, quality, MusicRepository.Platform.NETEASE.name)
@@ -699,20 +716,32 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             var successCount = 0
             var failCount = 0
 
+            // 非下载管理页面，强制重新获取最新URL
+            val cachedRepository = CachedMusicRepository(this@NeteasePlaylistDetailActivity)
+
             tracks.forEach { track ->
                 try {
                     val platform = MusicRepository.Platform.NETEASE
-                    val repository = MusicRepository()
+                    val artistName = track.ar?.joinToString(",") { it.name } ?: "未知艺人"
+                    val coverUrl = track.al?.picUrl ?: ""
+
                     val detail = withContext(Dispatchers.IO) {
-                        repository.getSongDetail(platform, track.id.toString(), quality)
+                        cachedRepository.getSongUrlWithCache(
+                            platform = platform,
+                            songId = track.id.toString(),
+                            quality = quality,
+                            songName = track.name,
+                            artists = artistName,
+                            useCache = true
+                        )
                     }
                     if (detail != null) {
                         val song = Song(
                             index = 0,
                             id = track.id.toString(),
                             name = track.name,
-                            artists = track.ar?.joinToString(",") { it.name } ?: "未知艺人",
-                            coverUrl = track.al?.picUrl ?: ""
+                            artists = artistName,
+                            coverUrl = detail.cover ?: coverUrl
                         )
                         val downloadManager = DownloadManager.getInstance(this@NeteasePlaylistDetailActivity)
                         val task = downloadManager.createDownloadTask(song, detail, quality, MusicRepository.Platform.NETEASE.name)

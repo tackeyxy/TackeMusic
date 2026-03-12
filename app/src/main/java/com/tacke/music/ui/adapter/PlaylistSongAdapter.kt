@@ -13,6 +13,7 @@ import com.bumptech.glide.Glide
 import com.tacke.music.R
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.utils.CoverImageManager
+import com.tacke.music.utils.CoverUrlResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -182,8 +183,8 @@ class PlaylistSongAdapter(
                         .error(R.drawable.ic_music_note)
                         .into(ivCover)
                 }
-                else -> {
-                    // 本地图片路径
+                coverUrl.startsWith("/") -> {
+                    // 本地图片路径（以/开头的绝对路径）
                     try {
                         val file = File(coverUrl)
                         if (file.exists()) {
@@ -201,6 +202,45 @@ class PlaylistSongAdapter(
                         ivCover.setImageResource(R.drawable.ic_music_note)
                         downloadAndCacheCover(song)
                     }
+                }
+                else -> {
+                    // 相对路径（如酷我音乐的封面URL），需要解析为完整URL
+                    ivCover.setImageResource(R.drawable.ic_music_note)
+                    resolveAndLoadCover(song, coverUrl)
+                }
+            }
+        }
+
+        private fun resolveAndLoadCover(song: PlaylistSong, relativeUrl: String) {
+            lifecycleScope?.launch {
+                try {
+                    val context = itemView.context
+                    val resolvedUrl = withContext(Dispatchers.IO) {
+                        CoverUrlResolver.resolveCoverUrl(
+                            context,
+                            relativeUrl,
+                            song.id,
+                            song.platform
+                        )
+                    }
+
+                    if (resolvedUrl != null) {
+                        // 使用解析后的URL加载封面
+                        Glide.with(context)
+                            .load(resolvedUrl)
+                            .placeholder(R.drawable.ic_music_note)
+                            .error(R.drawable.ic_music_note)
+                            .into(ivCover)
+
+                        // 通知外部封面已加载，更新数据库
+                        onCoverLoaded?.invoke(song.id, resolvedUrl as String)
+                    } else {
+                        // 解析失败，尝试下载缓存
+                        downloadAndCacheCover(song)
+                    }
+                } catch (e: Exception) {
+                    // 解析失败，尝试下载缓存
+                    downloadAndCacheCover(song)
                 }
             }
         }

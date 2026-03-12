@@ -128,7 +128,10 @@ class DownloadManager private constructor(private val context: Context) {
 
     fun createDownloadTask(song: Song, detail: SongDetail, quality: String, platform: String = "KUWO"): DownloadTask {
         val extension = getFileExtensionFromUrl(detail.url)
-        val fileName = "${detail.info.name}-${detail.info.artist}$extension"
+        // 优先使用 song 对象中的名称和艺术家信息，如果没有则使用 detail 中的信息
+        val songName = song.name.takeIf { it.isNotBlank() } ?: detail.info.name
+        val artist = song.artists.takeIf { it.isNotBlank() } ?: detail.info.artist
+        val fileName = "${songName}-${artist}$extension"
         val sanitizedFileName = sanitizeFileName(fileName)
         val downloadDir = getDownloadDirectory()
         if (!downloadDir.exists()) {
@@ -139,8 +142,8 @@ class DownloadManager private constructor(private val context: Context) {
         return DownloadTask(
             id = System.currentTimeMillis().toString(),
             songId = song.id,
-            songName = detail.info.name,
-            artist = detail.info.artist,
+            songName = songName,
+            artist = artist,
             coverUrl = song.coverUrl ?: detail.cover,
             url = detail.url,
             fileName = sanitizedFileName,

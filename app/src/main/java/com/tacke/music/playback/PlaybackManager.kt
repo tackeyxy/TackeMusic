@@ -8,6 +8,7 @@ import com.tacke.music.data.model.RecentPlay
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.model.SongDetail
 import com.tacke.music.data.preferences.PlaybackPreferences
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.PlayerActivity
@@ -68,6 +69,13 @@ class PlaybackManager private constructor(context: Context) {
         playlistManager.addSong(playlistSong)
         playlistManager.setCurrentIndex(playlistManager.getPlaylistSize() - 1)  // 设置为当前播放（新添加的歌曲）
 
+        // 关键修复：彻底清除之前的播放状态，确保新歌曲从头开始播放
+        clearPlaybackState()
+
+        // 确保播放位置为0，新歌曲从头开始
+        playbackPreferences.currentPosition = 0L
+        playbackPreferences.isPlaying = false
+
         // 保存播放状态（新歌曲从头开始播放，位置为0）
         savePlaybackState(
             songId = song.id,
@@ -76,6 +84,9 @@ class PlaybackManager private constructor(context: Context) {
             quality = "320k",
             songDetail = songDetail
         )
+
+        // 再次确保位置为0
+        playbackPreferences.currentPosition = 0L
 
         // 启动播放页面
         startPlayerActivity(
@@ -164,14 +175,28 @@ class PlaybackManager private constructor(context: Context) {
         }
 
         // 如果 songDetail 中有封面，更新 song 的 coverUrl
-        val updatedSong = if (songDetail?.cover != null && song.coverUrl == null) {
+        val updatedSong = if (songDetail?.cover != null) {
             song.copy(coverUrl = songDetail.cover)
         } else {
             song
         }
 
-        // 添加到播放列表
+        // 添加到播放列表（如果歌曲已存在，会更新歌曲信息如封面）
         playlistManager.addSong(updatedSong)
+
+        // 设置当前播放索引为新添加/更新的歌曲
+        val songIndex = playlistManager.currentPlaylist.value.indexOfFirst { it.id == updatedSong.id }
+        if (songIndex != -1) {
+            playlistManager.setCurrentIndex(songIndex)
+        }
+
+        // 关键修复：彻底清除之前的播放状态，确保新歌曲从头开始播放
+        // 先清除再保存，避免任何旧状态残留
+        clearPlaybackState()
+
+        // 确保播放位置为0，新歌曲从头开始
+        playbackPreferences.currentPosition = 0L
+        playbackPreferences.isPlaying = false
 
         // 保存播放状态（新歌曲从头开始播放，位置为0）
         savePlaybackState(
@@ -181,6 +206,9 @@ class PlaybackManager private constructor(context: Context) {
             quality = "320k",
             songDetail = songDetail
         )
+
+        // 再次确保位置为0
+        playbackPreferences.currentPosition = 0L
 
         // 启动播放页面
         startPlayerActivity(
@@ -372,9 +400,16 @@ class PlaybackManager private constructor(context: Context) {
         // 验证平台可用性
         val platform = getValidPlatform(recentPlay.platform)
 
-        // 获取歌曲详情
+        // 使用带缓存的Repository获取歌曲详情
+        val cachedRepository = CachedMusicRepository(context)
         val detail = withContext(Dispatchers.IO) {
-            repository.getSongDetail(platform, recentPlay.id, "320k")
+            cachedRepository.getSongDetail(
+                platform = platform,
+                songId = recentPlay.id,
+                quality = "320k",
+                songName = recentPlay.name,
+                artists = recentPlay.artists
+            )
         }
 
         return if (detail != null) {
@@ -455,9 +490,16 @@ class PlaybackManager private constructor(context: Context) {
         playlistManager.addSong(playlistSong)
 
         // 尝试获取歌曲详情（用于歌词和封面）
+        val cachedRepository = CachedMusicRepository(context)
         val detail = withContext(Dispatchers.IO) {
             try {
-                repository.getSongDetail(validPlatform, songId, "320k")
+                cachedRepository.getSongDetail(
+                    platform = validPlatform,
+                    songId = songId,
+                    quality = "320k",
+                    songName = songName,
+                    artists = artist
+                )
             } catch (e: Exception) {
                 null
             }

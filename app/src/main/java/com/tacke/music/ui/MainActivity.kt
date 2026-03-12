@@ -31,6 +31,7 @@ import com.tacke.music.data.api.PlaylistTag
 import com.tacke.music.data.api.RetrofitClient
 import com.tacke.music.data.model.ChartSong
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
@@ -290,6 +291,12 @@ class MainActivity : AppCompatActivity() {
                     adapter.setSelectedItems(selectedSongIds.toSet())
                     updateBatchActionBar()
                 }
+            },
+            lifecycleScope = lifecycleScope,
+            onCoverLoaded = { songId, coverPath ->
+                // 更新歌曲封面URL
+                val song = currentSongList.find { it.id == songId }
+                song?.coverUrl = coverPath
             }
         )
         binding.rvSongs.layoutManager = LinearLayoutManager(this)
@@ -349,6 +356,8 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showBatchActionBar() {
         binding.batchActionBarContainer.root.visibility = View.VISIBLE
+        // 隐藏清空按钮（搜索列表、推荐页榜单列表、推荐页歌单列表不需要清空功能）
+        binding.batchActionBarContainer.btnClearAll.visibility = View.GONE
         updateBatchActionBar()
         setupBatchActionListeners()
     }
@@ -518,6 +527,7 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * 首页榜单卡片歌曲点击：添加到当前播放列表并立即播放（不清空现有列表）
+     * 非下载管理页面，需要重新请求URL进行播放
      */
     private fun playChartSong(chartType: ChartType, index: Int) {
         val songs = chartSongsMap[chartType]
@@ -530,37 +540,46 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             binding.progressBar.visibility = View.VISIBLE
             try {
-                val platform = when (chartSong.source.lowercase()) {
-                    "kuwo" -> MusicRepository.Platform.KUWO
-                    "netease" -> MusicRepository.Platform.NETEASE
-                    else -> MusicRepository.Platform.KUWO
+                val platform = MusicRepository.Platform.NETEASE
+                val cachedRepository = CachedMusicRepository(this@MainActivity)
+
+                // 优先使用榜单数据中的封面，如果为空则尝试从网易云搜索获取
+                val coverUrl = if (!chartSong.cover.isNullOrEmpty()) {
+                    chartSong.cover
+                } else {
+                    withContext(Dispatchers.IO) {
+                        cachedRepository.getCoverUrlFromNetease(chartSong.name, chartSong.artist)
+                    }
                 }
 
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
                 val detail = withContext(Dispatchers.IO) {
-                    repository.getSongDetail(platform, chartSong.id, "320k")
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = chartSong.id,
+                        quality = "320k",
+                        songName = chartSong.name,
+                        artists = chartSong.artist,
+                        useCache = true
+                    )
                 }
 
                 if (detail != null) {
-                    // 创建Song对象
                     val song = Song(
                         index = index,
                         id = chartSong.id,
                         name = chartSong.name,
                         artists = chartSong.artist,
-                        coverUrl = chartSong.cover
+                        coverUrl = detail.cover ?: coverUrl ?: chartSong.cover
                     )
                     val playlistSong = playlistManager.convertToPlaylistSong(song, platform)
 
-                    // 获取添加前的播放列表大小，用于设置当前播放索引
                     val currentPlaylistSize = playlistManager.currentPlaylist.value.size
 
-                    // 添加到播放列表（不清空现有列表）
                     playlistManager.addSong(playlistSong)
 
-                    // 设置为当前播放的歌曲（新添加的歌曲索引）
                     playlistManager.setCurrentIndex(currentPlaylistSize)
 
-                    // 播放歌曲
                     playbackManager.playFromPlaylist(
                         context = this@MainActivity,
                         song = playlistSong,
@@ -1003,14 +1022,26 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * 添加歌曲到播放列表并播放（搜索列表使用）
+     * 非下载管理页面，需要重新请求URL进行播放
      */
     private fun addToNowPlayingAndPlay(song: Song) {
         binding.progressBar.visibility = View.VISIBLE
 
         lifecycleScope.launch {
             try {
+                val cachedRepository = CachedMusicRepository(this@MainActivity)
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                // 传递 song.coverUrl 用于酷我平台的相对路径封面解析
                 val detail = withContext(Dispatchers.IO) {
-                    repository.getSongDetail(currentPlatform, song.id, "320k")
+                    cachedRepository.getSongUrlWithCache(
+                        platform = currentPlatform,
+                        songId = song.id,
+                        quality = "320k",
+                        songName = song.name,
+                        artists = song.artists,
+                        useCache = true,
+                        coverUrlFromSearch = song.coverUrl
+                    )
                 }
                 if (detail != null) {
                     // 先添加到播放列表
@@ -1129,8 +1160,19 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                // 传递 song.coverUrl 用于酷我平台的相对路径封面解析
+                val cachedRepository = CachedMusicRepository(this@MainActivity)
                 val detail = withContext(Dispatchers.IO) {
-                    repository.getSongDetail(currentPlatform, song.id, quality)
+                    cachedRepository.getSongUrlWithCache(
+                        platform = currentPlatform,
+                        songId = song.id,
+                        quality = quality,
+                        songName = song.name,
+                        artists = song.artists,
+                        useCache = true,
+                        coverUrlFromSearch = song.coverUrl
+                    )
                 }
                 if (detail != null) {
                     val downloadManager = DownloadManager.getInstance(this@MainActivity)
@@ -1165,10 +1207,22 @@ class MainActivity : AppCompatActivity() {
             var successCount = 0
             var failCount = 0
 
+            // 非下载管理页面，强制重新获取最新URL
+            val cachedRepository = CachedMusicRepository(this@MainActivity)
+
             songs.forEach { song ->
                 try {
+                    // 传递 song.coverUrl 用于酷我平台的相对路径封面解析
                     val detail = withContext(Dispatchers.IO) {
-                        repository.getSongDetail(currentPlatform, song.id, quality)
+                        cachedRepository.getSongUrlWithCache(
+                            platform = currentPlatform,
+                            songId = song.id,
+                            quality = quality,
+                            songName = song.name,
+                            artists = song.artists,
+                            useCache = true,
+                            coverUrlFromSearch = song.coverUrl
+                        )
                     }
                     if (detail != null) {
                         val downloadManager = DownloadManager.getInstance(this@MainActivity)

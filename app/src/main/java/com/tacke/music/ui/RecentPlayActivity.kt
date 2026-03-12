@@ -15,6 +15,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.model.RecentPlay
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
@@ -372,9 +373,17 @@ class RecentPlayActivity : AppCompatActivity() {
                     MusicRepository.Platform.KUWO
                 }
 
-                // 获取歌曲详情
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                val cachedRepository = CachedMusicRepository(this@RecentPlayActivity)
                 val detail = withContext(Dispatchers.IO) {
-                    MusicRepository().getSongDetail(platform, firstPlay.id, "320k")
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = firstPlay.id,
+                        quality = "320k",
+                        songName = firstPlay.name,
+                        artists = firstPlay.artists,
+                        useCache = true
+                    )
                 }
 
                 if (detail != null) {
@@ -552,6 +561,9 @@ class RecentPlayActivity : AppCompatActivity() {
             var successCount = 0
             var failCount = 0
 
+            // 非下载管理页面，强制重新获取最新URL
+            val cachedRepository = CachedMusicRepository(this@RecentPlayActivity)
+
             recentPlays.forEach { recentPlay ->
                 try {
                     val platform = try {
@@ -559,7 +571,14 @@ class RecentPlayActivity : AppCompatActivity() {
                     } catch (e: Exception) {
                         MusicRepository.Platform.KUWO
                     }
-                    val detail = MusicRepository().getSongDetail(platform, recentPlay.id, quality)
+                    val detail = cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = recentPlay.id,
+                        quality = quality,
+                        songName = recentPlay.name,
+                        artists = recentPlay.artists,
+                        useCache = true
+                    )
                     if (detail != null) {
                         val task = downloadManager.createDownloadTask(
                             Song(
@@ -567,7 +586,7 @@ class RecentPlayActivity : AppCompatActivity() {
                                 id = recentPlay.id,
                                 name = recentPlay.name,
                                 artists = recentPlay.artists,
-                                coverUrl = recentPlay.coverUrl
+                                coverUrl = detail.cover ?: recentPlay.coverUrl
                             ),
                             detail,
                             quality,
