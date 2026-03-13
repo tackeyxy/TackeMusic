@@ -44,11 +44,8 @@ import com.tacke.music.data.model.Song
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
-import com.tacke.music.service.FloatingLyricsService
 import com.tacke.music.service.MusicPlaybackService
 import com.tacke.music.ui.adapter.PlaylistDialogAdapter
-import android.net.Uri
-import android.provider.Settings
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import com.tacke.music.util.ImmersiveStatusBarHelper
@@ -82,7 +79,6 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var gestureDetector: GestureDetector
     private lateinit var seekReceiver: BroadcastReceiver
     private lateinit var playbackControlReceiver: BroadcastReceiver
-    private lateinit var floatingLyricsClosedReceiver: BroadcastReceiver
     private var loadingToast: Toast? = null
 
     private lateinit var playlistManager: PlaylistManager
@@ -90,9 +86,6 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var playbackManager: PlaybackManager
     private lateinit var recentPlayRepository: RecentPlayRepository
     private var isFromEmptyState = false
-
-    // 悬浮歌词权限申请标志
-    private var isRequestingOverlayPermission = false
 
     // Service connection
     private var musicService: MusicPlaybackService? = null
@@ -241,7 +234,6 @@ class PlayerActivity : AppCompatActivity() {
         setupGestureDetector()
         setupSeekReceiver()
         setupPlaybackControlReceiver()
-        setupFloatingLyricsClosedReceiver()
         setupPlayer()
 
         // 启动并绑定服务
@@ -469,10 +461,6 @@ class PlayerActivity : AppCompatActivity() {
                     updatePlayPauseButton(player.isPlaying)
                     // 发送播放进度广播给歌词页面
                     sendPlaybackUpdate(player.currentPosition, player.duration, player.isPlaying)
-                    // 更新悬浮歌词位置
-                    updateFloatingLyricsPosition(player.currentPosition)
-                    // 更新悬浮歌词播放状态
-                    updateFloatingLyricsState(player.isPlaying)
                 }
             }
         }
@@ -532,8 +520,6 @@ class PlayerActivity : AppCompatActivity() {
         if (exoPlayer?.isPlaying == true) {
             startAlbumRotation()
         }
-        // 更新悬浮歌词
-        sendFloatingLyricsUpdate()
     }
 
     private var isRefreshingUrl = false
@@ -1019,23 +1005,8 @@ class PlayerActivity : AppCompatActivity() {
                                 songDetail = detail
                                 songLyrics = detail.lyrics
                                 updateUI(detail)
-                                // 更新悬浮歌词
-                                sendFloatingLyricsUpdate()
                             }
                         }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun setupFloatingLyricsClosedReceiver() {
-        floatingLyricsClosedReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                when (intent?.action) {
-                    FloatingLyricsService.ACTION_FLOATING_LYRICS_CLOSED -> {
-                        // 悬浮窗已关闭，更新按钮状态
-                        updateFloatingLyricsButtonState()
                     }
                 }
             }
@@ -1056,28 +1027,8 @@ class PlayerActivity : AppCompatActivity() {
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(playbackControlReceiver, controlFilter)
 
-        // 注册悬浮窗关闭广播接收器
-        val floatingLyricsClosedFilter = IntentFilter().apply {
-            addAction(FloatingLyricsService.ACTION_FLOATING_LYRICS_CLOSED)
-        }
-        LocalBroadcastManager.getInstance(this).registerReceiver(floatingLyricsClosedReceiver, floatingLyricsClosedFilter)
-
         // 从后台恢复时，同步当前播放的歌曲信息
         syncCurrentPlaybackState()
-
-        // 更新悬浮歌词按钮状态
-        updateFloatingLyricsButtonState()
-
-        // 检查是否是从权限设置页返回，如果是且权限已授予，自动启动悬浮歌词
-        if (isRequestingOverlayPermission) {
-            isRequestingOverlayPermission = false
-            if (Settings.canDrawOverlays(this)) {
-                // 权限已授予，自动启动悬浮歌词
-                if (!FloatingLyricsService.isRunning(this)) {
-                    startFloatingLyrics()
-                }
-            }
-        }
     }
 
     /**
@@ -1161,9 +1112,6 @@ class PlayerActivity : AppCompatActivity() {
 
                 // 更新播放控制UI
                 updateUIForCurrentSong()
-
-                // 更新悬浮歌词
-                sendFloatingLyricsUpdate()
             } else if (currentPlaylistSong != null && currentPlaylistSong.id == songId) {
                 // 歌曲相同，但仍需要更新UI以确保显示正确
                 // 这种情况可能发生在从下载页面播放同一首歌，但Activity被重建后
@@ -1178,12 +1126,6 @@ class PlayerActivity : AppCompatActivity() {
         // 注销播放控制广播接收器
         try {
             LocalBroadcastManager.getInstance(this).unregisterReceiver(playbackControlReceiver)
-        } catch (e: Exception) {
-            // 忽略未注册的错误
-        }
-        // 注销悬浮窗关闭广播接收器
-        try {
-            LocalBroadcastManager.getInstance(this).unregisterReceiver(floatingLyricsClosedReceiver)
         } catch (e: Exception) {
             // 忽略未注册的错误
         }
@@ -1361,15 +1303,6 @@ class PlayerActivity : AppCompatActivity() {
                 Toast.makeText(this, "暂无歌曲", Toast.LENGTH_SHORT).show()
             } else {
                 showMoreOptions()
-            }
-        }
-
-        // 悬浮歌词按钮点击事件 - 显示/隐藏悬浮歌词窗口
-        binding.btnFloatingLyrics.setOnClickListener {
-            if (isFromEmptyState) {
-                Toast.makeText(this, "暂无歌曲", Toast.LENGTH_SHORT).show()
-            } else {
-                toggleFloatingLyrics()
             }
         }
     }
@@ -1950,9 +1883,6 @@ class PlayerActivity : AppCompatActivity() {
             songDetail?.let { detail ->
                 playbackPreferences.saveSongDetail(songId, detail)
             }
-
-            // 更新悬浮歌词 - 切换歌曲后立即更新歌词显示
-            sendFloatingLyricsUpdate()
         }
     }
 
@@ -2004,9 +1934,6 @@ class PlayerActivity : AppCompatActivity() {
             songDetail?.let { detail ->
                 playbackPreferences.saveSongDetail(songId, detail)
             }
-
-            // 更新悬浮歌词 - 切换歌曲后立即更新歌词显示
-            sendFloatingLyricsUpdate()
         }
     }
 
@@ -2265,16 +2192,6 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnShuffle.setImageResource(iconRes)
     }
 
-    /**
-     * 更新悬浮歌词按钮状态
-     * 移除状态回显，按钮始终保持默认样式
-     */
-    private fun updateFloatingLyricsButtonState() {
-        // 按钮始终保持默认样式，不显示状态回显
-        binding.btnFloatingLyrics.setColorFilter(ContextCompat.getColor(this, R.color.text_secondary))
-        binding.btnFloatingLyrics.alpha = 1.0f
-    }
-
     override fun onDestroy() {
         super.onDestroy()
         savePlaybackState()
@@ -2291,95 +2208,6 @@ class PlayerActivity : AppCompatActivity() {
             LocalBroadcastManager.getInstance(this).unregisterReceiver(playbackControlReceiver)
         } catch (e: Exception) {
             // 忽略未注册的错误
-        }
-    }
-
-    // 悬浮歌词相关方法
-    /**
-     * 显示/隐藏悬浮歌词窗口
-     * 仅检测悬浮窗权限，默认功能已开启
-     */
-    private fun toggleFloatingLyrics() {
-        // 检查悬浮窗权限
-        if (!Settings.canDrawOverlays(this)) {
-            requestOverlayPermission()
-            return
-        }
-
-        // 检查服务是否正在运行
-        if (FloatingLyricsService.isRunning(this)) {
-            // 停止悬浮歌词
-            stopFloatingLyrics()
-            Toast.makeText(this, "悬浮歌词已关闭", Toast.LENGTH_SHORT).show()
-        } else {
-            // 启动悬浮歌词
-            startFloatingLyrics()
-        }
-
-        // 更新悬浮歌词按钮状态
-        updateFloatingLyricsButtonState()
-    }
-
-    private fun requestOverlayPermission() {
-        Toast.makeText(this, "需要悬浮窗权限才能显示悬浮歌词", Toast.LENGTH_LONG).show()
-        isRequestingOverlayPermission = true
-        val intent = Intent(
-            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-            Uri.parse("package:$packageName")
-        )
-        startActivity(intent)
-    }
-
-    private fun startFloatingLyrics() {
-        val intent = Intent(this, FloatingLyricsService::class.java).apply {
-            action = FloatingLyricsService.ACTION_SHOW_FLOATING_LYRICS
-            putExtra(FloatingLyricsService.EXTRA_LYRICS, songLyrics ?: songDetail?.lyrics)
-            putExtra(FloatingLyricsService.EXTRA_SONG_NAME, songName)
-            putExtra(FloatingLyricsService.EXTRA_ARTISTS, songArtists)
-            putExtra(FloatingLyricsService.EXTRA_LYRIC_COLOR, LyricSettingsActivity.getFloatingLyricColor(this@PlayerActivity))
-        }
-        // 使用 startForegroundService 启动服务（Android 8.0+ 要求）
-        ContextCompat.startForegroundService(this, intent)
-        Toast.makeText(this, "悬浮歌词已开启", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun stopFloatingLyrics() {
-        val intent = Intent(this, FloatingLyricsService::class.java).apply {
-            action = FloatingLyricsService.ACTION_HIDE_FLOATING_LYRICS
-        }
-        startService(intent)
-    }
-
-    private fun updateFloatingLyricsPosition(position: Long) {
-        if (FloatingLyricsService.isRunning(this)) {
-            val intent = Intent(this, FloatingLyricsService::class.java).apply {
-                action = FloatingLyricsService.ACTION_UPDATE_POSITION
-                putExtra(FloatingLyricsService.EXTRA_POSITION, position)
-            }
-            startService(intent)
-        }
-    }
-
-    private fun updateFloatingLyricsState(isPlaying: Boolean) {
-        if (FloatingLyricsService.isRunning(this)) {
-            val intent = Intent(this, FloatingLyricsService::class.java).apply {
-                action = FloatingLyricsService.ACTION_PLAYBACK_STATE_CHANGED
-                putExtra(FloatingLyricsService.EXTRA_IS_PLAYING, isPlaying)
-            }
-            startService(intent)
-        }
-    }
-
-    private fun sendFloatingLyricsUpdate() {
-        if (FloatingLyricsService.isRunning(this)) {
-            val intent = Intent(this, FloatingLyricsService::class.java).apply {
-                action = FloatingLyricsService.ACTION_UPDATE_LYRICS
-                putExtra(FloatingLyricsService.EXTRA_LYRICS, songLyrics ?: songDetail?.lyrics)
-                putExtra(FloatingLyricsService.EXTRA_SONG_NAME, songName)
-                putExtra(FloatingLyricsService.EXTRA_ARTISTS, songArtists)
-                putExtra(FloatingLyricsService.EXTRA_LYRIC_COLOR, LyricSettingsActivity.getFloatingLyricColor(this@PlayerActivity))
-            }
-            startService(intent)
         }
     }
 

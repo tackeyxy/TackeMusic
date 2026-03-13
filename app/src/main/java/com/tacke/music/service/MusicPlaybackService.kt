@@ -144,21 +144,7 @@ class MusicPlaybackService : Service() {
         }
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
 
-        // 直接发送歌词更新广播给悬浮歌词服务（确保悬浮歌词能及时更新）
-        sendFloatingLyricsUpdate(detail, playlistSong)
-    }
-
-    /**
-     * 发送歌词更新广播给悬浮歌词服务
-     */
-    private fun sendFloatingLyricsUpdate(detail: SongDetail, playlistSong: PlaylistSong) {
-        val intent = Intent(FloatingLyricsService.ACTION_UPDATE_LYRICS).apply {
-            putExtra(FloatingLyricsService.EXTRA_LYRICS, detail.lyrics)
-            putExtra(FloatingLyricsService.EXTRA_SONG_NAME, playlistSong.name)
-            putExtra(FloatingLyricsService.EXTRA_ARTISTS, playlistSong.artists)
         }
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
-    }
 
     private fun initializePlayer() {
         exoPlayer = ExoPlayer.Builder(this).build()
@@ -166,8 +152,6 @@ class MusicPlaybackService : Service() {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 updateNotification()
                 updateMediaSessionState()
-                // 发送播放状态变化广播给悬浮歌词
-                sendPlaybackStateChangedBroadcast(isPlaying)
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -237,16 +221,6 @@ class MusicPlaybackService : Service() {
                 }
             }
         }
-    }
-
-    /**
-     * 发送播放状态变化广播给悬浮歌词服务
-     */
-    private fun sendPlaybackStateChangedBroadcast(isPlaying: Boolean) {
-        val intent = Intent(FloatingLyricsService.ACTION_PLAYBACK_STATE_CHANGED).apply {
-            putExtra(FloatingLyricsService.EXTRA_IS_PLAYING, isPlaying)
-        }
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
     }
 
     private fun handlePlaybackEnded() {

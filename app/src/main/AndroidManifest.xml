@@ -22,7 +22,6 @@
     <!-- APK下载和安装权限 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- 读取系统日志权限（Android 4.1+ 需要此权限来捕获日志） -->
     <uses-permission android:name="android.permission.READ_LOGS"
         tools:ignore="ProtectedPermissions" />
@@ -134,13 +133,6 @@
         <!-- Android 16: 前台服务需要明确指定 foregroundServiceType -->
         <service
             android:name=".service.MusicPlaybackService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback"
-            android:permission="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-
-        <service
-            android:name=".service.FloatingLyricsService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback"

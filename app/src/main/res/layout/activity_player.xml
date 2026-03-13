@@ -216,16 +216,6 @@
         android:layout_marginBottom="16dp"
         app:layout_constraintBottom_toBottomOf="parent">
 
-        <!-- 悬浮歌词按钮 -->
-        <ImageButton
-            android:id="@+id/btnFloatingLyrics"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_floating_lyrics"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:tint="@color/text_secondary"
-            android:contentDescription="悬浮歌词" />
-
         <!-- 播放列表图标 -->
         <ImageButton
             android:id="@+id/btnPlaylist"
