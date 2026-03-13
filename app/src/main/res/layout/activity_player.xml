@@ -76,6 +76,19 @@
 
         </LinearLayout>
 
+        <!-- 更多选项 -->
+        <ImageButton
+            android:id="@+id/btnMore"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_more_vert"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/text_primary"
+            android:contentDescription="更多"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent" />
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <!-- 唱片区域 -->
@@ -286,16 +299,6 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:tint="@color/text_secondary"
             android:contentDescription="随机播放" />
-
-        <!-- 更多选项 -->
-        <ImageButton
-            android:id="@+id/btnMore"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_more_vert"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:tint="@color/text_secondary"
-            android:contentDescription="更多" />
 
     </LinearLayout>
 
