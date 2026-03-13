@@ -2,6 +2,7 @@ package com.tacke.music.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -17,15 +18,20 @@ import com.google.android.material.tabs.TabLayout
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.model.DownloadTask
+import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
+import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityDownloadBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
+import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.DownloadTaskAdapter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class DownloadActivity : AppCompatActivity() {
 
@@ -607,6 +613,7 @@ class DownloadActivity : AppCompatActivity() {
         lifecycleScope.launch {
             var addedCount = 0
             var duplicateCount = 0
+            val addedSongs = mutableListOf<Pair<PlaylistSong, MusicRepository.Platform>>()
 
             tasks.forEach { task ->
                 // 使用任务中保存的平台信息
@@ -623,9 +630,34 @@ class DownloadActivity : AppCompatActivity() {
                 val currentList = playlistManager.currentPlaylist.value
                 if (currentList.none { it.id == playlistSong.id }) {
                     playlistManager.addSong(playlistSong)
+                    addedSongs.add(Pair(playlistSong, validPlatform))
                     addedCount++
                 } else {
                     duplicateCount++
+                }
+            }
+
+            // 关键修复：预获取第一首新增歌曲的URL并缓存
+            // 这样当用户进入播放页时，第一首歌的URL已经准备好了
+            if (addedSongs.isNotEmpty()) {
+                val (firstSong, firstPlatform) = addedSongs.first()
+                val cachedRepository = CachedMusicRepository(this@DownloadActivity)
+                withContext(Dispatchers.IO) {
+                    try {
+                        Log.d("DownloadActivity", "预获取第一首歌曲URL: ${firstSong.name}")
+                        cachedRepository.getSongUrlWithCache(
+                            platform = firstPlatform,
+                            songId = firstSong.id,
+                            quality = "320k",
+                            songName = firstSong.name,
+                            artists = firstSong.artists,
+                            useCache = true,
+                            coverUrlFromSearch = firstSong.coverUrl
+                        )
+                        Log.d("DownloadActivity", "预获取URL完成: ${firstSong.name}")
+                    } catch (e: Exception) {
+                        Log.e("DownloadActivity", "预获取URL失败: ${firstSong.name}, ${e.message}")
+                    }
                 }
             }
 

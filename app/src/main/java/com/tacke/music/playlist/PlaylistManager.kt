@@ -79,8 +79,10 @@ class PlaylistManager private constructor(context: Context) {
     }
 
     // 添加歌曲到播放列表
-    suspend fun addSong(song: PlaylistSong) {
+    // autoPlay: 是否在播放列表为空时自动设置当前索引为0（用于单曲播放场景）
+    suspend fun addSong(song: PlaylistSong, autoPlay: Boolean = false) {
         val currentList = _currentPlaylist.value.toMutableList()
+        val wasEmpty = currentList.isEmpty()
         val existingIndex = currentList.indexOfFirst { it.id == song.id }
         if (existingIndex == -1) {
             // 歌曲不存在，添加新歌曲
@@ -89,6 +91,13 @@ class PlaylistManager private constructor(context: Context) {
             playlistSongDao.insertSong(newSong)
             _currentPlaylist.value = currentList
             playbackPreferences.savePlaylist(currentList)
+
+            // 仅在明确指定autoPlay且列表之前为空时，才设置当前索引
+            // 批量添加时不应自动设置索引，避免非预期的播放行为
+            if (autoPlay && wasEmpty) {
+                _currentIndex.value = 0
+                playbackPreferences.currentIndex = 0
+            }
         } else {
             // 歌曲已存在，更新歌曲信息（如封面）
             val existingSong = currentList[existingIndex]
@@ -101,6 +110,42 @@ class PlaylistManager private constructor(context: Context) {
                 playbackPreferences.savePlaylist(currentList)
             }
         }
+    }
+
+    // 批量添加歌曲到播放列表（不触发自动播放）
+    suspend fun addSongs(songs: List<PlaylistSong>): Pair<Int, Int> {
+        val currentList = _currentPlaylist.value.toMutableList()
+        var addedCount = 0
+        var duplicateCount = 0
+
+        songs.forEach { song ->
+            val existingIndex = currentList.indexOfFirst { it.id == song.id }
+            if (existingIndex == -1) {
+                // 歌曲不存在，添加新歌曲
+                val newSong = song.copy(orderIndex = currentList.size)
+                currentList.add(newSong)
+                addedCount++
+            } else {
+                // 歌曲已存在，更新歌曲信息（如封面）
+                val existingSong = currentList[existingIndex]
+                if (!song.coverUrl.isNullOrEmpty() && existingSong.coverUrl.isNullOrEmpty()) {
+                    val updatedSong = existingSong.copy(coverUrl = song.coverUrl)
+                    currentList[existingIndex] = updatedSong
+                }
+                duplicateCount++
+            }
+        }
+
+        // 批量插入数据库
+        if (addedCount > 0) {
+            playlistSongDao.insertSongs(currentList.filter { song ->
+                songs.any { it.id == song.id }
+            })
+            _currentPlaylist.value = currentList
+            playbackPreferences.savePlaylist(currentList)
+        }
+
+        return Pair(addedCount, duplicateCount)
     }
 
     // 从播放列表移除歌曲

@@ -3,6 +3,7 @@ package com.tacke.music.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -20,6 +21,7 @@ import com.tacke.music.data.api.RetrofitClient
 import com.tacke.music.data.api.SongDetailInfo
 import com.tacke.music.data.api.TrackArtist
 import com.tacke.music.data.api.TrackAlbum
+import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
@@ -466,6 +468,28 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                     platform = "netease"
                 )
                 playlistManager.addSong(playlistSong)
+
+                // 关键修复：预获取刚添加歌曲的URL并缓存
+                // 这样当用户进入播放页时，歌曲的URL已经准备好了
+                val cachedRepository = CachedMusicRepository(this@NeteasePlaylistDetailActivity)
+                withContext(Dispatchers.IO) {
+                    try {
+                        Log.d("NeteasePlaylistDetail", "预获取单曲URL: ${playlistSong.name}")
+                        cachedRepository.getSongUrlWithCache(
+                            platform = MusicRepository.Platform.NETEASE,
+                            songId = playlistSong.id,
+                            quality = "320k",
+                            songName = playlistSong.name,
+                            artists = playlistSong.artists,
+                            useCache = true,
+                            coverUrlFromSearch = playlistSong.coverUrl
+                        )
+                        Log.d("NeteasePlaylistDetail", "预获取URL完成: ${playlistSong.name}")
+                    } catch (e: Exception) {
+                        Log.e("NeteasePlaylistDetail", "预获取URL失败: ${playlistSong.name}, ${e.message}")
+                    }
+                }
+
                 Toast.makeText(this@NeteasePlaylistDetailActivity, "已添加到播放列表", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this@NeteasePlaylistDetailActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -511,6 +535,7 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             try {
                 var addedCount = 0
                 var duplicateCount = 0
+                val addedSongs = mutableListOf<PlaylistSong>()
                 tracks.forEach { track ->
                     val playlistSong = com.tacke.music.data.model.PlaylistSong(
                         id = track.id.toString(),
@@ -522,11 +547,37 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                     val currentList = playlistManager.currentPlaylist.value
                     if (currentList.none { it.id == playlistSong.id }) {
                         playlistManager.addSong(playlistSong)
+                        addedSongs.add(playlistSong)
                         addedCount++
                     } else {
                         duplicateCount++
                     }
                 }
+
+                // 关键修复：预获取第一首新增歌曲的URL并缓存
+                // 这样当用户进入播放页时，第一首歌的URL已经准备好了
+                if (addedSongs.isNotEmpty()) {
+                    val firstSong = addedSongs.first()
+                    val cachedRepository = CachedMusicRepository(this@NeteasePlaylistDetailActivity)
+                    withContext(Dispatchers.IO) {
+                        try {
+                            Log.d("NeteasePlaylistDetail", "预获取第一首歌曲URL: ${firstSong.name}")
+                            cachedRepository.getSongUrlWithCache(
+                                platform = MusicRepository.Platform.NETEASE,
+                                songId = firstSong.id,
+                                quality = "320k",
+                                songName = firstSong.name,
+                                artists = firstSong.artists,
+                                useCache = true,
+                                coverUrlFromSearch = firstSong.coverUrl
+                            )
+                            Log.d("NeteasePlaylistDetail", "预获取URL完成: ${firstSong.name}")
+                        } catch (e: Exception) {
+                            Log.e("NeteasePlaylistDetail", "预获取URL失败: ${firstSong.name}, ${e.message}")
+                        }
+                    }
+                }
+
                 val message = when {
                     duplicateCount > 0 -> "已添加 $addedCount 首，$duplicateCount 首已存在"
                     else -> "已添加 $addedCount 首歌曲到正在播放列表"

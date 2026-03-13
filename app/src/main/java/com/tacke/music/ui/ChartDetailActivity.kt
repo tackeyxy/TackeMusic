@@ -3,6 +3,7 @@ package com.tacke.music.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -16,6 +17,7 @@ import com.tacke.music.R
 import com.tacke.music.data.api.ChartType
 import com.tacke.music.data.api.RetrofitClient
 import com.tacke.music.data.model.ChartSong
+import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
@@ -419,6 +421,28 @@ class ChartDetailActivity : AppCompatActivity() {
                     platform
                 )
                 playlistManager.addSong(playlistSong)
+
+                // 关键修复：预获取刚添加歌曲的URL并缓存
+                // 这样当用户进入播放页时，歌曲的URL已经准备好了
+                val cachedRepository = CachedMusicRepository(this@ChartDetailActivity)
+                withContext(Dispatchers.IO) {
+                    try {
+                        Log.d("ChartDetailActivity", "预获取单曲URL: ${playlistSong.name}")
+                        cachedRepository.getSongUrlWithCache(
+                            platform = platform,
+                            songId = playlistSong.id,
+                            quality = "320k",
+                            songName = playlistSong.name,
+                            artists = playlistSong.artists,
+                            useCache = true,
+                            coverUrlFromSearch = playlistSong.coverUrl
+                        )
+                        Log.d("ChartDetailActivity", "预获取URL完成: ${playlistSong.name}")
+                    } catch (e: Exception) {
+                        Log.e("ChartDetailActivity", "预获取URL失败: ${playlistSong.name}, ${e.message}")
+                    }
+                }
+
                 Toast.makeText(this@ChartDetailActivity, "已添加到正在播放列表", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this@ChartDetailActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -722,19 +746,21 @@ class ChartDetailActivity : AppCompatActivity() {
     }
 
     private fun addSongsToNowPlaying(selectedSongs: List<ChartSong>) {
+        // 立即退出多选模式，提升用户体验
+        exitMultiSelectMode()
+
         lifecycleScope.launch {
             try {
                 val playlistManager = PlaylistManager.getInstance(this@ChartDetailActivity)
-                var addedCount = 0
-                var duplicateCount = 0
 
-                selectedSongs.forEach { song ->
+                // 转换为播放列表歌曲
+                val playlistSongs = selectedSongs.map { song ->
                     val platform = when (song.source.lowercase()) {
                         "kuwo" -> MusicRepository.Platform.KUWO
                         "netease" -> MusicRepository.Platform.NETEASE
                         else -> MusicRepository.Platform.KUWO
                     }
-                    val playlistSong = playlistManager.convertToPlaylistSong(
+                    playlistManager.convertToPlaylistSong(
                         com.tacke.music.data.model.Song(
                             index = 0,
                             id = song.id,
@@ -744,21 +770,19 @@ class ChartDetailActivity : AppCompatActivity() {
                         ),
                         platform
                     )
-                    val currentList = playlistManager.currentPlaylist.value
-                    if (currentList.none { it.id == playlistSong.id }) {
-                        playlistManager.addSong(playlistSong)
-                        addedCount++
-                    } else {
-                        duplicateCount++
-                    }
                 }
+
+                // 使用批量添加方法，不触发自动播放，不预获取URL
+                // 新歌曲追加到列表末尾，不影响当前播放状态
+                val result = playbackManager.addPlaylistSongsWithoutPlay(playlistSongs)
+                val addedCount = result.first
+                val duplicateCount = result.second
 
                 val message = when {
                     duplicateCount > 0 -> "已添加 $addedCount 首，$duplicateCount 首已存在"
                     else -> "已添加 $addedCount 首歌曲到正在播放列表"
                 }
                 Toast.makeText(this@ChartDetailActivity, message, Toast.LENGTH_SHORT).show()
-                exitMultiSelectMode()
             } catch (e: Exception) {
                 Toast.makeText(
                     this@ChartDetailActivity,

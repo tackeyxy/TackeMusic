@@ -1,6 +1,7 @@
 package com.tacke.music.ui
 
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -608,19 +609,17 @@ class PlaylistDetailActivity : AppCompatActivity() {
     }
 
     private fun addSongsToNowPlaying(songs: List<PlaylistSong>) {
+        // 立即退出多选模式，提升用户体验
+        exitMultiSelectMode()
+
         lifecycleScope.launch {
             try {
-                var addedCount = 0
-                var duplicateCount = 0
-                songs.forEach { song ->
-                    val currentList = playlistManager.currentPlaylist.value
-                    if (currentList.none { it.id == song.id }) {
-                        playlistManager.addSong(song)
-                        addedCount++
-                    } else {
-                        duplicateCount++
-                    }
-                }
+                // 使用批量添加方法，不触发自动播放，不预获取URL
+                // 新歌曲追加到列表末尾，不影响当前播放状态
+                val result = playbackManager.addPlaylistSongsWithoutPlay(songs)
+                val addedCount = result.first
+                val duplicateCount = result.second
+
                 val message = when {
                     duplicateCount > 0 -> "已添加 $addedCount 首，$duplicateCount 首已存在"
                     else -> "已添加 $addedCount 首歌曲到正在播放列表"

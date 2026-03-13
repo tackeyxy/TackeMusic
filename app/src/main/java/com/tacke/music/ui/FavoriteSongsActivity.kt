@@ -3,6 +3,7 @@ package com.tacke.music.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -23,6 +24,7 @@ import com.bumptech.glide.Glide
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.db.FavoriteSongEntity
+import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
@@ -448,26 +450,28 @@ class FavoriteSongsActivity : AppCompatActivity() {
     }
 
     private fun addSongsToNowPlaying(songs: List<FavoriteSongEntity>) {
+        // 立即退出多选模式，提升用户体验
+        exitMultiSelectMode()
+
         lifecycleScope.launch {
             try {
-                var addedCount = 0
-                var duplicateCount = 0
-                songs.forEach { song ->
-                    val playlistSong = com.tacke.music.data.model.PlaylistSong(
+                // 转换为播放列表歌曲
+                val playlistSongs = songs.map { song ->
+                    com.tacke.music.data.model.PlaylistSong(
                         id = song.id,
                         name = song.name,
                         artists = song.artists,
                         coverUrl = song.coverUrl,
                         platform = song.platform
                     )
-                    val currentList = playlistManager.currentPlaylist.value
-                    if (currentList.none { it.id == playlistSong.id }) {
-                        playlistManager.addSong(playlistSong)
-                        addedCount++
-                    } else {
-                        duplicateCount++
-                    }
                 }
+
+                // 使用批量添加方法，不触发自动播放，不预获取URL
+                // 新歌曲追加到列表末尾，不影响当前播放状态
+                val result = playbackManager.addPlaylistSongsWithoutPlay(playlistSongs)
+                val addedCount = result.first
+                val duplicateCount = result.second
+
                 val message = when {
                     duplicateCount > 0 -> "已添加 $addedCount 首，$duplicateCount 首已存在"
                     else -> "已添加 $addedCount 首歌曲到正在播放列表"

@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ObjectAnimator
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.ImageView
@@ -30,6 +31,7 @@ import com.tacke.music.data.api.HighQualityPlaylist
 import com.tacke.music.data.api.PlaylistTag
 import com.tacke.music.data.api.RetrofitClient
 import com.tacke.music.data.model.ChartSong
+import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
@@ -1324,26 +1326,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addSongsToNowPlaying(songs: List<Song>) {
+        // 立即退出多选模式，提升用户体验
+        exitMultiSelectMode()
+
         lifecycleScope.launch {
             try {
-                var addedCount = 0
-                var duplicateCount = 0
-                songs.forEach { song ->
-                    val playlistSong = playlistManager.convertToPlaylistSong(song, currentPlatform)
-                    val currentList = playlistManager.currentPlaylist.value
-                    if (currentList.none { it.id == playlistSong.id }) {
-                        playlistManager.addSong(playlistSong)
-                        addedCount++
-                    } else {
-                        duplicateCount++
-                    }
+                // 使用批量添加方法，不触发自动播放，不预获取URL
+                // 新歌曲追加到列表末尾，不影响当前播放状态
+                val result = playbackManager.addSongsToPlaylistWithoutPlay(songs, currentPlatform)
+                val addedCount = result.first
+                val duplicateCount = result.second
+
+                // 构建提示消息
+                val message = StringBuilder()
+                if (addedCount > 0) {
+                    message.append("已添加 $addedCount 首到正在播放列表")
                 }
-                val message = when {
-                    duplicateCount > 0 -> "已添加 $addedCount 首，$duplicateCount 首已存在"
-                    else -> "已添加 $addedCount 首歌曲到正在播放列表"
+                if (duplicateCount > 0) {
+                    if (message.isNotEmpty()) message.append("，")
+                    message.append("$duplicateCount 首已存在")
                 }
-                Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
-                exitMultiSelectMode()
+
+                Toast.makeText(this@MainActivity, message.toString(), Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(
                     this@MainActivity,

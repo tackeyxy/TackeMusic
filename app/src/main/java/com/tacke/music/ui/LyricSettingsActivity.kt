@@ -202,7 +202,7 @@ class LyricSettingsActivity : AppCompatActivity() {
                     width = 0
                     height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT
                     columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
-                    setMargins(8, 8, 8, 8)
+                    setMargins(4, 4, 4, 4)
                 }
 
                 // 颜色圆点

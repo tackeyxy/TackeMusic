@@ -14,6 +14,8 @@ import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.SongPreloadManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.PlayerActivity
+import com.tacke.music.ui.SettingsActivity
+import com.tacke.music.utils.CoverImageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -33,6 +35,7 @@ class PlaybackManager private constructor(context: Context) {
     private val playlistManager = PlaylistManager.getInstance(appContext)
     private val playbackPreferences = PlaybackPreferences.getInstance(appContext)
     private val preloadManager = SongPreloadManager.getInstance(appContext)
+    private val cachedMusicRepository = CachedMusicRepository(appContext)
 
     companion object {
         private const val TAG = "PlaybackManager"
@@ -340,10 +343,12 @@ class PlaybackManager private constructor(context: Context) {
      * 
      * @param context 上下文
      * @param song 歌单中的歌曲
+     * @param autoSkipOnFailure 获取失败时是否自动跳过到下一首
      */
     suspend fun playFromPlaylistFast(
         context: Context,
-        song: PlaylistSong
+        song: PlaylistSong,
+        autoSkipOnFailure: Boolean = true
     ) {
         Log.d(TAG, "快速播放歌单歌曲: ${song.name}")
 
@@ -371,8 +376,28 @@ class PlaybackManager private constructor(context: Context) {
         }
 
         if (urlDetail == null) {
-            withContext(Dispatchers.Main) {
-                Toast.makeText(context, "获取歌曲链接失败", Toast.LENGTH_SHORT).show()
+            Log.e(TAG, "获取歌曲链接失败: ${song.name} - ${song.artists}")
+            
+            // 如果允许自动跳过，尝试播放下一首
+            if (autoSkipOnFailure) {
+                Log.d(TAG, "尝试自动跳过到下一首")
+                val nextSong = playlistManager.next()
+                if (nextSong != null) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "'${song.name}' 无法播放，自动切换到下一首", Toast.LENGTH_SHORT).show()
+                    }
+                    // 递归调用播放下一首，但只尝试一次自动跳过
+                    playFromPlaylistFast(context, nextSong, autoSkipOnFailure = false)
+                    return
+                } else {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "当前歌曲无法播放，且没有下一首", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "获取歌曲链接失败", Toast.LENGTH_SHORT).show()
+                }
             }
             return
         }
@@ -487,7 +512,7 @@ class PlaybackManager private constructor(context: Context) {
     /**
      * 添加歌曲到播放列表但不立即播放
      * 在后台自动预加载歌词和封面
-     * 
+     *
      * @param song 歌曲
      * @param platform 平台
      */
@@ -504,8 +529,8 @@ class PlaybackManager private constructor(context: Context) {
             platform = platform.name
         )
 
-        // 添加到播放列表
-        playlistManager.addSong(playlistSong)
+        // 添加到播放列表（不触发自动播放）
+        playlistManager.addSong(playlistSong, autoPlay = false)
 
         // 后台预加载歌曲信息
         preloadManager.preloadSongInfo(song, platform)
@@ -515,17 +540,118 @@ class PlaybackManager private constructor(context: Context) {
 
     /**
      * 添加播放列表歌曲但不立即播放
-     * 
+     *
      * @param song 播放列表歌曲
      */
     suspend fun addPlaylistSongWithoutPlay(song: PlaylistSong) {
-        // 添加到播放列表
-        playlistManager.addSong(song)
+        // 添加到播放列表（不触发自动播放）
+        playlistManager.addSong(song, autoPlay = false)
 
         // 后台预加载
         preloadManager.preloadPlaylistSong(song)
 
         Log.d(TAG, "添加播放列表歌曲并后台预加载: ${song.name}")
+    }
+
+    /**
+     * 批量添加歌曲到播放列表但不立即播放
+     * 新添加的歌曲追加到列表末尾，不替换当前播放，不触发自动播放
+     *
+     * @param songs 歌曲列表
+     * @param platform 平台
+     * @return Pair<添加数量, 重复数量>
+     */
+    suspend fun addSongsToPlaylistWithoutPlay(
+        songs: List<Song>,
+        platform: MusicRepository.Platform
+    ): Pair<Int, Int> {
+        // 转换为播放列表歌曲
+        val playlistSongs = songs.map { song ->
+            PlaylistSong(
+                id = song.id,
+                name = song.name,
+                artists = song.artists,
+                coverUrl = song.coverUrl ?: "",
+                platform = platform.name
+            )
+        }
+
+        // 批量添加到播放列表（不触发自动播放）
+        val result = playlistManager.addSongs(playlistSongs)
+
+        // 关键优化：同步预加载第一首歌的信息，确保用户进入播放页后可以立即播放
+        // 其余歌曲在后台异步预加载
+        if (songs.isNotEmpty()) {
+            val firstSong = songs.first()
+            try {
+                Log.d(TAG, "同步预加载第一首歌信息: ${firstSong.name}")
+
+                // 使用用户设置的默认下载音质进行预加载
+                val defaultQuality = SettingsActivity.getDefaultDownloadQuality(appContext)
+                
+                // 获取歌曲详情（优先从缓存获取，如果没有缓存则从网络获取）
+                val detail = cachedMusicRepository.getSongDetail(
+                    platform = platform,
+                    songId = firstSong.id,
+                    quality = defaultQuality,
+                    coverUrlFromSearch = firstSong.coverUrl,
+                    songName = firstSong.name,
+                    artists = firstSong.artists
+                )
+
+                if (detail != null) {
+                    Log.d(TAG, "第一首歌信息预加载成功: ${firstSong.name}, 封面=${detail.cover != null}, 歌词=${detail.lyrics != null}")
+
+                    // 关键修复：将歌曲详情保存到 playbackPreferences，这样进入播放页时可以恢复
+                    playbackPreferences.saveSongDetail(firstSong.id, detail)
+
+                    // 如果封面URL有效，预下载封面图片到本地缓存
+                    if (!detail.cover.isNullOrEmpty()) {
+                        CoverImageManager.downloadAndCacheCover(
+                            context = appContext,
+                            songId = firstSong.id,
+                            platform = platform.name,
+                            quality = defaultQuality,
+                            songName = firstSong.name,
+                            artist = firstSong.artists
+                        )
+                    }
+                } else {
+                    Log.w(TAG, "第一首歌信息预加载失败: ${firstSong.name}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "预加载第一首歌信息异常: ${firstSong.name}", e)
+            }
+
+            // 其余歌曲在后台异步预加载
+            if (songs.size > 1) {
+                songs.drop(1).forEach { song ->
+                    preloadManager.preloadSongInfo(song, platform)
+                }
+            }
+        }
+
+        Log.d(TAG, "批量添加 ${result.first} 首歌曲到播放列表，${result.second} 首已存在")
+        return result
+    }
+
+    /**
+     * 批量添加播放列表歌曲但不立即播放
+     *
+     * @param songs 播放列表歌曲列表
+     * @return Pair<添加数量, 重复数量>
+     */
+    suspend fun addPlaylistSongsWithoutPlay(songs: List<PlaylistSong>): Pair<Int, Int> {
+        // 批量添加到播放列表（不触发自动播放）
+        val result = playlistManager.addSongs(songs)
+
+        // 后台预加载
+        songs.forEach { song ->
+            preloadManager.preloadPlaylistSong(song)
+        }
+
+        Log.d(TAG, "批量添加 ${result.first} 首播放列表歌曲，${result.second} 首已存在")
+        return result
     }
 
     /**

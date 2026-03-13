@@ -55,8 +55,8 @@ class CachedMusicRepository(context: Context) {
         // 从网络获取
         Log.d(TAG, "从网络获取歌曲详情: $songId, platform=$platform, coverUrlFromSearch=$coverUrlFromSearch")
         
-        // 获取歌曲URL和歌词
-        val detail = musicRepository.getSongDetail(platform, songId, quality, coverUrlFromSearch)
+        // 获取歌曲URL和歌词（使用双重数据源机制）
+        val detail = musicRepository.getSongDetail(platform, songId, quality, coverUrlFromSearch, songName, artists)
         
         if (detail != null) {
             // 处理封面URL：如果网络请求没有返回封面，根据平台使用不同的获取逻辑
@@ -170,9 +170,9 @@ class CachedMusicRepository(context: Context) {
             }
         }
 
-        // 强制从网络获取最新的URL
+        // 强制从网络获取最新的URL（使用双重数据源机制）
         Log.d(TAG, "从网络获取最新播放URL: $songId, coverUrlFromSearch=$coverUrlFromSearch")
-        val freshDetail = musicRepository.getSongDetail(platform, songId, quality, coverUrlFromSearch)
+        val freshDetail = musicRepository.getSongDetail(platform, songId, quality, coverUrlFromSearch, songName, artists)
 
         if (freshDetail != null) {
             // 处理封面URL：如果网络请求没有返回封面，根据平台使用不同的获取逻辑
@@ -232,16 +232,20 @@ class CachedMusicRepository(context: Context) {
      * @param platform 音乐平台
      * @param songId 歌曲ID
      * @param quality 音质
+     * @param songName 歌曲名称（用于备用数据源搜索）
+     * @param artists 艺术家（用于备用数据源搜索）
      * @return 仅包含URL的歌曲详情（cover和lyrics可能为空）
      */
     suspend fun getSongUrlOnly(
         platform: MusicRepository.Platform,
         songId: String,
-        quality: String = "320k"
+        quality: String = "320k",
+        songName: String = "",
+        artists: String = ""
     ): SongDetail? = withContext(Dispatchers.IO) {
         // 强制从网络获取最新的URL，不传递封面URL以减少请求时间
         Log.d(TAG, "快速获取播放URL: $songId")
-        val freshDetail = musicRepository.getSongDetail(platform, songId, quality, null)
+        val freshDetail = musicRepository.getSongDetail(platform, songId, quality, null, songName, artists)
         freshDetail
     }
 

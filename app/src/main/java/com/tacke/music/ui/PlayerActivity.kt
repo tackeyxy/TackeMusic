@@ -24,6 +24,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -271,6 +272,7 @@ class PlayerActivity : AppCompatActivity() {
         val newLaunchMode = intent.getStringExtra(EXTRA_LAUNCH_MODE) ?: LAUNCH_MODE_NORMAL
         val isNewEmptyState = newLaunchMode == LAUNCH_MODE_EMPTY
         val isRestoreMode = newLaunchMode == LAUNCH_MODE_RESTORE
+        val newSongId = intent.getStringExtra("song_id")
 
         // 如果是恢复模式或空状态，且播放器正在播放，直接更新UI即可
         if ((isNewEmptyState || isRestoreMode) && exoPlayer?.currentMediaItem != null) {
@@ -281,6 +283,9 @@ class PlayerActivity : AppCompatActivity() {
             return
         }
 
+        // 检查是否是新歌曲（从下载页面等入口播放的新歌曲）
+        val isNewSong = newSongId != null && newSongId != songId
+
         parseIntent()
 
         lifecycleScope.launch {
@@ -290,8 +295,8 @@ class PlayerActivity : AppCompatActivity() {
                 if (!restored) {
                     setupEmptyState()
                 }
-            } else {
-                // 立即重置播放器状态，防止上一首歌曲的进度带到新歌曲
+            } else if (isNewSong) {
+                // 新歌曲：立即重置播放器状态，防止上一首歌曲的进度带到新歌曲
                 isSwitchingSong = true
                 exoPlayer?.stop()
                 exoPlayer?.clearMediaItems()
@@ -304,8 +309,11 @@ class PlayerActivity : AppCompatActivity() {
                 // 重新解析 Intent 以获取最新的歌曲信息
                 parseIntent()
 
-                // 无论是否是同一首歌曲，都重新加载并播放
+                // 加载并播放新歌曲
                 loadSongDetailButNotPlay(currentQuality)
+            } else {
+                // 同一首歌曲或没有指定歌曲：只更新UI，不重新加载
+                updateUIForCurrentSong()
             }
         }
     }
@@ -318,7 +326,7 @@ class PlayerActivity : AppCompatActivity() {
         val currentSong = playlistManager.getCurrentSong()
         val currentMediaItem = exoPlayer?.currentMediaItem
 
-        if (currentSong != null && currentMediaItem != null) {
+        if (currentSong != null) {
             // 恢复歌曲信息
             songId = currentSong.id
             songName = currentSong.name
@@ -337,8 +345,9 @@ class PlayerActivity : AppCompatActivity() {
             binding.tvArtist.text = songArtists
 
             // 获取歌曲详情用于封面和歌词等
+            var detail: SongDetail? = null
             try {
-                var detail = playbackPreferences.getSongDetail(songId)
+                detail = playbackPreferences.getSongDetail(songId)
                 if (detail == null) {
                     // 使用带缓存的Repository获取歌曲详情
                     val cachedRepository = CachedMusicRepository(this@PlayerActivity)
@@ -351,6 +360,10 @@ class PlayerActivity : AppCompatActivity() {
                             artists = currentSong.artists
                         )
                     }
+                    // 如果获取到新详情，保存到缓存
+                    if (detail != null) {
+                        playbackPreferences.saveSongDetail(songId, detail)
+                    }
                 }
                 if (detail != null) {
                     songDetail = detail
@@ -358,6 +371,11 @@ class PlayerActivity : AppCompatActivity() {
                     // 优先使用 detail 中的封面，如果没有则使用 currentSong 中的封面
                     songCover = detail.cover ?: currentSong.coverUrl
                     updateUI(detail)
+                    
+                    // 关键修复：如果播放器没有加载媒体项，但有歌曲详情，加载歌曲但不播放
+                    if (currentMediaItem == null) {
+                        loadSongButNotPlay(detail.url, 0, false)
+                    }
                 } else {
                     // 获取详情失败，使用 currentSong 中的封面
                     songCover = currentSong.coverUrl
@@ -365,6 +383,7 @@ class PlayerActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 // 忽略错误，使用 currentSong 中的封面
                 songCover = currentSong.coverUrl
+                Log.e(TAG, "恢复播放状态时获取歌曲详情失败", e)
             }
 
             // 解析封面URL（处理酷我等平台的相对路径）
@@ -417,6 +436,11 @@ class PlayerActivity : AppCompatActivity() {
                 } else {
                     stopAlbumRotation()
                 }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                // 处理播放错误，特别是URL过期导致的403错误
+                handlePlayerError(error)
             }
         })
 
@@ -483,6 +507,11 @@ class PlayerActivity : AppCompatActivity() {
         // 更新UI为当前正在播放的歌曲状态
         songDetail?.let { detail ->
             updateUI(detail)
+            // 更新歌词
+            songLyrics = detail.lyrics
+            detail.lyrics?.let { lyricsText ->
+                parsedLyrics = parseLyrics(lyricsText)
+            }
         }
         binding.tvSongName.text = songName
         binding.tvArtist.text = songArtists
@@ -497,16 +526,79 @@ class PlayerActivity : AppCompatActivity() {
         val currentPosition = exoPlayer?.currentPosition ?: 0
         binding.seekBar.progress = currentPosition.toInt().coerceIn(0, binding.seekBar.max)
         binding.tvCurrentTime.text = formatTime(currentPosition)
+        // 更新歌词显示
+        updateLyrics(currentPosition)
         updatePlayPauseButton(exoPlayer?.isPlaying == true)
         if (exoPlayer?.isPlaying == true) {
             startAlbumRotation()
+        }
+        // 更新悬浮歌词
+        sendFloatingLyricsUpdate()
+    }
+
+    private var isRefreshingUrl = false
+
+    private fun handlePlayerError(error: PlaybackException) {
+        Log.e(TAG, "Player error: ${error.errorCodeName}", error)
+
+        // 检查是否是URL过期导致的错误（403 Forbidden）
+        if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED) {
+
+            // 避免重复刷新
+            if (isRefreshingUrl) return
+            isRefreshingUrl = true
+
+            lifecycleScope.launch {
+                try {
+                    Toast.makeText(this@PlayerActivity, "正在刷新播放链接...", Toast.LENGTH_SHORT).show()
+
+                    // 清除过期的缓存
+                    playbackPreferences.clearSongDetail(songId)
+
+                    // 重新获取歌曲详情
+                    val cachedRepository = CachedMusicRepository(this@PlayerActivity)
+                    val newDetail = withContext(Dispatchers.IO) {
+                        cachedRepository.getSongDetail(
+                            platform = platform,
+                            songId = songId,
+                            quality = currentQuality,
+                            songName = songName,
+                            artists = songArtists
+                        )
+                    }
+
+                    if (newDetail != null) {
+                        // 保存新的详情
+                        playbackPreferences.saveSongDetail(songId, newDetail)
+                        songDetail = newDetail
+
+                        // 获取当前播放位置
+                        val currentPosition = exoPlayer?.currentPosition ?: 0
+
+                        // 使用新URL重新加载
+                        loadSongButNotPlay(newDetail.url, currentPosition, true)
+
+                        Toast.makeText(this@PlayerActivity, "播放链接已刷新", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@PlayerActivity, "无法获取播放链接", Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to refresh URL", e)
+                    Toast.makeText(this@PlayerActivity, "刷新播放链接失败: ${e.message}", Toast.LENGTH_LONG).show()
+                } finally {
+                    isRefreshingUrl = false
+                }
+            }
+        } else {
+            Toast.makeText(this@PlayerActivity, "播放错误: ${error.message}", Toast.LENGTH_LONG).show()
         }
     }
 
     private suspend fun setupEmptyState() {
         // 显示空状态UI
         binding.tvSongName.text = "暂无歌曲"
-        binding.tvArtist.text = "播放列表为空"
+        binding.tvArtist.text = "点击播放列表选择歌曲"
         binding.ivAlbum.setImageResource(R.drawable.ic_album_default)
         binding.ivBackground.visibility = View.GONE
         binding.tvLyricsCurrent.text = ""
@@ -518,14 +610,27 @@ class PlayerActivity : AppCompatActivity() {
         updatePlayPauseButton(false)
 
         // 尝试恢复上次播放状态（播放列表已加载完成）
+        // 关键修复：必须同时满足以下条件才恢复播放：
+        // 1. 有保存的 songId
+        // 2. 播放列表中有歌曲
+        // 3. 保存的 songId 确实存在于当前播放列表中（确保是用户明确选择播放的歌曲）
         val savedSongId = playbackPreferences.currentSongId
-        if (savedSongId != null && playlistManager.getCurrentSong() != null) {
-            // 有保存的状态，尝试恢复
+        val currentPlaylist = playlistManager.currentPlaylist.value
+        val isSavedSongInPlaylist = savedSongId != null && currentPlaylist.any { it.id == savedSongId }
+
+        if (isSavedSongInPlaylist && playlistManager.getCurrentSong() != null) {
+            // 有保存的状态且保存的歌曲确实存在于播放列表中，尝试恢复
+            restorePlaybackState()
+        } else if (currentPlaylist.isNotEmpty()) {
+            // 播放列表有歌曲但没有当前歌曲（例如批量添加后），自动设置第一首为当前歌曲
+            // 这样用户进入播放页后可以看到第一首歌的信息并可以播放
+            playlistManager.setCurrentIndex(0)
             restorePlaybackState()
         } else {
-            // 真正没有歌曲，显示提示
-            Toast.makeText(this@PlayerActivity, "播放列表内并未存在待播放歌曲", Toast.LENGTH_LONG).show()
+            // 播放列表确实为空，重置isFromEmptyState标记
+            isFromEmptyState = true
         }
+        // 注意：批量添加的歌曲不会自动播放，用户需要点击播放按钮或从播放列表中选择歌曲
     }
 
     private suspend fun restorePlaybackState() {
@@ -546,8 +651,14 @@ class PlayerActivity : AppCompatActivity() {
 
             try {
                 var detail = playbackPreferences.getSongDetail(songId)
+                var needRefreshUrl = false
 
-                if (detail == null) {
+                // 检查缓存的URL是否过期
+                if (detail != null && playbackPreferences.isSongDetailExpired(songId)) {
+                    needRefreshUrl = true
+                }
+
+                if (detail == null || needRefreshUrl) {
                     // 使用带缓存的Repository获取歌曲详情
                     val cachedRepository = CachedMusicRepository(this@PlayerActivity)
                     detail = withContext(Dispatchers.IO) {
@@ -559,6 +670,10 @@ class PlayerActivity : AppCompatActivity() {
                             artists = songArtists
                         )
                     }
+                    // 如果获取到新详情，更新缓存
+                    if (detail != null) {
+                        playbackPreferences.saveSongDetail(songId, detail)
+                    }
                 }
 
                 if (detail != null) {
@@ -567,6 +682,9 @@ class PlayerActivity : AppCompatActivity() {
                     // 优先使用 detail 中的封面，如果没有则使用 currentSong 中的封面
                     songCover = detail.cover ?: currentSong.coverUrl
                     updateUI(detail)
+
+                    // 关键修复：立即更新歌词显示，确保用户能看到歌词
+                    updateLyrics(0)
 
                     val savedPosition = playbackPreferences.currentPosition
                     val wasPlaying = playbackPreferences.isPlaying
@@ -821,7 +939,9 @@ class PlayerActivity : AppCompatActivity() {
             lyricsText,
             currentPosition,
             duration,
-            playing
+            playing,
+            songId,
+            platform
         )
     }
 
@@ -970,8 +1090,14 @@ class PlayerActivity : AppCompatActivity() {
             val currentPlaylistSong = playlistManager.getCurrentSong()
             val currentMediaItem = exoPlayer?.currentMediaItem
 
+            // 检查是否需要更新UI：
+            // 1. 播放列表中的歌曲与Activity中保存的歌曲不一致
+            // 2. 或者播放器当前播放的歌曲与Activity中保存的歌曲不一致
+            val needUpdate = currentPlaylistSong != null &&
+                    (currentPlaylistSong.id != songId || currentMediaItem?.mediaId != songId)
+
             // 如果播放列表中的歌曲与Activity中保存的歌曲不一致，说明在后台已被切换
-            if (currentPlaylistSong != null && currentPlaylistSong.id != songId) {
+            if (needUpdate) {
                 // 更新歌曲信息
                 songId = currentPlaylistSong.id
                 songName = currentPlaylistSong.name
@@ -1038,6 +1164,10 @@ class PlayerActivity : AppCompatActivity() {
 
                 // 更新悬浮歌词
                 sendFloatingLyricsUpdate()
+            } else if (currentPlaylistSong != null && currentPlaylistSong.id == songId) {
+                // 歌曲相同，但仍需要更新UI以确保显示正确
+                // 这种情况可能发生在从下载页面播放同一首歌，但Activity被重建后
+                updateUIForCurrentSong()
             }
         }
     }
@@ -1144,10 +1274,33 @@ class PlayerActivity : AppCompatActivity() {
         }
 
         binding.btnPlayPause.setOnClickListener {
-            if (isFromEmptyState) {
-                Toast.makeText(this, "播放列表为空", Toast.LENGTH_SHORT).show()
+            // 检查播放列表是否实际为空
+            val currentSong = playlistManager.getCurrentSong()
+
+            // 关键修复：处理批量添加歌曲后的播放逻辑
+            // 1. 如果isFromEmptyState为true但播放列表有歌曲，自动加载第一首
+            // 2. 如果播放器没有加载媒体项，尝试恢复并播放
+            if (isFromEmptyState || exoPlayer?.currentMediaItem == null) {
+                if (currentSong != null) {
+                    // 播放列表有歌曲但播放器未加载，尝试加载并播放
+                    lifecycleScope.launch {
+                        val restored = restoreFromCurrentPlayback()
+                        if (restored) {
+                            // 标记为非空状态，这样后续操作可以正常进行
+                            isFromEmptyState = false
+                            exoPlayer?.play()
+                            startAlbumRotation()
+                        } else {
+                            Toast.makeText(this@PlayerActivity, "加载歌曲失败", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    // 播放列表确实为空，提示用户
+                    Toast.makeText(this, "播放列表为空，请先添加歌曲", Toast.LENGTH_SHORT).show()
+                }
                 return@setOnClickListener
             }
+
             exoPlayer?.let { player ->
                 if (player.isPlaying) {
                     player.pause()
@@ -1165,17 +1318,29 @@ class PlayerActivity : AppCompatActivity() {
         }
 
         binding.btnPrevious.setOnClickListener {
-            if (isFromEmptyState) {
+            // 检查播放列表是否有歌曲
+            val currentSong = playlistManager.getCurrentSong()
+            if (currentSong == null) {
                 Toast.makeText(this, "播放列表为空", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
+            }
+            // 如果处于空状态但播放列表有歌曲，先恢复正常状态
+            if (isFromEmptyState) {
+                isFromEmptyState = false
             }
             playPreviousSong()
         }
 
         binding.btnNext.setOnClickListener {
-            if (isFromEmptyState) {
+            // 检查播放列表是否有歌曲
+            val currentSong = playlistManager.getCurrentSong()
+            if (currentSong == null) {
                 Toast.makeText(this, "播放列表为空", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
+            }
+            // 如果处于空状态但播放列表有歌曲，先恢复正常状态
+            if (isFromEmptyState) {
+                isFromEmptyState = false
             }
             playNextSong()
         }

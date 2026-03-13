@@ -18,8 +18,10 @@ import android.support.v4.media.session.PlaybackStateCompat
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import android.util.Log
 import com.tacke.music.R
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.SongDetail
@@ -174,7 +176,67 @@ class MusicPlaybackService : Service() {
                     handlePlaybackEnded()
                 }
             }
+
+            override fun onPlayerError(error: PlaybackException) {
+                // 处理播放错误，特别是URL过期导致的403错误
+                handlePlayerError(error)
+            }
         })
+    }
+
+    private var currentSongForRetry: PlaylistSong? = null
+    private var isRetrying = false
+
+    private fun handlePlayerError(error: PlaybackException) {
+        Log.e("MusicPlaybackService", "Player error: ${error.errorCodeName}", error)
+
+        // 检查是否是URL过期导致的错误（403 Forbidden）
+        if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED) {
+
+            // 避免重复刷新
+            if (isRetrying) return
+            isRetrying = true
+
+            val currentSong = playlistManager.getCurrentSong()
+            if (currentSong != null) {
+                currentSongForRetry = currentSong
+                serviceScope.launch {
+                    try {
+                        // 清除过期的缓存
+                        playbackPreferences.clearSongDetail(currentSong.id)
+
+                        // 重新获取歌曲详情
+                        val cachedRepository = CachedMusicRepository(this@MusicPlaybackService)
+                        val platform = try {
+                            MusicRepository.Platform.valueOf(currentSong.platform.uppercase())
+                        } catch (e: Exception) {
+                            MusicRepository.Platform.KUWO
+                        }
+
+                        val newDetail = withContext(Dispatchers.IO) {
+                            cachedRepository.getSongDetail(
+                                platform = platform,
+                                songId = currentSong.id,
+                                quality = currentQuality,
+                                songName = currentSong.name,
+                                artists = currentSong.artists
+                            )
+                        }
+
+                        if (newDetail != null) {
+                            // 使用新URL重新播放
+                            playSong(newDetail, currentSong)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("MusicPlaybackService", "Failed to refresh URL", e)
+                    } finally {
+                        isRetrying = false
+                        currentSongForRetry = null
+                    }
+                }
+            }
+        }
     }
 
     /**
