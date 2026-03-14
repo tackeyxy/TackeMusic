@@ -60,6 +60,7 @@ class MusicPlaybackService : Service() {
         const val EXTRA_SONG_ARTISTS = "song_artists"
         const val EXTRA_SONG_URL = "song_url"
         const val EXTRA_SONG_COVER = "song_cover"
+        const val EXTRA_SONG_LYRICS = "song_lyrics"
     }
 
     inner class MusicBinder : Binder() {
@@ -141,10 +142,19 @@ class MusicPlaybackService : Service() {
             putExtra(EXTRA_SONG_ARTISTS, playlistSong.artists)
             putExtra(EXTRA_SONG_URL, detail.url)
             putExtra(EXTRA_SONG_COVER, detail.cover ?: playlistSong.coverUrl)
+            putExtra(EXTRA_SONG_LYRICS, detail.lyrics)
         }
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
 
+        // 同时发送广播给悬浮歌词服务
+        val floatingLyricsIntent = Intent(FloatingLyricsService.ACTION_SONG_CHANGED).apply {
+            putExtra(FloatingLyricsService.EXTRA_SONG_ID, playlistSong.id)
+            putExtra(FloatingLyricsService.EXTRA_SONG_NAME, playlistSong.name)
+            putExtra(FloatingLyricsService.EXTRA_SONG_ARTISTS, playlistSong.artists)
+            putExtra(FloatingLyricsService.EXTRA_LYRICS, detail.lyrics)
         }
+        LocalBroadcastManager.getInstance(this).sendBroadcast(floatingLyricsIntent)
+    }
 
     private fun initializePlayer() {
         exoPlayer = ExoPlayer.Builder(this).build()
