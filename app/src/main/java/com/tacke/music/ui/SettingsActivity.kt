@@ -31,9 +31,15 @@ class SettingsActivity : AppCompatActivity() {
         const val KEY_LYRIC_COLOR = "lyric_color"
         const val KEY_CONCURRENT_DOWNLOADS = "concurrent_downloads"
         const val KEY_DEFAULT_DOWNLOAD_QUALITY = "default_download_quality"
+        const val KEY_CACHE_EXPIRY_DAYS = "cache_expiry_days"
 
         // 默认歌词颜色（青色）
         const val DEFAULT_LYRIC_COLOR = 0xFF00CED1.toInt()
+
+        // 默认缓存过期时间（7天）
+        const val DEFAULT_CACHE_EXPIRY_DAYS = 7
+        const val MIN_CACHE_EXPIRY_DAYS = 1
+        const val MAX_CACHE_EXPIRY_DAYS = 30
 
         // 默认同时下载个数
         const val DEFAULT_CONCURRENT_DOWNLOADS = 3
@@ -125,6 +131,18 @@ class SettingsActivity : AppCompatActivity() {
             prefs.edit().putString(KEY_DEFAULT_DOWNLOAD_QUALITY, quality).apply()
         }
 
+        fun getCacheExpiryDays(context: Context): Int {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getInt(KEY_CACHE_EXPIRY_DAYS, DEFAULT_CACHE_EXPIRY_DAYS)
+                .coerceIn(MIN_CACHE_EXPIRY_DAYS, MAX_CACHE_EXPIRY_DAYS)
+        }
+
+        fun setCacheExpiryDays(context: Context, days: Int) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val validDays = days.coerceIn(MIN_CACHE_EXPIRY_DAYS, MAX_CACHE_EXPIRY_DAYS)
+            prefs.edit().putInt(KEY_CACHE_EXPIRY_DAYS, validDays).apply()
+        }
+
         fun getDefaultDownloadPath(context: Context): String {
             return File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -179,6 +197,7 @@ class SettingsActivity : AppCompatActivity() {
         updateLyricColorPreview()
         updateConcurrentDownloadsText()
         updateDefaultDownloadQualityText()
+        updateCacheExpiryText()
         updateCurrentVersionText()
     }
 
@@ -219,6 +238,10 @@ class SettingsActivity : AppCompatActivity() {
             showDefaultDownloadQualityDialog()
         }
 
+        binding.layoutCacheExpiry.setOnClickListener {
+            showCacheExpiryDialog()
+        }
+
         binding.layoutCheckUpdate.setOnClickListener {
             startActivity(Intent(this, UpdateCheckActivity::class.java))
         }
@@ -228,6 +251,30 @@ class SettingsActivity : AppCompatActivity() {
         val currentQuality = getDefaultDownloadQuality(this)
         val qualityLabel = QUALITY_OPTIONS.find { it.first == currentQuality }?.second ?: "HQ (320K)"
         binding.tvDefaultDownloadQualityValue.text = qualityLabel
+    }
+
+    private fun updateCacheExpiryText() {
+        val currentDays = getCacheExpiryDays(this)
+        binding.tvCacheExpiryValue.text = "$currentDays 天"
+    }
+
+    private fun showCacheExpiryDialog() {
+        val currentDays = getCacheExpiryDays(this)
+        val options = (MIN_CACHE_EXPIRY_DAYS..MAX_CACHE_EXPIRY_DAYS).map { "$it 天" }.toTypedArray()
+        val currentIndex = currentDays - MIN_CACHE_EXPIRY_DAYS
+
+        AlertDialog.Builder(this)
+            .setTitle("选择缓存过期时间")
+            .setSingleChoiceItems(options, currentIndex) { dialog, which ->
+                val selectedDays = which + MIN_CACHE_EXPIRY_DAYS
+                setCacheExpiryDays(this, selectedDays)
+                updateCacheExpiryText()
+
+                Toast.makeText(this, "缓存过期时间已设置为: $selectedDays 天", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
 

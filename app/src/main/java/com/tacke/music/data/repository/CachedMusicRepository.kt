@@ -3,6 +3,7 @@ package com.tacke.music.data.repository
 import android.content.Context
 import android.util.Log
 import com.tacke.music.data.model.SongDetail
+import com.tacke.music.ui.SettingsActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -10,15 +11,20 @@ import kotlinx.coroutines.withContext
  * 带缓存功能的音乐仓库
  * 优先从本地缓存加载歌曲详情，如果没有缓存则从网络获取并保存到本地
  */
-class CachedMusicRepository(context: Context) {
+class CachedMusicRepository(private val context: Context) {
 
     private val musicRepository = MusicRepository()
     private val songDetailRepository = SongDetailRepository(context)
 
     companion object {
         private const val TAG = "CachedMusicRepository"
-        // 缓存有效期：7天
-        const val CACHE_VALIDITY_DAYS = 7
+    }
+
+    /**
+     * 获取缓存过期时间（天数）
+     */
+    private fun getCacheExpiryDays(): Int {
+        return SettingsActivity.getCacheExpiryDays(context)
     }
 
     /**
@@ -123,7 +129,7 @@ class CachedMusicRepository(context: Context) {
      * 清理过期缓存
      */
     suspend fun cleanExpiredCache() {
-        songDetailRepository.cleanOldCache(CACHE_VALIDITY_DAYS)
+        songDetailRepository.cleanOldCache(getCacheExpiryDays())
     }
 
     /**
