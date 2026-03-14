@@ -37,7 +37,9 @@ import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.SongDetail
 import com.tacke.music.data.preferences.PlaybackPreferences
 import com.tacke.music.data.repository.CachedMusicRepository
+import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
+import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.data.repository.RecentPlayRepository
 import com.tacke.music.databinding.ActivityPlayerBinding
 import com.tacke.music.data.model.Song
@@ -85,6 +87,8 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var playbackPreferences: PlaybackPreferences
     private lateinit var playbackManager: PlaybackManager
     private lateinit var recentPlayRepository: RecentPlayRepository
+    private lateinit var favoriteRepository: FavoriteRepository
+    private lateinit var playlistRepository: PlaylistRepository
     private var isFromEmptyState = false
 
     // Service connection
@@ -227,6 +231,8 @@ class PlayerActivity : AppCompatActivity() {
         playbackPreferences = PlaybackPreferences.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
         recentPlayRepository = RecentPlayRepository(this)
+        favoriteRepository = FavoriteRepository(this)
+        playlistRepository = PlaylistRepository(this)
 
         parseIntent()
         setupClickListeners()
@@ -1609,17 +1615,121 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun showMoreOptions() {
-        val options = arrayOf("下载", "选择音质", "添加到歌单")
+        lifecycleScope.launch {
+            val isFavorite = favoriteRepository.isFavorite(songId)
+            val favoriteOption = if (isFavorite) "添加到我喜欢的 ✓" else "添加到我喜欢的"
+            val options = arrayOf(favoriteOption, "下载", "选择音质", "添加到歌单")
+
+            AlertDialog.Builder(this@PlayerActivity)
+                .setTitle("更多选项")
+                .setItems(options) { _, which ->
+                    when (which) {
+                        0 -> toggleFavorite()
+                        1 -> showQualityDialogForDownload()
+                        2 -> showQualityDialog()
+                        3 -> showAddToPlaylistDialog()
+                    }
+                }
+                .show()
+        }
+    }
+
+    private fun toggleFavorite() {
+        lifecycleScope.launch {
+            try {
+                val song = Song(
+                    index = 0,
+                    id = songId,
+                    name = songName,
+                    artists = songArtists,
+                    coverUrl = songCover ?: ""
+                )
+                val isNowFavorite = favoriteRepository.toggleFavorite(song, platform.name)
+                val message = if (isNowFavorite) "已添加到我喜欢" else "已从我喜欢移除"
+                Toast.makeText(this@PlayerActivity, message, Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@PlayerActivity, "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showAddToPlaylistDialog() {
+        lifecycleScope.launch {
+            try {
+                val playlists = playlistRepository.getAllPlaylistsSync()
+
+                if (playlists.isEmpty()) {
+                    AlertDialog.Builder(this@PlayerActivity)
+                        .setTitle("添加到歌单")
+                        .setMessage("暂无歌单，是否创建新歌单？")
+                        .setPositiveButton("创建") { _, _ ->
+                            showCreatePlaylistDialog()
+                        }
+                        .setNegativeButton("取消", null)
+                        .show()
+                    return@launch
+                }
+
+                val playlistNames = playlists.map { it.name }.toTypedArray()
+
+                AlertDialog.Builder(this@PlayerActivity)
+                    .setTitle("添加到歌单")
+                    .setItems(playlistNames) { _, which ->
+                        addCurrentSongToPlaylist(playlists[which].id)
+                    }
+                    .setPositiveButton("新建歌单") { _, _ ->
+                        showCreatePlaylistDialog()
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+            } catch (e: Exception) {
+                Toast.makeText(this@PlayerActivity, "获取歌单失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showCreatePlaylistDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_create_playlist, null)
+        val etPlaylistName = dialogView.findViewById<android.widget.EditText>(R.id.etPlaylistName)
+
         AlertDialog.Builder(this)
-            .setTitle("更多选项")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showQualityDialogForDownload()
-                    1 -> showQualityDialog()
-                    2 -> Toast.makeText(this, "添加到歌单", Toast.LENGTH_SHORT).show()
+            .setTitle("新建歌单")
+            .setView(dialogView)
+            .setPositiveButton("创建") { _, _ ->
+                val name = etPlaylistName.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    lifecycleScope.launch {
+                        try {
+                            val playlist = playlistRepository.createPlaylist(name)
+                            addCurrentSongToPlaylist(playlist.id)
+                        } catch (e: Exception) {
+                            Toast.makeText(this@PlayerActivity, "创建失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    Toast.makeText(this, "请输入歌单名称", Toast.LENGTH_SHORT).show()
                 }
             }
+            .setNegativeButton("取消", null)
             .show()
+    }
+
+    private fun addCurrentSongToPlaylist(playlistId: String) {
+        lifecycleScope.launch {
+            try {
+                val song = Song(
+                    index = 0,
+                    id = songId,
+                    name = songName,
+                    artists = songArtists,
+                    coverUrl = songCover ?: ""
+                )
+                playlistRepository.addSongToPlaylist(playlistId, song, platform.name)
+                Toast.makeText(this@PlayerActivity, "已添加到歌单", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@PlayerActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun updatePlayPauseButton(isPlaying: Boolean) {
