@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background"
-    android:fitsSystemWindows="true">
+    android:fitsSystemWindows="false">
 
     <!-- 固定的顶部标题区块 - 不会随滑动隐藏 -->
     <FrameLayout

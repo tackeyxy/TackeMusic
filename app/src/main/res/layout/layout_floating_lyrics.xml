@@ -17,7 +17,7 @@
         <!-- 歌词显示区域 -->
         <LinearLayout
             android:id="@+id/lyricsDisplayContainer"
-            android:layout_width="360dp"
+            android:layout_width="336dp"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:gravity="center"

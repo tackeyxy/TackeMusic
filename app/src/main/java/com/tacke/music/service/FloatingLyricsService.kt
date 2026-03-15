@@ -210,15 +210,32 @@ class FloatingLyricsService : Service() {
 
     private fun createFloatingWindow() {
         Log.d(TAG, "createFloatingWindow")
-        
+
         val inflater = LayoutInflater.from(this)
         floatingView = inflater.inflate(R.layout.layout_floating_lyrics, null)
-        
+
+        // 动态计算并设置窗口宽度
+        val windowWidth = getFloatingWindowWidth()
+        val contentWidth = getContentWidth()
+
         // 初始化视图
         lyricsContainer = floatingView?.findViewById(R.id.lyricsContainer)
         lyricsDisplayContainer = floatingView?.findViewById(R.id.lyricsDisplayContainer)
         topControlsContainer = floatingView?.findViewById(R.id.topControlsContainer)
         bottomControlsContainer = floatingView?.findViewById(R.id.bottomControlsContainer)
+
+        // 设置所有容器的宽度，确保一致
+        // 歌词显示区域使用内容宽度（不包含padding）
+        lyricsDisplayContainer?.layoutParams = lyricsDisplayContainer?.layoutParams?.apply {
+            width = contentWidth
+        }
+        // 顶部和底部控制栏也使用内容宽度
+        topControlsContainer?.layoutParams = topControlsContainer?.layoutParams?.apply {
+            width = contentWidth
+        }
+        bottomControlsContainer?.layoutParams = bottomControlsContainer?.layoutParams?.apply {
+            width = contentWidth
+        }
         tvCurrentLyric = floatingView?.findViewById(R.id.tvCurrentLyric)
         tvNextLyric = floatingView?.findViewById(R.id.tvNextLyric)
         btnLock = floatingView?.findViewById(R.id.btnLock)
@@ -303,7 +320,8 @@ class FloatingLyricsService : Service() {
             if (isFirstTime) {
                 // 首次开启：重置位置在屏幕顶部2/3高度且水平居中
                 val metrics = getDisplayMetrics()
-                x = (metrics.widthPixels - dpToPx(360)) / 2
+                val totalWidth = getFloatingWindowWidth()
+                x = (metrics.widthPixels - totalWidth) / 2
                 y = (metrics.heightPixels * 2 / 3)
 
                 // 标记为非首次
@@ -325,7 +343,8 @@ class FloatingLyricsService : Service() {
                 } else {
                     // 默认位置：屏幕顶部2/3高度且水平居中
                     val metrics = getDisplayMetrics()
-                    x = (metrics.widthPixels - dpToPx(360)) / 2
+                    val totalWidth = getFloatingWindowWidth()
+                    x = (metrics.widthPixels - totalWidth) / 2
                     y = (metrics.heightPixels * 2 / 3)
                 }
             }
@@ -344,6 +363,21 @@ class FloatingLyricsService : Service() {
     
     private fun getScreenHeight(): Int {
         return getDisplayMetrics().heightPixels
+    }
+
+    private fun getFloatingWindowWidth(): Int {
+        val metrics = getDisplayMetrics()
+        val screenWidth = metrics.widthPixels
+        // 在较小屏幕上使用屏幕宽度的90%，但不超过360dp，不小于280dp
+        val maxWidth = dpToPx(360)
+        val minWidth = dpToPx(280)
+        val preferredWidth = (screenWidth * 0.9).toInt()
+        return preferredWidth.coerceIn(minWidth, maxWidth)
+    }
+
+    private fun getContentWidth(): Int {
+        // 内容区域宽度 = 窗口宽度 - 左右padding (12dp * 2)
+        return getFloatingWindowWidth() - dpToPx(24)
     }
 
     private fun setupColorPicker() {
@@ -802,11 +836,12 @@ class FloatingLyricsService : Service() {
         floatingView?.let { view ->
             val params = view.layoutParams as WindowManager.LayoutParams
             val metrics = getDisplayMetrics()
-            
+            val totalWidth = getFloatingWindowWidth()
+
             // 重置到屏幕顶部2/3高度且水平居中
-            params.x = (metrics.widthPixels - view.width) / 2
+            params.x = (metrics.widthPixels - totalWidth) / 2
             params.y = (metrics.heightPixels * 2 / 3)
-            
+
             // 确保位置有效
             params.x = params.x.coerceAtLeast(0)
             params.y = params.y.coerceAtLeast(dpToPx(24))
