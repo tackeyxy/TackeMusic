@@ -890,22 +890,40 @@ class MainActivity : AppCompatActivity() {
         return (this * resources.displayMetrics.density).toInt()
     }
 
+    private var lastNavClickTime = 0L
+    private val NAV_CLICK_DEBOUNCE = 500L // 500ms 防抖
+
     private fun setupBottomNavigation() {
         binding.navHome.setOnClickListener {
-            updateNavSelection(0)
-            showHomeContent()
+            if (isNavClickValid()) {
+                updateNavSelection(0)
+                showHomeContent()
+            }
         }
 
         binding.navDiscover.setOnClickListener {
-            updateNavSelection(1)
-            // 跳转到正在播放页面 - 支持空状态进入
-            PlayerActivity.startEmpty(this)
+            if (isNavClickValid()) {
+                updateNavSelection(1)
+                // 跳转到正在播放页面 - 支持空状态进入
+                PlayerActivity.startEmpty(this)
+            }
         }
 
         binding.navProfile.setOnClickListener {
-            updateNavSelection(2)
-            startActivity(Intent(this, ProfileActivity::class.java))
+            if (isNavClickValid()) {
+                updateNavSelection(2)
+                startActivity(Intent(this, ProfileActivity::class.java))
+            }
         }
+    }
+
+    private fun isNavClickValid(): Boolean {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastNavClickTime > NAV_CLICK_DEBOUNCE) {
+            lastNavClickTime = currentTime
+            return true
+        }
+        return false
     }
 
     private fun updateNavSelection(index: Int) {

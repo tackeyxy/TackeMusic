@@ -60,33 +60,44 @@ class ProfileActivity : AppCompatActivity() {
         Pair(0xFF4FD1C7.toInt(), 0xFF38B2AC.toInt())  // 薄荷绿
     )
 
+    private var lastNavClickTime = 0L
+    private val NAV_CLICK_DEBOUNCE = 500L // 500ms 防抖
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityProfileBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        try {
+            binding = ActivityProfileBinding.inflate(layoutInflater)
+            setContentView(binding.root)
 
-        // Android 16: 适配 Edge-to-Edge 模式
-        setupEdgeToEdge()
+            // Android 16: 适配 Edge-to-Edge 模式
+            setupEdgeToEdge()
 
-        downloadManager = DownloadManager.getInstance(this)
-        playlistRepository = PlaylistRepository(this)
-        favoriteRepository = FavoriteRepository(this)
+            downloadManager = DownloadManager.getInstance(this)
+            playlistRepository = PlaylistRepository(this)
+            favoriteRepository = FavoriteRepository(this)
 
-        setupCardBackgrounds()
-        setupClickListeners()
-        setupBottomNavigation()
-        setupPlaylistRecyclerView()
-        observeDownloadCount()
-        observePlaylistCount()
-        observePlaylists()
-        observeFavoriteCount()
+            setupCardBackgrounds()
+            setupClickListeners()
+            setupBottomNavigation()
+            setupPlaylistRecyclerView()
+            observeDownloadCount()
+            observePlaylistCount()
+            observePlaylists()
+            observeFavoriteCount()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "页面加载失败: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        refreshPlaylistList()
-        // 每次进入页面时刷新卡片背景色
-        setupCardBackgrounds()
+        // 确保 binding 已初始化
+        if (::binding.isInitialized) {
+            refreshPlaylistList()
+            // 每次进入页面时刷新卡片背景色
+            setupCardBackgrounds()
+        }
     }
 
     private fun setupCardBackgrounds() {
@@ -208,17 +219,33 @@ class ProfileActivity : AppCompatActivity() {
 
     private fun setupBottomNavigation() {
         binding.navHome.setOnClickListener {
-            startActivity(Intent(this, MainActivity::class.java))
-            finish()
+            if (isNavClickValid()) {
+                val intent = Intent(this, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                }
+                startActivity(intent)
+                finish()
+            }
         }
 
         binding.navDiscover.setOnClickListener {
-            PlayerActivity.startEmpty(this)
+            if (isNavClickValid()) {
+                PlayerActivity.startEmpty(this)
+            }
         }
 
         binding.navProfile.setOnClickListener {
-            // 当前页面
+            // 当前页面，无需处理
         }
+    }
+
+    private fun isNavClickValid(): Boolean {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastNavClickTime > NAV_CLICK_DEBOUNCE) {
+            lastNavClickTime = currentTime
+            return true
+        }
+        return false
     }
 
     private fun setupPlaylistRecyclerView() {
@@ -322,8 +349,12 @@ class ProfileActivity : AppCompatActivity() {
     private fun observeDownloadCount() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                downloadManager.completedTasks.collect { tasks ->
-                    binding.tvDownloadCount.text = "${tasks.size}首"
+                try {
+                    downloadManager.completedTasks.collect { tasks ->
+                        binding.tvDownloadCount.text = "${tasks.size}首"
+                    }
+                } catch (e: Exception) {
+                    binding.tvDownloadCount.text = "0首"
                 }
             }
         }
@@ -332,8 +363,12 @@ class ProfileActivity : AppCompatActivity() {
     private fun observePlaylistCount() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                playlistRepository.getAllPlaylists().collect { playlists ->
-                    binding.tvLocalMusicCount.text = "${playlists.size}个歌单"
+                try {
+                    playlistRepository.getAllPlaylists().collect { playlists ->
+                        binding.tvLocalMusicCount.text = "${playlists.size}个歌单"
+                    }
+                } catch (e: Exception) {
+                    binding.tvLocalMusicCount.text = "0个歌单"
                 }
             }
         }
@@ -342,11 +377,16 @@ class ProfileActivity : AppCompatActivity() {
     private fun observePlaylists() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                playlistRepository.getAllPlaylists().collect { playlists ->
-                    allPlaylists = playlists
-                    val displayList = if (isShowingAllPlaylists) playlists else emptyList()
-                    val newList = ArrayList(displayList)
-                    playlistAdapter.submitList(newList)
+                try {
+                    playlistRepository.getAllPlaylists().collect { playlists ->
+                        allPlaylists = playlists
+                        val displayList = if (isShowingAllPlaylists) playlists else emptyList()
+                        val newList = ArrayList(displayList)
+                        playlistAdapter.submitList(newList)
+                    }
+                } catch (e: Exception) {
+                    allPlaylists = emptyList()
+                    playlistAdapter.submitList(emptyList())
                 }
             }
         }
@@ -355,8 +395,12 @@ class ProfileActivity : AppCompatActivity() {
     private fun observeFavoriteCount() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                favoriteRepository.getFavoriteCount().collect { count ->
-                    binding.tvFavoriteCount.text = "${count}首"
+                try {
+                    favoriteRepository.getFavoriteCount().collect { count ->
+                        binding.tvFavoriteCount.text = "${count}首"
+                    }
+                } catch (e: Exception) {
+                    binding.tvFavoriteCount.text = "0首"
                 }
             }
         }
@@ -365,15 +409,16 @@ class ProfileActivity : AppCompatActivity() {
     /**
      * Android 16: 设置 Edge-to-Edge 模式
      * 处理系统栏（状态栏和导航栏）的 insets
-     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
+     * 为状态栏占位视图设置高度，防止内容被状态栏遮挡
      */
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 为顶部 Toolbar 添加状态栏高度 padding
-            binding.toolbar.updatePadding(
-                top = insets.top
-            )
+
+            // 为状态栏占位视图设置高度
+            binding.statusBarPlaceholder.layoutParams.height = insets.top
+            binding.statusBarPlaceholder.requestLayout()
+
             // 为底部设置 padding
             view.updatePadding(
                 bottom = insets.bottom

@@ -7,6 +7,12 @@
     android:background="@color/background"
     android:fitsSystemWindows="false">
 
+    <!-- 状态栏占位 -->
+    <View
+        android:id="@+id/statusBarPlaceholder"
+        android:layout_width="match_parent"
+        android:layout_height="0dp" />
+
     <!-- 顶部标题栏 -->
     <LinearLayout
         android:id="@+id/toolbar"
