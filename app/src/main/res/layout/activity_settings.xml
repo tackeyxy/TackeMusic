@@ -184,9 +184,9 @@
 
         </LinearLayout>
 
-        <!-- 默认下载音质设置 -->
+        <!-- 听音质设置 -->
         <LinearLayout
-            android:id="@+id/layoutDefaultDownloadQuality"
+            android:id="@+id/layoutPlaybackQuality"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:orientation="horizontal"
@@ -208,12 +208,12 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginStart="16dp"
-                android:text="默认下载音质"
+                android:text="听音质"
                 android:textSize="15sp"
                 android:textColor="@color/text_primary" />
 
             <TextView
-                android:id="@+id/tvDefaultDownloadQualityValue"
+                android:id="@+id/tvPlaybackQualityValue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="HQ (320K)"

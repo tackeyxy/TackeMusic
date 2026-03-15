@@ -5,9 +5,11 @@ import android.content.SharedPreferences
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.SongDetail
 import com.tacke.music.data.model.SongInfo
+import com.tacke.music.ui.SettingsActivity
 
 class PlaybackPreferences(context: Context) {
 
+    private val context: Context = context.applicationContext
     private val prefs: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     companion object {
@@ -64,9 +66,10 @@ class PlaybackPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_IS_PLAYING, false)
         set(value) = prefs.edit().putBoolean(KEY_IS_PLAYING, value).apply()
 
-    // 当前音质
+    // 当前音质 - 默认使用用户设置的试听音质
     var currentQuality: String
-        get() = prefs.getString(KEY_CURRENT_QUALITY, "320k") ?: "320k"
+        get() = prefs.getString(KEY_CURRENT_QUALITY, null)
+            ?: SettingsActivity.getPlaybackQuality(context)
         set(value) = prefs.edit().putString(KEY_CURRENT_QUALITY, value).apply()
 
     // 当前播放索引

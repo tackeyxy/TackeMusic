@@ -18,6 +18,7 @@ import com.tacke.music.R
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.databinding.ActivitySettingsBinding
 import com.tacke.music.databinding.DialogDownloadPathBinding
+import kotlinx.coroutines.launch
 import java.io.File
 
 class SettingsActivity : AppCompatActivity() {
@@ -30,7 +31,7 @@ class SettingsActivity : AppCompatActivity() {
         const val KEY_DOWNLOAD_PATH = "download_path"
         const val KEY_LYRIC_COLOR = "lyric_color"
         const val KEY_CONCURRENT_DOWNLOADS = "concurrent_downloads"
-        const val KEY_DEFAULT_DOWNLOAD_QUALITY = "default_download_quality"
+        const val KEY_PLAYBACK_QUALITY = "playback_quality"
         const val KEY_CACHE_EXPIRY_DAYS = "cache_expiry_days"
 
         // 默认歌词颜色（青色）
@@ -46,11 +47,11 @@ class SettingsActivity : AppCompatActivity() {
         const val MIN_CONCURRENT_DOWNLOADS = 1
         const val MAX_CONCURRENT_DOWNLOADS = 5
 
-        // 默认下载音质
-        const val DEFAULT_DOWNLOAD_QUALITY = "320k"
+        // 默认听音质（在线播放音质）
+        const val DEFAULT_PLAYBACK_QUALITY = "320k"
 
-        // 音质选项
-        val QUALITY_OPTIONS = listOf(
+        // 听音质选项
+        val PLAYBACK_QUALITY_OPTIONS = listOf(
             "flac24bit" to "HR (24bit FLAC)",
             "flac" to "CDA (FLAC)",
             "320k" to "HQ (320K)",
@@ -121,20 +122,33 @@ class SettingsActivity : AppCompatActivity() {
             prefs.edit().putInt(KEY_CONCURRENT_DOWNLOADS, validCount).apply()
         }
 
-        fun getDefaultDownloadQuality(context: Context): String {
+        fun getPlaybackQuality(context: Context): String {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            return prefs.getString(KEY_DEFAULT_DOWNLOAD_QUALITY, DEFAULT_DOWNLOAD_QUALITY) ?: DEFAULT_DOWNLOAD_QUALITY
+            return prefs.getString(KEY_PLAYBACK_QUALITY, DEFAULT_PLAYBACK_QUALITY) ?: DEFAULT_PLAYBACK_QUALITY
         }
 
-        fun setDefaultDownloadQuality(context: Context, quality: String) {
+        fun setPlaybackQuality(context: Context, quality: String) {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putString(KEY_DEFAULT_DOWNLOAD_QUALITY, quality).apply()
+            prefs.edit().putString(KEY_PLAYBACK_QUALITY, quality).apply()
         }
+
+        // 兼容旧代码的别名方法
+        fun getDefaultDownloadQuality(context: Context): String = getPlaybackQuality(context)
+        fun setDefaultDownloadQuality(context: Context, quality: String) = setPlaybackQuality(context, quality)
+
+        // 缓存过期时间选项（只保留1日、7日、15日、30日）
+        val CACHE_EXPIRY_OPTIONS = listOf(1, 7, 15, 30)
 
         fun getCacheExpiryDays(context: Context): Int {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            return prefs.getInt(KEY_CACHE_EXPIRY_DAYS, DEFAULT_CACHE_EXPIRY_DAYS)
-                .coerceIn(MIN_CACHE_EXPIRY_DAYS, MAX_CACHE_EXPIRY_DAYS)
+            val savedDays = prefs.getInt(KEY_CACHE_EXPIRY_DAYS, DEFAULT_CACHE_EXPIRY_DAYS)
+            // 如果保存的值不在有效选项中，返回最接近的选项值
+            return if (CACHE_EXPIRY_OPTIONS.contains(savedDays)) {
+                savedDays
+            } else {
+                // 找到最接近的选项值
+                CACHE_EXPIRY_OPTIONS.minByOrNull { kotlin.math.abs(it - savedDays) } ?: DEFAULT_CACHE_EXPIRY_DAYS
+            }
         }
 
         fun setCacheExpiryDays(context: Context, days: Int) {
@@ -196,7 +210,7 @@ class SettingsActivity : AppCompatActivity() {
         updateDownloadPathText()
         updateLyricColorPreview()
         updateConcurrentDownloadsText()
-        updateDefaultDownloadQualityText()
+        updatePlaybackQualityText()
         updateCacheExpiryText()
         updateCurrentVersionText()
     }
@@ -234,8 +248,8 @@ class SettingsActivity : AppCompatActivity() {
             showConcurrentDownloadsDialog()
         }
 
-        binding.layoutDefaultDownloadQuality.setOnClickListener {
-            showDefaultDownloadQualityDialog()
+        binding.layoutPlaybackQuality.setOnClickListener {
+            showPlaybackQualityDialog()
         }
 
         binding.layoutCacheExpiry.setOnClickListener {
@@ -247,10 +261,10 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateDefaultDownloadQualityText() {
-        val currentQuality = getDefaultDownloadQuality(this)
-        val qualityLabel = QUALITY_OPTIONS.find { it.first == currentQuality }?.second ?: "HQ (320K)"
-        binding.tvDefaultDownloadQualityValue.text = qualityLabel
+    private fun updatePlaybackQualityText() {
+        val currentQuality = getPlaybackQuality(this)
+        val qualityLabel = PLAYBACK_QUALITY_OPTIONS.find { it.first == currentQuality }?.second ?: "HQ (320K)"
+        binding.tvPlaybackQualityValue.text = qualityLabel
     }
 
     private fun updateCacheExpiryText() {
@@ -260,13 +274,23 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun showCacheExpiryDialog() {
         val currentDays = getCacheExpiryDays(this)
-        val options = (MIN_CACHE_EXPIRY_DAYS..MAX_CACHE_EXPIRY_DAYS).map { "$it 天" }.toTypedArray()
-        val currentIndex = currentDays - MIN_CACHE_EXPIRY_DAYS
+        val options = CACHE_EXPIRY_OPTIONS.map { "$it 天" }.toTypedArray()
+        val currentIndex = CACHE_EXPIRY_OPTIONS.indexOf(currentDays).coerceAtLeast(0)
+
+        // 创建自定义对话框视图
+        val dialogView = layoutInflater.inflate(R.layout.dialog_cache_expiry, null)
+
+        // 立即清除按钮
+        val btnClearNow = dialogView.findViewById<android.widget.Button>(R.id.btnClearNow)
+        btnClearNow?.setOnClickListener {
+            clearImageCache()
+        }
 
         AlertDialog.Builder(this)
             .setTitle("选择缓存过期时间")
+            .setView(dialogView)
             .setSingleChoiceItems(options, currentIndex) { dialog, which ->
-                val selectedDays = which + MIN_CACHE_EXPIRY_DAYS
+                val selectedDays = CACHE_EXPIRY_OPTIONS[which]
                 setCacheExpiryDays(this, selectedDays)
                 updateCacheExpiryText()
 
@@ -275,6 +299,38 @@ class SettingsActivity : AppCompatActivity() {
             }
             .setNegativeButton("取消", null)
             .show()
+    }
+
+    /**
+     * 清除图片缓存（只清除缓存在本地的图片，不影响数据库中的数据）
+     */
+    private fun clearImageCache() {
+        lifecycleScope.launch {
+            try {
+                val success = com.tacke.music.utils.CoverImageManager.clearAllCache(this@SettingsActivity)
+                if (success) {
+                    val cacheSize = com.tacke.music.utils.CoverImageManager.getCacheSize(this@SettingsActivity)
+                    val sizeText = formatCacheSize(cacheSize)
+                    Toast.makeText(this@SettingsActivity, "图片缓存已清除，当前缓存大小: $sizeText", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@SettingsActivity, "清除缓存失败", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@SettingsActivity, "清除缓存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /**
+     * 格式化缓存大小显示
+     */
+    private fun formatCacheSize(sizeBytes: Long): String {
+        return when {
+            sizeBytes >= 1024 * 1024 * 1024 -> String.format("%.2f GB", sizeBytes / (1024.0 * 1024.0 * 1024.0))
+            sizeBytes >= 1024 * 1024 -> String.format("%.2f MB", sizeBytes / (1024.0 * 1024.0))
+            sizeBytes >= 1024 -> String.format("%.2f KB", sizeBytes / 1024.0)
+            else -> "$sizeBytes B"
+        }
     }
 
 
@@ -307,19 +363,19 @@ class SettingsActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showDefaultDownloadQualityDialog() {
-        val currentQuality = getDefaultDownloadQuality(this)
-        val options = QUALITY_OPTIONS.map { it.second }.toTypedArray()
-        val currentIndex = QUALITY_OPTIONS.indexOfFirst { it.first == currentQuality }.coerceAtLeast(0)
+    private fun showPlaybackQualityDialog() {
+        val currentQuality = getPlaybackQuality(this)
+        val options = PLAYBACK_QUALITY_OPTIONS.map { it.second }.toTypedArray()
+        val currentIndex = PLAYBACK_QUALITY_OPTIONS.indexOfFirst { it.first == currentQuality }.coerceAtLeast(0)
 
         AlertDialog.Builder(this)
-            .setTitle("选择默认下载音质")
+            .setTitle("选择听音质")
             .setSingleChoiceItems(options, currentIndex) { dialog, which ->
-                val selectedQuality = QUALITY_OPTIONS[which].first
-                setDefaultDownloadQuality(this, selectedQuality)
-                updateDefaultDownloadQualityText()
+                val selectedQuality = PLAYBACK_QUALITY_OPTIONS[which].first
+                setPlaybackQuality(this, selectedQuality)
+                updatePlaybackQualityText()
 
-                Toast.makeText(this, "默认下载音质已设置为: ${QUALITY_OPTIONS[which].second}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "听音质已设置为: ${PLAYBACK_QUALITY_OPTIONS[which].second}", Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
             }
             .setNegativeButton("取消", null)

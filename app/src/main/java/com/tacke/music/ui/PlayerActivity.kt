@@ -340,6 +340,9 @@ class PlayerActivity : AppCompatActivity() {
                 MusicRepository.Platform.KUWO
             }
 
+            // 从 playbackPreferences 读取当前音质（用户设置的试听音质）
+            currentQuality = playbackPreferences.currentQuality
+
             // 标记为非空状态
             isFromEmptyState = false
 
@@ -736,6 +739,9 @@ class PlayerActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 MusicRepository.Platform.KUWO
             }
+
+            // 从 playbackPreferences 读取当前音质（用户设置的试听音质）
+            currentQuality = playbackPreferences.currentQuality
 
             binding.tvSongName.text = songName
             binding.tvArtist.text = songArtists

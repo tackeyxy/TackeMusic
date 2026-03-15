@@ -555,12 +555,15 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@MainActivity)
+
                 // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
                 val detail = withContext(Dispatchers.IO) {
                     cachedRepository.getSongUrlWithCache(
                         platform = platform,
                         songId = chartSong.id,
-                        quality = "320k",
+                        quality = playbackQuality,
                         songName = chartSong.name,
                         artists = chartSong.artist,
                         useCache = true,

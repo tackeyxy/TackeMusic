@@ -356,11 +356,13 @@ class LyricsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val cachedRepository = CachedMusicRepository(this@LyricsActivity)
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@LyricsActivity)
                 val detail = withContext(Dispatchers.IO) {
                     cachedRepository.getSongDetail(
                         platform = platform,
                         songId = songId,
-                        quality = "320k",
+                        quality = playbackQuality,
                         coverUrlFromSearch = coverUrl,
                         songName = songName,
                         artists = songArtists

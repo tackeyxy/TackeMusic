@@ -285,12 +285,15 @@ class ChartDetailActivity : AppCompatActivity() {
                     }
                 }
 
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@ChartDetailActivity)
+
                 // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
                 val detail = withContext(Dispatchers.IO) {
                     cachedRepository.getSongUrlWithCache(
                         platform = platform,
                         songId = song.id,
-                        quality = "320k",
+                        quality = playbackQuality,
                         songName = song.name,
                         artists = song.artist,
                         useCache = true,
@@ -425,13 +428,15 @@ class ChartDetailActivity : AppCompatActivity() {
                 // 关键修复：预获取刚添加歌曲的URL并缓存
                 // 这样当用户进入播放页时，歌曲的URL已经准备好了
                 val cachedRepository = CachedMusicRepository(this@ChartDetailActivity)
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@ChartDetailActivity)
                 withContext(Dispatchers.IO) {
                     try {
                         Log.d("ChartDetailActivity", "预获取单曲URL: ${playlistSong.name}")
                         cachedRepository.getSongUrlWithCache(
                             platform = platform,
                             songId = playlistSong.id,
-                            quality = "320k",
+                            quality = playbackQuality,
                             songName = playlistSong.name,
                             artists = playlistSong.artists,
                             useCache = true,

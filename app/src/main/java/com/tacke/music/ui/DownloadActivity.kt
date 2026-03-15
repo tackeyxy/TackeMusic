@@ -560,6 +560,9 @@ class DownloadActivity : AppCompatActivity() {
 
             if (hasLocalFile) {
                 // 本地文件存在，使用带平台信息的播放方法
+                // 优先使用任务保存的音质
+                val quality = task.quality.takeIf { it.isNotBlank() }
+                    ?: SettingsActivity.getPlaybackQuality(this@DownloadActivity)
                 playbackManager.playFromDownloadWithPlatform(
                     context = this@DownloadActivity,
                     songId = task.songId,
@@ -567,16 +570,17 @@ class DownloadActivity : AppCompatActivity() {
                     artist = task.artist,
                     coverUrl = task.coverUrl,
                     playUrl = task.filePath,
-                    platform = task.platform
+                    platform = task.platform,
+                    quality = quality
                 )
             } else {
                 // 本地文件不存在，使用平台信息获取在线歌曲
                 val platform = playbackManager.getValidPlatform(task.platform)
 
                 // 使用带缓存的Repository获取歌曲详情（用于歌词和封面）
-                // 优先使用任务保存的音质，如果没有则使用用户设置的默认音质
-                val quality = task.quality.takeIf { it.isNotBlank() } 
-                    ?: SettingsActivity.getDefaultDownloadQuality(this@DownloadActivity)
+                // 优先使用任务保存的音质，如果没有则使用用户设置的听音质
+                val quality = task.quality.takeIf { it.isNotBlank() }
+                    ?: SettingsActivity.getPlaybackQuality(this@DownloadActivity)
                 val cachedRepository = CachedMusicRepository(this@DownloadActivity)
                 val detail = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     cachedRepository.getSongDetail(
@@ -590,6 +594,9 @@ class DownloadActivity : AppCompatActivity() {
                 }
 
                 if (detail != null) {
+                    // 优先使用任务保存的音质
+                    val quality = task.quality.takeIf { it.isNotBlank() }
+                        ?: SettingsActivity.getPlaybackQuality(this@DownloadActivity)
                     playbackManager.playFromDownload(
                         context = this@DownloadActivity,
                         songId = task.songId,
@@ -598,7 +605,8 @@ class DownloadActivity : AppCompatActivity() {
                         coverUrl = detail.cover ?: task.coverUrl,
                         playUrl = detail.url,
                         platform = platform,
-                        songDetail = detail
+                        songDetail = detail,
+                        quality = quality
                     )
                 } else {
                     Toast.makeText(this@DownloadActivity, "获取歌曲信息失败，可能音源不可用", Toast.LENGTH_SHORT).show()
@@ -642,13 +650,15 @@ class DownloadActivity : AppCompatActivity() {
             if (addedSongs.isNotEmpty()) {
                 val (firstSong, firstPlatform) = addedSongs.first()
                 val cachedRepository = CachedMusicRepository(this@DownloadActivity)
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@DownloadActivity)
                 withContext(Dispatchers.IO) {
                     try {
                         Log.d("DownloadActivity", "预获取第一首歌曲URL: ${firstSong.name}")
                         cachedRepository.getSongUrlWithCache(
                             platform = firstPlatform,
                             songId = firstSong.id,
-                            quality = "320k",
+                            quality = playbackQuality,
                             songName = firstSong.name,
                             artists = firstSong.artists,
                             useCache = true,

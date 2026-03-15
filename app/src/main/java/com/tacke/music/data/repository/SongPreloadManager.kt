@@ -58,12 +58,12 @@ class SongPreloadManager private constructor(context: Context) {
                 }
 
                 // 预加载歌曲详情（包含歌词和封面URL）
-                // 使用用户设置的默认下载音质进行预加载
-                val defaultQuality = SettingsActivity.getDefaultDownloadQuality(appContext)
+                // 使用用户设置的听音质进行预加载
+                val playbackQuality = SettingsActivity.getPlaybackQuality(appContext)
                 val detail = cachedMusicRepository.getSongDetail(
                     platform = platform,
                     songId = song.id,
-                    quality = defaultQuality,
+                    quality = playbackQuality,
                     coverUrlFromSearch = song.coverUrl,
                     songName = song.name,
                     artists = song.artists
@@ -109,12 +109,12 @@ class SongPreloadManager private constructor(context: Context) {
                 }
 
                 // 预加载歌曲详情
-                // 使用用户设置的默认下载音质进行预加载
-                val defaultQuality = SettingsActivity.getDefaultDownloadQuality(appContext)
+                // 使用用户设置的听音质进行预加载
+                val playbackQuality = SettingsActivity.getPlaybackQuality(appContext)
                 val detail = cachedMusicRepository.getSongDetail(
                     platform = platform,
                     songId = song.id,
-                    quality = defaultQuality,
+                    quality = playbackQuality,
                     coverUrlFromSearch = song.coverUrl,
                     songName = song.name,
                     artists = song.artists

@@ -328,12 +328,15 @@ class FavoriteSongsActivity : AppCompatActivity() {
                     else -> MusicRepository.Platform.KUWO
                 }
 
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@FavoriteSongsActivity)
+
                 // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
                 val cachedRepository = CachedMusicRepository(this@FavoriteSongsActivity)
                 val detail = cachedRepository.getSongUrlWithCache(
                     platform = platform,
                     songId = song.id,
-                    quality = "320k",
+                    quality = playbackQuality,
                     songName = song.name,
                     artists = song.artists,
                     useCache = true,
@@ -403,12 +406,15 @@ class FavoriteSongsActivity : AppCompatActivity() {
                     else -> MusicRepository.Platform.KUWO
                 }
 
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@FavoriteSongsActivity)
+
                 // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
                 val cachedRepository = CachedMusicRepository(this@FavoriteSongsActivity)
                 val detail = cachedRepository.getSongUrlWithCache(
                     platform = platform,
                     songId = firstSong.id,
-                    quality = "320k",
+                    quality = playbackQuality,
                     songName = firstSong.name,
                     artists = firstSong.artists,
                     useCache = true,

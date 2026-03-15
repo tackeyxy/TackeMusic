@@ -154,6 +154,7 @@ class CachedMusicRepository(private val context: Context) {
         useCache: Boolean = true,
         coverUrlFromSearch: String? = null
     ): SongDetail? = withContext(Dispatchers.IO) {
+        Log.d(TAG, "getSongUrlWithCache 请求音质: $quality, songId=$songId")
         // 先尝试从缓存获取封面和歌词（如果允许使用缓存）
         var cachedCover: String? = null
         var cachedLyrics: String? = null

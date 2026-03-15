@@ -365,11 +365,14 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
 
                 // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
                 val cachedRepository = CachedMusicRepository(this@NeteasePlaylistDetailActivity)
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@NeteasePlaylistDetailActivity)
+                Log.d("NeteasePlaylistDetail", "使用试听音质: $playbackQuality")
                 val detail = withContext(Dispatchers.IO) {
                     cachedRepository.getSongUrlWithCache(
                         platform = platform,
                         songId = track.id.toString(),
-                        quality = "320k",
+                        quality = playbackQuality,
                         songName = track.name,
                         artists = artistName,
                         useCache = true,
@@ -472,13 +475,15 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                 // 关键修复：预获取刚添加歌曲的URL并缓存
                 // 这样当用户进入播放页时，歌曲的URL已经准备好了
                 val cachedRepository = CachedMusicRepository(this@NeteasePlaylistDetailActivity)
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@NeteasePlaylistDetailActivity)
                 withContext(Dispatchers.IO) {
                     try {
                         Log.d("NeteasePlaylistDetail", "预获取单曲URL: ${playlistSong.name}")
                         cachedRepository.getSongUrlWithCache(
                             platform = MusicRepository.Platform.NETEASE,
                             songId = playlistSong.id,
-                            quality = "320k",
+                            quality = playbackQuality,
                             songName = playlistSong.name,
                             artists = playlistSong.artists,
                             useCache = true,
@@ -559,13 +564,15 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                 if (addedSongs.isNotEmpty()) {
                     val firstSong = addedSongs.first()
                     val cachedRepository = CachedMusicRepository(this@NeteasePlaylistDetailActivity)
+                    // 获取用户设置的试听音质
+                    val playbackQuality = SettingsActivity.getPlaybackQuality(this@NeteasePlaylistDetailActivity)
                     withContext(Dispatchers.IO) {
                         try {
                             Log.d("NeteasePlaylistDetail", "预获取第一首歌曲URL: ${firstSong.name}")
                             cachedRepository.getSongUrlWithCache(
                                 platform = MusicRepository.Platform.NETEASE,
                                 songId = firstSong.id,
-                                quality = "320k",
+                                quality = playbackQuality,
                                 songName = firstSong.name,
                                 artists = firstSong.artists,
                                 useCache = true,

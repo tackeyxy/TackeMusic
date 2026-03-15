@@ -376,13 +376,16 @@ class RecentPlayActivity : AppCompatActivity() {
                     MusicRepository.Platform.KUWO
                 }
 
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@RecentPlayActivity)
+
                 // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
                 val cachedRepository = CachedMusicRepository(this@RecentPlayActivity)
                 val detail = withContext(Dispatchers.IO) {
                     cachedRepository.getSongUrlWithCache(
                         platform = platform,
                         songId = firstPlay.id,
-                        quality = "320k",
+                        quality = playbackQuality,
                         songName = firstPlay.name,
                         artists = firstPlay.artists,
                         useCache = true,

@@ -92,12 +92,15 @@ class PlaybackManager private constructor(context: Context) {
         playbackPreferences.currentPosition = 0L
         playbackPreferences.isPlaying = false
 
+        // 获取用户设置的试听音质
+        val playbackQuality = SettingsActivity.getPlaybackQuality(appContext)
+
         // 保存播放状态（新歌曲从头开始播放，位置为0）
         savePlaybackState(
             songId = song.id,
             position = 0L,
             isPlaying = true,
-            quality = "320k",
+            quality = playbackQuality,
             songDetail = songDetail
         )
 
@@ -132,6 +135,9 @@ class PlaybackManager private constructor(context: Context) {
     ) {
         Log.d(TAG, "快速播放歌曲: ${song.name}")
 
+        // 获取用户设置的试听音质
+        val playbackQuality = SettingsActivity.getPlaybackQuality(appContext)
+
         // 1. 使用getSongUrlWithCache获取完整的歌曲详情（包括URL、封面、歌词）
         // 该方法会优先使用本地缓存，如果没有缓存则根据平台使用不同的封面获取逻辑
         val cachedRepository = CachedMusicRepository(context)
@@ -139,7 +145,7 @@ class PlaybackManager private constructor(context: Context) {
             cachedRepository.getSongUrlWithCache(
                 platform = platform,
                 songId = song.id,
-                quality = "320k",
+                quality = playbackQuality,
                 songName = song.name,
                 artists = song.artists,
                 useCache = true,
@@ -184,12 +190,12 @@ class PlaybackManager private constructor(context: Context) {
         playbackPreferences.currentPosition = 0L
         playbackPreferences.isPlaying = false
 
-        // 7. 保存播放状态
+        // 7. 保存播放状态（使用用户设置的试听音质）
         savePlaybackState(
             songId = song.id,
             position = 0L,
             isPlaying = true,
-            quality = "320k",
+            quality = playbackQuality,
             songDetail = finalDetail
         )
 
@@ -220,7 +226,9 @@ class PlaybackManager private constructor(context: Context) {
      * @param artist 艺术家
      * @param coverUrl 封面URL
      * @param playUrl 播放URL（本地文件路径或在线URL）
+     * @param platform 音乐平台
      * @param songDetail 歌曲详情（可选，用于获取歌词和封面）
+     * @param quality 音质（可选，默认使用用户设置的试听音质）
      */
     suspend fun playFromDownload(
         context: Context,
@@ -230,7 +238,8 @@ class PlaybackManager private constructor(context: Context) {
         coverUrl: String?,
         playUrl: String,
         platform: MusicRepository.Platform = MusicRepository.Platform.KUWO,
-        songDetail: SongDetail? = null
+        songDetail: SongDetail? = null,
+        quality: String? = null
     ) {
         // 创建播放列表歌曲
         val playlistSong = PlaylistSong(
@@ -244,12 +253,15 @@ class PlaybackManager private constructor(context: Context) {
         // 添加到播放列表
         playlistManager.addSong(playlistSong)
 
+        // 使用传入的音质，如果没有则使用用户设置的试听音质
+        val playbackQuality = quality ?: SettingsActivity.getPlaybackQuality(appContext)
+
         // 保存播放状态（新歌曲从头开始播放，位置为0）
         savePlaybackState(
             songId = songId,
             position = 0L,
             isPlaying = true,
-            quality = "320k",
+            quality = playbackQuality,
             songDetail = songDetail
         )
 
@@ -312,12 +324,15 @@ class PlaybackManager private constructor(context: Context) {
         playbackPreferences.currentPosition = 0L
         playbackPreferences.isPlaying = false
 
+        // 获取用户设置的试听音质
+        val playbackQuality = SettingsActivity.getPlaybackQuality(appContext)
+
         // 保存播放状态（新歌曲从头开始播放，位置为0）
         savePlaybackState(
             songId = song.id,
             position = 0L,
             isPlaying = true,
-            quality = "320k",
+            quality = playbackQuality,
             songDetail = songDetail
         )
 
@@ -358,6 +373,9 @@ class PlaybackManager private constructor(context: Context) {
             MusicRepository.Platform.KUWO
         }
 
+        // 获取用户设置的试听音质
+        val playbackQuality = SettingsActivity.getPlaybackQuality(appContext)
+
         // 1. 先检查本地缓存
         val cachedRepository = CachedMusicRepository(context)
         val cachedDetail = cachedRepository.getCachedCoverAndLyrics(song.id)
@@ -367,7 +385,7 @@ class PlaybackManager private constructor(context: Context) {
             cachedRepository.getSongUrlWithCache(
                 platform = platform,
                 songId = song.id,
-                quality = "320k",
+                quality = playbackQuality,
                 songName = song.name,
                 artists = song.artists,
                 useCache = true,
@@ -420,7 +438,7 @@ class PlaybackManager private constructor(context: Context) {
         playbackPreferences.currentPosition = 0L
         playbackPreferences.isPlaying = false
 
-        // 7. 保存播放状态
+        // 7. 保存播放状态（使用用户设置的试听音质）
         val finalDetail = SongDetail(
             url = urlDetail.url,
             info = urlDetail.info,
@@ -431,7 +449,7 @@ class PlaybackManager private constructor(context: Context) {
             songId = song.id,
             position = 0L,
             isPlaying = true,
-            quality = "320k",
+            quality = playbackQuality,
             songDetail = finalDetail
         )
 
@@ -481,12 +499,15 @@ class PlaybackManager private constructor(context: Context) {
         playbackPreferences.currentPosition = 0L
         playbackPreferences.isPlaying = false
 
+        // 获取用户设置的试听音质
+        val playbackQuality = SettingsActivity.getPlaybackQuality(appContext)
+
         // 保存播放状态（新歌曲从头开始播放，位置为0）
         savePlaybackState(
             songId = song.id,
             position = 0L,
             isPlaying = true,
-            quality = "320k",
+            quality = playbackQuality,
             songDetail = songDetail
         )
 
@@ -586,14 +607,14 @@ class PlaybackManager private constructor(context: Context) {
             try {
                 Log.d(TAG, "同步预加载第一首歌信息: ${firstSong.name}")
 
-                // 使用用户设置的默认下载音质进行预加载
-                val defaultQuality = SettingsActivity.getDefaultDownloadQuality(appContext)
+                // 使用用户设置的听音质进行预加载
+                val playbackQuality = SettingsActivity.getPlaybackQuality(appContext)
                 
                 // 获取歌曲详情（优先从缓存获取，如果没有缓存则从网络获取）
                 val detail = cachedMusicRepository.getSongDetail(
                     platform = platform,
                     songId = firstSong.id,
-                    quality = defaultQuality,
+                    quality = playbackQuality,
                     coverUrlFromSearch = firstSong.coverUrl,
                     songName = firstSong.name,
                     artists = firstSong.artists
@@ -611,7 +632,7 @@ class PlaybackManager private constructor(context: Context) {
                             context = appContext,
                             songId = firstSong.id,
                             platform = platform.name,
-                            quality = defaultQuality,
+                            quality = playbackQuality,
                             songName = firstSong.name,
                             artist = firstSong.artists
                         )
@@ -778,13 +799,16 @@ class PlaybackManager private constructor(context: Context) {
         // 验证平台可用性
         val platform = getValidPlatform(recentPlay.platform)
 
+        // 获取用户设置的试听音质
+        val playbackQuality = SettingsActivity.getPlaybackQuality(appContext)
+
         // 使用带缓存的Repository获取歌曲详情，传入封面URL以获取正确的封面
         val cachedRepository = CachedMusicRepository(context)
         val detail = withContext(Dispatchers.IO) {
             cachedRepository.getSongDetail(
                 platform = platform,
                 songId = recentPlay.id,
-                quality = "320k",
+                quality = playbackQuality,
                 songName = recentPlay.name,
                 artists = recentPlay.artists,
                 coverUrlFromSearch = recentPlay.coverUrl
@@ -808,12 +832,12 @@ class PlaybackManager private constructor(context: Context) {
             playlistManager.addSong(playlistSong)
             playlistManager.setCurrentIndex(playlistManager.getPlaylistSize() - 1)
 
-            // 保存播放状态
+            // 保存播放状态（使用用户设置的试听音质）
             savePlaybackState(
                 songId = recentPlay.id,
                 position = 0L,
                 isPlaying = true,
-                quality = "320k",
+                quality = playbackQuality,
                 songDetail = detail
             )
 
@@ -846,6 +870,7 @@ class PlaybackManager private constructor(context: Context) {
      * @param coverUrl 封面URL
      * @param playUrl 播放URL（本地文件路径）
      * @param platform 音源平台
+     * @param quality 音质（可选，默认使用用户设置的试听音质）
      */
     suspend fun playFromDownloadWithPlatform(
         context: Context,
@@ -854,7 +879,8 @@ class PlaybackManager private constructor(context: Context) {
         artist: String,
         coverUrl: String?,
         playUrl: String,
-        platform: String
+        platform: String,
+        quality: String? = null
     ): Boolean {
         // 验证平台
         val validPlatform = getValidPlatform(platform)
@@ -871,6 +897,9 @@ class PlaybackManager private constructor(context: Context) {
         // 添加到播放列表
         playlistManager.addSong(playlistSong)
 
+        // 使用传入的音质，如果没有则使用用户设置的试听音质
+        val playbackQuality = quality ?: SettingsActivity.getPlaybackQuality(appContext)
+
         // 尝试获取歌曲详情（用于歌词和封面），传入封面URL以获取正确的封面
         val cachedRepository = CachedMusicRepository(context)
         val detail = withContext(Dispatchers.IO) {
@@ -878,7 +907,7 @@ class PlaybackManager private constructor(context: Context) {
                 cachedRepository.getSongDetail(
                     platform = validPlatform,
                     songId = songId,
-                    quality = "320k",
+                    quality = playbackQuality,
                     songName = songName,
                     artists = artist,
                     coverUrlFromSearch = coverUrl
@@ -893,7 +922,7 @@ class PlaybackManager private constructor(context: Context) {
             songId = songId,
             position = 0L,
             isPlaying = true,
-            quality = "320k",
+            quality = playbackQuality,
             songDetail = detail
         )
 

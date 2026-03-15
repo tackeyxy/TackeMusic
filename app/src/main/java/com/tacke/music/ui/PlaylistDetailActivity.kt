@@ -463,6 +463,9 @@ class PlaylistDetailActivity : AppCompatActivity() {
                     downloadManager.getLocalSongPath(song.id)
                 }
 
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@PlaylistDetailActivity)
+
                 // 如果本地文件存在，直接播放本地文件
                 if (localPath != null) {
                     // 使用带缓存的Repository获取歌曲详情（用于歌词和封面）
@@ -471,7 +474,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
                         cachedRepository.getSongDetail(
                             platform = platform,
                             songId = song.id,
-                            quality = "320k",
+                            quality = playbackQuality,
                             songName = song.name,
                             artists = song.artists,
                             coverUrlFromSearch = song.coverUrl
@@ -487,7 +490,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
                     cachedRepository.getSongUrlWithCache(
                         platform = platform,
                         songId = song.id,
-                        quality = "320k",
+                        quality = playbackQuality,
                         songName = song.name,
                         artists = song.artists,
                         useCache = true,
@@ -534,6 +537,9 @@ class PlaylistDetailActivity : AppCompatActivity() {
                     downloadManager.getLocalSongPath(firstSong.id)
                 }
 
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@PlaylistDetailActivity)
+
                 // 如果本地文件存在，直接播放本地文件
                 if (localPath != null) {
                     val cachedRepository = CachedMusicRepository(this@PlaylistDetailActivity)
@@ -541,7 +547,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
                         cachedRepository.getSongDetail(
                             platform = platform,
                             songId = firstSong.id,
-                            quality = "320k",
+                            quality = playbackQuality,
                             songName = firstSong.name,
                             artists = firstSong.artists,
                             coverUrlFromSearch = firstSong.coverUrl
@@ -558,7 +564,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
                     cachedRepository.getSongUrlWithCache(
                         platform = platform,
                         songId = firstSong.id,
-                        quality = "320k",
+                        quality = playbackQuality,
                         songName = firstSong.name,
                         artists = firstSong.artists,
                         useCache = true,
