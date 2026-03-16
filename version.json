@@ -1,11 +1,11 @@
 {
   "status": 200,
   "data": {
-    "versionCode": 12,
-    "versionName": "1.0.11",
+    "versionCode": 13,
+    "versionName": "1.0.12",
     "download_url": "https://gh-proxy.org/https://github.com/tackeyxy/TackeMusic/blob/dev/apk/app-debug.apk",
-    "file_size": "10.89 MB",
-    "release_notes": "1. 最终完善悬浮歌词样式\n2. 优化低DPI设备显示\n3. 新增试听音质设置\n4. 新增缓存定时清空和立即清空",
-    "publish_time": "2026-03-15 12:31:00"
+    "file_size": "11.29 MB",
+    "release_notes": "1. 重构推荐页UI设计\n2. 优化低DPI设备显示",
+    "publish_time": "2026-03-16 11:31:00"
   }
 }
