@@ -4,12 +4,38 @@
 
 ## 功能特性
 
-- 🎵 **双平台支持**：同时支持酷我音乐和网易云音乐搜索
-- 🎧 **在线播放**：流畅的音乐在线播放体验
-- 🎨 **现代化UI**：简洁美观的Material Design界面
+### 核心功能
+- 🎵 **双平台支持**：同时支持酷我音乐和网易云音乐搜索和播放
+- 🎧 **在线播放**：流畅的音乐在线播放体验，支持后台播放
+- 🎨 **现代化UI**：简洁美观的Material Design界面，支持沉浸式状态栏
 - 🖼️ **专辑背景**：播放页面背景使用歌曲专辑封面
+
+### 播放功能
+- 📝 **歌词显示**：支持同步歌词显示，实时高亮当前播放行
+- 🎤 **悬浮歌词**：支持桌面悬浮歌词，可拖拽、调整颜色和字体大小
+- 🔄 **播放模式**：支持顺序播放、随机播放、单曲循环
+- ⏭️ **手势操作**：支持滑动切换歌曲
+- 🎬 **专辑动画**：播放时专辑封面旋转动画
+
+### 音乐管理
 - 📥 **多种音质下载**：支持128k、320k、FLAC、FLAC 24bit等多种音质
-- 🎚️ **播放控制**：支持播放、暂停、进度调整等功能
+- 💾 **下载管理**：支持下载队列管理、暂停/恢复下载、批量下载
+- ❤️ **收藏功能**：支持"我喜欢的"歌曲收藏管理
+- 📋 **歌单功能**：支持创建、编辑、删除自定义歌单
+- 🕐 **播放历史**：自动记录最近播放的歌曲
+- 📊 **音乐榜单**：支持飙升榜、新歌榜、原创榜、热歌榜等
+
+### 搜索与发现
+- 🔍 **智能搜索**：支持双平台音乐搜索
+- 🏷️ **推荐歌单**：首页展示推荐歌单和音乐榜单
+- 🎵 **歌单详情**：支持查看歌单详情并播放全部歌曲
+
+### 设置与个性化
+- ⚙️ **音质设置**：支持设置试听音质（128k/192k/320k/FLAC/FLAC 24bit）
+- 🎨 **歌词样式**：支持自定义歌词颜色、字体大小、透明度
+- 📂 **下载路径**：支持自定义下载文件存储位置
+- 💾 **缓存管理**：支持设置缓存过期时间，自动清理过期缓存
+- 🔢 **并发下载**：支持设置同时下载任务数量（1-5个）
 
 ## 项目结构
 
@@ -20,31 +46,45 @@ TackeMusic/
 │   │   └── main/
 │   │       ├── java/com/tacke/music/
 │   │       │   ├── data/
-│   │       │   │   ├── api/              # API接口定义
+│   │       │   │   ├── api/              # API接口定义（酷我/网易云）
 │   │       │   │   ├── model/            # 数据模型
-│   │       │   │   └── repository/       # 数据仓库
+│   │       │   │   ├── repository/       # 数据仓库
+│   │       │   │   └── db/               # Room数据库
 │   │       │   ├── ui/
-│   │       │   │   ├── adapter/          # RecyclerView适配器
-│   │       │   │   ├── MainActivity.kt   # 主页面
-│   │       │   │   └── PlayerActivity.kt # 播放页面
+│   │       │   │   ├── MainActivity.kt           # 主页面（搜索/推荐）
+│   │       │   │   ├── PlayerActivity.kt         # 播放页面
+│   │       │   │   ├── LyricsActivity.kt         # 歌词页面
+│   │       │   │   ├── ChartDetailActivity.kt    # 榜单详情
+│   │       │   │   ├── PlaylistActivity.kt       # 歌单列表
+│   │       │   │   ├── FavoriteSongsActivity.kt  # 我喜欢的
+│   │       │   │   ├── RecentPlayActivity.kt     # 最近播放
+│   │       │   │   ├── DownloadActivity.kt       # 下载管理
+│   │       │   │   ├── SettingsActivity.kt       # 设置页面
+│   │       │   │   └── adapter/          # RecyclerView适配器
+│   │       │   ├── service/
+│   │       │   │   ├── MusicPlaybackService.kt   # 后台播放服务
+│   │       │   │   └── FloatingLyricsService.kt  # 悬浮歌词服务
 │   │       │   └── utils/                # 工具类
 │   │       └── res/                      # 资源文件
-│   └── build.gradle                       # app模块配置
-├── build.gradle                           # 项目级配置
-├── settings.gradle                        # 项目设置
-└── gradle.properties                      # Gradle属性
+│   └── build.gradle                      # app模块配置
+├── build.gradle                          # 项目级配置
+├── settings.gradle                       # 项目设置
+└── gradle.properties                     # Gradle属性
 ```
 
 ## 技术栈
 
 - **语言**：Kotlin
 - **最低SDK**：API 24 (Android 7.0)
-- **目标SDK**：API 34 (Android 14)
+- **目标SDK**：API 36 (Android 16)
+- **架构模式**：MVVM + Repository模式
 - **UI框架**：Material Design Components
 - **网络请求**：Retrofit + OkHttp
 - **图片加载**：Glide
-- **音乐播放**：Media3 ExoPlayer
+- **音乐播放**：Media3 ExoPlayer + MediaSession
+- **数据存储**：Room数据库
 - **异步处理**：Kotlin Coroutines
+- **依赖注入**：手动单例管理
 
 ## 使用说明
 
@@ -52,7 +92,7 @@ TackeMusic/
 
 - Android Studio Hedgehog (2023.1.1) 或更高版本
 - JDK 17
-- Android SDK 34
+- Android SDK 36
 
 ### 2. 构建项目
 
@@ -75,11 +115,31 @@ TackeMusic/
 1. 点击搜索结果中的歌曲
 2. 进入播放页面
 3. 自动开始播放
+4. 点击歌词按钮查看同步歌词
+5. 开启悬浮歌词功能
 
 #### 下载音乐
 1. 在歌曲列表点击更多按钮或在播放页面点击下载按钮
-2. 选择音质
-3. 开始下载
+2. 选择音质（128k/320k/FLAC/FLAC 24bit）
+3. 开始下载，可在下载管理页面查看进度
+
+#### 管理歌单
+1. 进入"我的歌单"页面
+2. 创建新歌单或选择已有歌单
+3. 将歌曲添加到歌单中
+
+#### 查看榜单
+1. 首页点击榜单卡片（飙升榜/新歌榜/原创榜/热歌榜）
+2. 查看榜单歌曲列表
+3. 播放全部或选择单首歌曲播放
+
+## 版本信息
+
+- **当前版本**：v1.0.12 (Build 13)
+- **更新日期**：2026-03-16
+- **更新内容**：
+  1. 重构推荐页UI设计
+  2. 优化低DPI设备显示
 
 ## 注意事项
 
