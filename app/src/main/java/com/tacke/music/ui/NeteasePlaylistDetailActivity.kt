@@ -302,6 +302,7 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                     binding.tvSongCount.text = "${playlist.trackCount} 首歌曲"
                     binding.tvDescription.text = playlist.description ?: "暂无简介"
                     binding.tvTrackCount.text = "${playlist.trackCount} 首"
+                    binding.tvTrackCountInButton.text = "${playlist.trackCount} 首"
 
                     // 重新加载封面
                     Glide.with(this@NeteasePlaylistDetailActivity)
@@ -888,6 +889,9 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             // 为状态栏占位视图设置高度
             binding.statusBarPlaceholder.layoutParams.height = insets.top
             binding.statusBarPlaceholder.requestLayout()
+
+            // 为AppBar设置顶部padding，使其延伸到状态栏下方
+            binding.appBarLayout.setPadding(0, insets.top, 0, 0)
 
             // 为底部设置 padding
             view.updatePadding(

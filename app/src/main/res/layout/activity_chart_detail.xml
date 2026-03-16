@@ -10,15 +10,23 @@
     <View
         android:id="@+id/statusBarPlaceholder"
         android:layout_width="match_parent"
-        android:layout_height="0dp" />
+        android:layout_height="0dp"
+        android:elevation="10dp" />
 
-    <!-- 固定的顶部标题区块 - 不会随滑动隐藏 -->
+    <!-- 顶部背景 - 仅延伸到状态栏，不包含标题内容 -->
+    <FrameLayout
+        android:id="@+id/toolbarBackground"
+        android:layout_width="match_parent"
+        android:layout_height="152dp"
+        android:background="@drawable/bg_chart_soaring"
+        android:elevation="4dp" />
+
+    <!-- 标题内容区域 - 保持在状态栏下方 -->
     <FrameLayout
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
-        android:layout_height="120dp"
-        android:layout_marginTop="0dp"
-        android:background="@drawable/bg_chart_soaring"
+        android:layout_height="56dp"
+        android:layout_marginTop="48dp"
         android:elevation="4dp">
 
         <!-- 返回按钮 -->
@@ -40,7 +48,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center"
             android:text="飙升榜"
-            android:textSize="24sp"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:textColor="@color/white" />
 
@@ -52,7 +60,7 @@
         android:layout_width="56dp"
         android:layout_height="56dp"
         android:layout_gravity="top|end"
-        android:layout_marginTop="92dp"
+        android:layout_marginTop="124dp"
         android:layout_marginEnd="24dp"
         android:background="@drawable/bg_play_all_gradient"
         android:src="@drawable/ic_play_filled"
@@ -67,7 +75,7 @@
         android:id="@+id/rvChartSongs"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginTop="120dp"
+        android:layout_marginTop="152dp"
         android:clipToPadding="false"
         android:paddingBottom="140dp" />
 

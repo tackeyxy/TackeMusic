@@ -10,6 +10,5 @@
         android:centerX="0.5"
         android:centerY="0.3" />
     <corners
-        android:bottomLeftRadius="32dp"
-        android:bottomRightRadius="32dp" />
+        android:radius="24dp" />
 </shape>

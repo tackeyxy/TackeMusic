@@ -820,6 +820,9 @@ class ChartDetailActivity : AppCompatActivity() {
             binding.statusBarPlaceholder.layoutParams.height = insets.top
             binding.statusBarPlaceholder.requestLayout()
 
+            // 为工具栏设置顶部padding，使其延伸到状态栏下方
+            binding.toolbar.setPadding(0, insets.top, 0, 0)
+
             // 为底部设置 padding
             view.updatePadding(
                 bottom = insets.bottom

@@ -47,18 +47,18 @@
                 app:layout_collapseMode="parallax"
                 app:layout_collapseParallaxMultiplier="0.5">
 
-                <!-- 渐变背景层 -->
+                <!-- 渐变背景层 - 延伸到状态栏 -->
                 <View
                     android:id="@+id/gradientBackground"
                     android:layout_width="match_parent"
-                    android:layout_height="380dp"
+                    android:layout_height="420dp"
                     android:background="@drawable/bg_playlist_header_gradient" />
 
-                <!-- 歌单信息头部内容 -->
+                <!-- 歌单信息头部内容 - 保持在状态栏下方 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="80dp"
+                    android:layout_marginTop="72dp"
                     android:orientation="vertical"
                     android:padding="20dp">
 
@@ -141,55 +141,72 @@
 
                     </LinearLayout>
 
-                    <!-- 播放全部按钮 - 悬浮风格 -->
-                    <androidx.cardview.widget.CardView
+                    <!-- 播放全部按钮 - 全新设计 -->
+                    <LinearLayout
                         android:id="@+id/btnPlayAll"
                         android:layout_width="match_parent"
-                        android:layout_height="52dp"
+                        android:layout_height="56dp"
                         android:layout_marginTop="24dp"
-                        app:cardCornerRadius="26dp"
-                        app:cardElevation="8dp"
-                        app:cardBackgroundColor="@android:color/transparent">
+                        android:background="@drawable/bg_play_all_button_new"
+                        android:gravity="center"
+                        android:orientation="horizontal"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:elevation="6dp"
+                        android:paddingHorizontal="24dp">
 
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:background="@drawable/bg_play_all_gradient_immersive"
-                            android:gravity="center"
-                            android:orientation="horizontal"
-                            android:clickable="true"
-                            android:focusable="true"
-                            android:foreground="?attr/selectableItemBackground">
+                        <!-- 播放图标容器 -->
+                        <FrameLayout
+                            android:layout_width="36dp"
+                            android:layout_height="36dp"
+                            android:background="@drawable/bg_play_icon_circle">
 
                             <ImageView
-                                android:layout_width="24dp"
-                                android:layout_height="24dp"
+                                android:layout_width="20dp"
+                                android:layout_height="20dp"
+                                android:layout_gravity="center"
                                 android:src="@drawable/ic_play_filled_modern"
                                 app:tint="@color/white" />
 
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="10dp"
-                                android:text="播放全部"
-                                android:textSize="16sp"
-                                android:textStyle="bold"
-                                android:textColor="@color/white" />
+                        </FrameLayout>
 
-                        </LinearLayout>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="12dp"
+                            android:text="播放全部"
+                            android:textSize="17sp"
+                            android:textStyle="bold"
+                            android:textColor="@color/white" />
 
-                    </androidx.cardview.widget.CardView>
+                        <!-- 装饰性分隔线 -->
+                        <View
+                            android:layout_width="1dp"
+                            android:layout_height="20dp"
+                            android:layout_marginStart="16dp"
+                            android:background="#40FFFFFF" />
+
+                        <TextView
+                            android:id="@+id/tvTrackCountInButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="16dp"
+                            android:text="0 首"
+                            android:textSize="14sp"
+                            android:textColor="#E0E0E0" />
+
+                    </LinearLayout>
 
                 </LinearLayout>
 
             </FrameLayout>
 
-            <!-- 工具栏 -->
+            <!-- 工具栏 - 保持在状态栏下方，进一步向上移动 -->
             <androidx.appcompat.widget.Toolbar
                 android:id="@+id/toolbar"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
-                android:layout_marginTop="0dp"
+                android:layout_marginTop="16dp"
                 app:contentInsetStartWithNavigation="0dp"
                 app:layout_collapseMode="pin"
                 app:navigationIcon="@drawable/ic_arrow_back_modern"
