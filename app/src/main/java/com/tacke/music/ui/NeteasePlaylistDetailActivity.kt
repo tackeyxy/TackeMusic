@@ -2,6 +2,7 @@ package com.tacke.music.ui
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -14,6 +15,7 @@ import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.bumptech.glide.Glide
+import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.api.PlaylistTrack
@@ -36,6 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 class NeteasePlaylistDetailActivity : AppCompatActivity() {
 
@@ -97,6 +100,7 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
         setupClickListeners()
         setupBatchActionListeners()
         setupScrollListener()
+        setupAppBarBehavior()
         loadPlaylistDetail()
     }
 
@@ -145,7 +149,8 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
-        binding.btnBack.setOnClickListener {
+        // Toolbar 导航按钮点击事件
+        binding.toolbar.setNavigationOnClickListener {
             if (isMultiSelectMode) {
                 exitMultiSelectMode()
             } else {
@@ -158,8 +163,6 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                 playAllTracks()
             }
         }
-
-
     }
 
     private fun setupBatchActionListeners() {
@@ -215,6 +218,28 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupAppBarBehavior() {
+        // 监听AppBar折叠状态，动态改变标题栏颜色
+        binding.appBarLayout.addOnOffsetChangedListener(AppBarLayout.OnOffsetChangedListener { appBarLayout, verticalOffset ->
+            val totalScrollRange = appBarLayout.totalScrollRange
+            val progress = abs(verticalOffset).toFloat() / totalScrollRange
+
+            // 根据滚动进度改变标题颜色
+            when {
+                progress < 0.5f -> {
+                    // 展开状态 - 白色文字
+                    binding.tvTitle.setTextColor(Color.WHITE)
+                    binding.toolbar.navigationIcon?.setTint(Color.WHITE)
+                }
+                else -> {
+                    // 折叠状态 - 深色文字
+                    binding.tvTitle.setTextColor(getColor(R.color.text_primary))
+                    binding.toolbar.navigationIcon?.setTint(getColor(R.color.text_primary))
+                }
+            }
+        })
+    }
+
     private fun enterMultiSelectMode() {
         isMultiSelectMode = true
         trackAdapter.setMultiSelectMode(true)
@@ -230,7 +255,7 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
     private fun showBatchActionBar() {
         binding.batchActionBarContainer.root.visibility = View.VISIBLE
         // 隐藏清空按钮（歌单列表不需要清空功能）
-        binding.batchActionBarContainer.btnClearAll.visibility = View.GONE
+        binding.batchActionBarContainer.btnClearAll?.visibility = View.GONE
         updateBatchActionBar()
         setupBatchActionListeners()
     }
@@ -276,6 +301,7 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                     binding.tvPlaylistName.text = playlistName
                     binding.tvSongCount.text = "${playlist.trackCount} 首歌曲"
                     binding.tvDescription.text = playlist.description ?: "暂无简介"
+                    binding.tvTrackCount.text = "${playlist.trackCount} 首"
 
                     // 重新加载封面
                     Glide.with(this@NeteasePlaylistDetailActivity)

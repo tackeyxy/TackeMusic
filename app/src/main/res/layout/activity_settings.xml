@@ -184,7 +184,7 @@
 
         </LinearLayout>
 
-        <!-- 听音质设置 -->
+        <!-- 试听音质设置 -->
         <LinearLayout
             android:id="@+id/layoutPlaybackQuality"
             android:layout_width="match_parent"
@@ -208,7 +208,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginStart="16dp"
-                android:text="听音质"
+                android:text="试听音质"
                 android:textSize="15sp"
                 android:textColor="@color/text_primary" />
 

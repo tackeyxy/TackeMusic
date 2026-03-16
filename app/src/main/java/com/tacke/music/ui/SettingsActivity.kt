@@ -47,10 +47,10 @@ class SettingsActivity : AppCompatActivity() {
         const val MIN_CONCURRENT_DOWNLOADS = 1
         const val MAX_CONCURRENT_DOWNLOADS = 5
 
-        // 默认听音质（在线播放音质）
+        // 默认试听音质（在线播放音质）
         const val DEFAULT_PLAYBACK_QUALITY = "320k"
 
-        // 听音质选项
+        // 试听音质选项
         val PLAYBACK_QUALITY_OPTIONS = listOf(
             "flac24bit" to "HR (24bit FLAC)",
             "flac" to "CDA (FLAC)",
@@ -369,13 +369,13 @@ class SettingsActivity : AppCompatActivity() {
         val currentIndex = PLAYBACK_QUALITY_OPTIONS.indexOfFirst { it.first == currentQuality }.coerceAtLeast(0)
 
         AlertDialog.Builder(this)
-            .setTitle("选择听音质")
+            .setTitle("选择试听音质")
             .setSingleChoiceItems(options, currentIndex) { dialog, which ->
                 val selectedQuality = PLAYBACK_QUALITY_OPTIONS[which].first
                 setPlaybackQuality(this, selectedQuality)
                 updatePlaybackQualityText()
 
-                Toast.makeText(this, "听音质已设置为: ${PLAYBACK_QUALITY_OPTIONS[which].second}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "试听音质已设置为: ${PLAYBACK_QUALITY_OPTIONS[which].second}", Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
             }
             .setNegativeButton("取消", null)
