@@ -16,6 +16,8 @@ object RetrofitClient {
     private const val NETEASE_PLAYLIST_BASE_URL = "https://music.163.com/"
     // GdStudio API - 用于获取歌曲播放URL
     private const val GDSTUDIO_BASE_URL = "https://music-api.gdstudio.xyz/"
+    // Music Search API - 用于搜索本地歌曲信息
+    private const val MUSIC_SEARCH_BASE_URL = "https://music-api.gdstudio.xyz/"
 
     private val networkLogger: NetworkLogger by lazy {
         NetworkLogger.getInstance(MusicApplication.context)
@@ -58,9 +60,16 @@ object RetrofitClient {
         .addConverterFactory(GsonConverterFactory.create())
         .build()
 
+    private val musicSearchRetrofit = Retrofit.Builder()
+        .baseUrl(MUSIC_SEARCH_BASE_URL)
+        .client(okHttpClient)
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+
     val kuwoApi: KuwoApi = kuwoSearchRetrofit.create(KuwoApi::class.java)
     val neteaseApi: NeteaseApi = neteaseRetrofit.create(NeteaseApi::class.java)
     val chartApi: ChartApi = chartRetrofit.create(ChartApi::class.java)
     val playlistApi: PlaylistApi = playlistRetrofit.create(PlaylistApi::class.java)
     val gdStudioApi: GdStudioApi = gdStudioRetrofit.create(GdStudioApi::class.java)
+    val musicSearchApi: MusicSearchApi = musicSearchRetrofit.create(MusicSearchApi::class.java)
 }

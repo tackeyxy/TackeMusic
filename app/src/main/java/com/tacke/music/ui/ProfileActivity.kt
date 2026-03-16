@@ -143,7 +143,7 @@ class ProfileActivity : AppCompatActivity() {
         }
 
         binding.btnLocalMusic.setOnClickListener {
-            Toast.makeText(this, "本地音乐功能开发中", Toast.LENGTH_SHORT).show()
+            LocalMusicActivity.start(this)
         }
 
         binding.btnDownloadManager.setOnClickListener {

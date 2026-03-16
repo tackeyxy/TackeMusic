@@ -41,6 +41,10 @@ class DownloadTaskAdapter(
     private var isMultiSelectMode = false
     private val resolvedCoverUrls = mutableMapOf<String, String>()
 
+    companion object {
+        private const val PAYLOAD_SPEED_UPDATE = "speed_update"
+    }
+
     fun submitList(newTasks: List<DownloadTask>) {
         tasks = newTasks
         notifyDataSetChanged()
@@ -49,7 +53,8 @@ class DownloadTaskAdapter(
     fun updateSpeeds(newSpeeds: Map<String, Long>) {
         if (!isHistory) {
             speeds = newSpeeds
-            notifyDataSetChanged()
+            // 只更新速度显示，不刷新整个列表，避免图片闪烁
+            notifyItemRangeChanged(0, tasks.size, PAYLOAD_SPEED_UPDATE)
         }
     }
 
@@ -91,6 +96,20 @@ class DownloadTaskAdapter(
 
     override fun onBindViewHolder(holder: TaskViewHolder, position: Int) {
         holder.bind(tasks[position])
+    }
+
+    override fun onBindViewHolder(holder: TaskViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.isEmpty()) {
+            // 没有 payload，执行完整绑定
+            holder.bind(tasks[position])
+        } else {
+            // 有 payload，执行局部更新
+            payloads.forEach { payload ->
+                when (payload) {
+                    PAYLOAD_SPEED_UPDATE -> holder.updateSpeed(tasks[position], speeds)
+                }
+            }
+        }
     }
 
     override fun getItemCount(): Int = tasks.size
@@ -175,6 +194,29 @@ class DownloadTaskAdapter(
                 layoutProgress.visibility = View.VISIBLE
                 tvSize.visibility = View.GONE
                 tvStatus.visibility = View.GONE
+                progressBar.progress = task.progress
+                tvProgress.text = "${task.progress}%"
+
+                val speed = speeds[task.id] ?: 0
+                tvSpeed.text = if (task.isDownloading && speed > 0) {
+                    formatSpeed(speed)
+                } else {
+                    getStatusText(task.status)
+                }
+
+                // 控制按钮图标
+                val iconRes = when {
+                    task.isPaused || task.isFailed -> R.drawable.ic_play
+                    task.isDownloading -> R.drawable.ic_pause
+                    else -> R.drawable.ic_pause
+                }
+                btnControl.setImageResource(iconRes)
+            }
+        }
+
+        fun updateSpeed(task: DownloadTask, speeds: Map<String, Long>) {
+            // 只更新速度和进度，不重新加载封面
+            if (!isHistory) {
                 progressBar.progress = task.progress
                 tvProgress.text = "${task.progress}%"
 
