@@ -3,7 +3,6 @@ package com.tacke.music.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -53,6 +52,10 @@ class FavoriteSongsActivity : AppCompatActivity() {
     private var favoriteSongs: List<FavoriteSongEntity> = emptyList()
     private var isMultiSelectMode = false
     private val selectedSongs = mutableSetOf<String>()
+
+    private fun isLocalSong(songId: String, platform: String): Boolean {
+        return platform.equals("LOCAL", ignoreCase = true) || songId.startsWith("local_")
+    }
 
     companion object {
         fun start(context: Context) {
@@ -173,14 +176,29 @@ class FavoriteSongsActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        // 下载按钮 - 真正的下载功能
+        // 下载按钮 - 真正的下载功能（跳过本地音乐）
         binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             val selectedSongList = favoriteSongs.filter { selectedSongs.contains(it.id) }
             if (selectedSongList.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            showBatchDownloadQualityDialog(selectedSongList)
+
+            // 过滤掉本地音乐
+            val (localSongs, onlineSongs) = selectedSongList.partition { isLocalSong(it.id, it.platform) }
+
+            if (onlineSongs.isEmpty()) {
+                // 所有选中的都是本地音乐
+                Toast.makeText(this, "本地音乐无需下载", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            if (localSongs.isNotEmpty()) {
+                // 有本地音乐被跳过
+                Toast.makeText(this, "已跳过 ${localSongs.size} 首本地音乐，仅下载在线音乐", Toast.LENGTH_SHORT).show()
+            }
+
+            showBatchDownloadQualityDialog(onlineSongs)
         }
 
         // 移除按钮 - 从我喜欢中移除
@@ -250,6 +268,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
                             updateSelectedCount()
                         }
                     }
+
                 }
             }
         }
@@ -322,6 +341,20 @@ class FavoriteSongsActivity : AppCompatActivity() {
     private fun playSong(song: FavoriteSongEntity) {
         lifecycleScope.launch {
             try {
+                if (isLocalSong(song.id, song.platform)) {
+                    val played = playbackManager.playLocalSongById(
+                        context = this@FavoriteSongsActivity,
+                        songId = song.id,
+                        songName = song.name,
+                        songArtists = song.artists,
+                        fallbackCoverUrl = song.coverUrl
+                    )
+                    if (!played) {
+                        Toast.makeText(this@FavoriteSongsActivity, "未找到本地文件，请先重新扫描本地音乐", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
                 val platform = when (song.platform.uppercase()) {
                     "KUWO" -> MusicRepository.Platform.KUWO
                     "NETEASE" -> MusicRepository.Platform.NETEASE
@@ -387,19 +420,36 @@ class FavoriteSongsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 // 添加所有喜欢歌曲到播放列表（不清空原有列表）
-                favoriteSongs.forEach { song ->
-                    val playlistSong = com.tacke.music.data.model.PlaylistSong(
+                val playlistSongs = favoriteSongs.map { song ->
+                    com.tacke.music.data.model.PlaylistSong(
                         id = song.id,
                         name = song.name,
                         artists = song.artists,
                         coverUrl = song.coverUrl,
                         platform = song.platform
                     )
-                    playlistManager.addSong(playlistSong)
                 }
+                playbackManager.addPlaylistSongsWithoutPlay(playlistSongs)
 
                 // 播放第一首
                 val firstSong = favoriteSongs.first()
+
+                if (isLocalSong(firstSong.id, firstSong.platform)) {
+                    val played = playbackManager.playLocalSongById(
+                        context = this@FavoriteSongsActivity,
+                        songId = firstSong.id,
+                        songName = firstSong.name,
+                        songArtists = firstSong.artists,
+                        fallbackCoverUrl = firstSong.coverUrl
+                    )
+                    if (played) {
+                        Toast.makeText(this@FavoriteSongsActivity, "开始播放全部 ${favoriteSongs.size} 首歌曲", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@FavoriteSongsActivity, "未找到本地文件，请先重新扫描本地音乐", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
                 val platform = when (firstSong.platform.uppercase()) {
                     "KUWO" -> MusicRepository.Platform.KUWO
                     "NETEASE" -> MusicRepository.Platform.NETEASE
@@ -689,18 +739,24 @@ class FavoriteSongsActivity : AppCompatActivity() {
             private val tvIndex: TextView = itemView.findViewById(R.id.tvIndex)
             private val coverOverlay: View = itemView.findViewById(R.id.coverOverlay)
 
+            private fun isLocalSong(song: FavoriteSongEntity): Boolean {
+                return song.platform.equals("LOCAL", ignoreCase = true) || song.id.startsWith("local_")
+            }
+
             fun bind(song: FavoriteSongEntity, position: Int) {
                 tvSongName.text = song.name
                 tvArtist.text = song.artists
                 tvIndex.text = (position + 1).toString()
 
                 // 设置音源图标
-                val iconRes = when (song.platform.uppercase()) {
-                    "KUWO" -> R.drawable.ic_kuwo_logo
-                    "NETEASE" -> R.drawable.ic_netease_logo
+                val iconRes = when {
+                    isLocalSong(song) -> R.drawable.ic_local_music
+                    song.platform.uppercase() == "KUWO" -> R.drawable.ic_kuwo_logo
+                    song.platform.uppercase() == "NETEASE" -> R.drawable.ic_netease_logo
                     else -> R.drawable.ic_music_note
                 }
                 ivSource.setImageResource(iconRes)
+                ivSource.visibility = View.VISIBLE
 
                 // 加载封面
                 loadCover(song)
@@ -710,6 +766,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
                 if (isMultiSelectMode) {
                     flCheckbox.visibility = View.VISIBLE
                     tvIndex.visibility = View.GONE
+                    ivSource.visibility = View.GONE
                     ivCheckbox.isSelected = isSelected
                     updateSelectedVisuals(isSelected)
 
@@ -719,6 +776,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
                 } else {
                     flCheckbox.visibility = View.GONE
                     tvIndex.visibility = View.VISIBLE
+                    ivSource.visibility = View.VISIBLE
                     resetVisuals()
 
                     itemView.setOnClickListener { onItemClick(song) }
@@ -754,12 +812,25 @@ class FavoriteSongsActivity : AppCompatActivity() {
 
                 when {
                     coverUrl.isNullOrEmpty() -> {
+                        // LOCAL 歌曲无封面时不走在线下载
+                        if (isLocalSong(song)) {
+                            ivCover.setImageResource(R.drawable.ic_music_note)
+                            return
+                        }
                         // 没有封面URL，尝试从网络获取
                         ivCover.setImageResource(R.drawable.ic_music_note)
                         downloadAndCacheCover(song)
                     }
                     coverUrl.startsWith("http") -> {
                         // 网络图片，使用 Glide 加载
+                        Glide.with(itemView.context)
+                            .load(coverUrl)
+                            .placeholder(R.drawable.ic_music_note)
+                            .error(R.drawable.ic_music_note)
+                            .into(ivCover)
+                    }
+                    coverUrl.startsWith("content://") || coverUrl.startsWith("file://") -> {
+                        // 本地 URI（MediaStore/SAF/file）
                         Glide.with(itemView.context)
                             .load(coverUrl)
                             .placeholder(R.drawable.ic_music_note)
@@ -787,6 +858,10 @@ class FavoriteSongsActivity : AppCompatActivity() {
                         }
                     }
                     else -> {
+                        if (isLocalSong(song)) {
+                            ivCover.setImageResource(R.drawable.ic_music_note)
+                            return
+                        }
                         // 相对路径（如酷我音乐的封面URL），需要解析为完整URL
                         ivCover.setImageResource(R.drawable.ic_music_note)
                         resolveAndLoadCover(song, coverUrl)
@@ -795,6 +870,9 @@ class FavoriteSongsActivity : AppCompatActivity() {
             }
 
             private fun resolveAndLoadCover(song: FavoriteSongEntity, relativeUrl: String) {
+                if (isLocalSong(song)) {
+                    return
+                }
                 lifecycleScope.launch {
                     try {
                         val context = itemView.context
@@ -826,6 +904,9 @@ class FavoriteSongsActivity : AppCompatActivity() {
             }
 
             private fun downloadAndCacheCover(song: FavoriteSongEntity) {
+                if (isLocalSong(song)) {
+                    return
+                }
                 lifecycleScope.launch {
                     try {
                         val context = itemView.context

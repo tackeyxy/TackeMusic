@@ -131,6 +131,7 @@ class RecentPlayAdapter(
             val iconRes = when (platform.uppercase()) {
                 "KUWO" -> R.drawable.ic_kuwo_logo
                 "NETEASE" -> R.drawable.ic_netease_logo
+                "LOCAL" -> R.drawable.ic_local_music
                 else -> R.drawable.ic_music_note
             }
             ivSource.setImageResource(iconRes)

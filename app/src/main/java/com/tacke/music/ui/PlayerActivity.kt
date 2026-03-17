@@ -39,9 +39,11 @@ import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.tacke.music.R
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.SongDetail
+import com.tacke.music.data.model.SongInfo
 import com.tacke.music.data.preferences.PlaybackPreferences
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
+import com.tacke.music.data.repository.LocalMusicInfoRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.data.repository.RecentPlayRepository
@@ -95,6 +97,15 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playlistRepository: PlaylistRepository
     private var isFromEmptyState = false
+
+    private fun isCurrentSongLocal(): Boolean {
+        if (songId.startsWith("local_")) return true
+        return playlistManager.getCurrentSong()?.platform.equals("LOCAL", ignoreCase = true)
+    }
+
+    private fun persistencePlatformName(): String {
+        return if (isCurrentSongLocal()) "LOCAL" else platform.name
+    }
 
     // Service connection
     private var musicService: MusicPlaybackService? = null
@@ -758,7 +769,7 @@ class PlayerActivity : AppCompatActivity() {
             updateQualityDisplay(currentQuality)
 
             // 如果歌词或封面为空，后台加载完整信息
-            if (songLyrics == null || songCover == null) {
+            if (songLyrics.isNullOrBlank() || songCover.isNullOrBlank()) {
                 loadMissingInfoInBackground()
             }
         }
@@ -773,7 +784,12 @@ class PlayerActivity : AppCompatActivity() {
         lifecycleScope.launch {
             // 1. 首先尝试从本地缓存获取封面图片
             val localCoverPath = withContext(Dispatchers.IO) {
-                CoverImageManager.getCoverPath(this@PlayerActivity, songId, platform.name)
+                var path = CoverImageManager.getCoverPath(this@PlayerActivity, songId, platform.name)
+                // 本地歌曲的封面缓存按 LOCAL 平台维度保存，补一层兜底读取
+                if (path == null && songId.startsWith("local_")) {
+                    path = CoverImageManager.getCoverPath(this@PlayerActivity, songId, "LOCAL")
+                }
+                path
             }
 
             if (localCoverPath != null) {
@@ -832,6 +848,44 @@ class PlayerActivity : AppCompatActivity() {
     private fun loadMissingInfoInBackground() {
         lifecycleScope.launch {
             try {
+                if (isCurrentSongLocal()) {
+                    val localMusicInfoRepository = LocalMusicInfoRepository(this@PlayerActivity)
+                    val hash = songId.removePrefix("local_").toIntOrNull()
+                    val localMusic = withContext(Dispatchers.IO) {
+                        localMusicInfoRepository.getAllCachedMusic().firstOrNull { music ->
+                            (hash != null && music.path.hashCode() == hash) ||
+                                (music.title == songName && music.artist == songArtists)
+                        }
+                    } ?: return@launch
+
+                    val info = withContext(Dispatchers.IO) {
+                        localMusicInfoRepository.getLocalMusicInfo(localMusic)
+                    } ?: return@launch
+
+                    if (!info.coverUrl.isNullOrBlank()) {
+                        val finalCover = normalizeCoverUrl(info.coverUrl)
+                        if (finalCover != songCover) {
+                            songCover = finalCover
+                            loadCoverAndBackground(finalCover)
+                        }
+                    }
+
+                    if (!info.lyrics.isNullOrBlank()) {
+                        songLyrics = info.lyrics
+                        parsedLyrics = parseLyrics(info.lyrics)
+                        updateLyrics(exoPlayer?.currentPosition ?: 0L)
+                    }
+
+                    val localDetail = SongDetail(
+                        url = songUrl.ifEmpty { songDetail?.url ?: "" },
+                        info = SongInfo(name = songName, artist = songArtists),
+                        cover = songCover,
+                        lyrics = songLyrics
+                    )
+                    songDetail = localDetail
+                    playbackPreferences.saveSongDetail(songId, localDetail)
+                    return@launch
+                }
                 Log.d(TAG, "后台加载缺失的歌曲信息: $songName")
 
                 val cachedRepository = CachedMusicRepository(this@PlayerActivity)
@@ -850,14 +904,14 @@ class PlayerActivity : AppCompatActivity() {
 
                 if (detail != null) {
                     // 更新歌词
-                    if (songLyrics == null && detail.lyrics != null) {
+                    if (songLyrics.isNullOrBlank() && !detail.lyrics.isNullOrBlank()) {
                         songLyrics = detail.lyrics
                         parsedLyrics = parseLyrics(detail.lyrics)
                         Log.d(TAG, "歌词加载完成")
                     }
 
                     // 更新封面
-                    if (detail.cover != null) {
+                    if (!detail.cover.isNullOrBlank()) {
                         val newCover = detail.cover
                         if (newCover != songCover) {
                             songCover = newCover
@@ -1167,31 +1221,71 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun loadCoverAndBackground(coverUrl: String?) {
-        if (!coverUrl.isNullOrEmpty()) {
+        val normalizedCoverUrl = normalizeCoverUrl(coverUrl)
+        if (!normalizedCoverUrl.isNullOrEmpty()) {
             // 加载专辑封面 - 强制刷新以确保显示最新图片
             Glide.with(this)
-                .load(coverUrl)
+                .load(normalizedCoverUrl)
                 .placeholder(R.drawable.ic_album_default)
                 .error(R.drawable.ic_album_default)
-                .diskCacheStrategy(DiskCacheStrategy.NONE)
-                .skipMemoryCache(true)
+                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .into(binding.ivAlbum)
 
             // 加载背景图片 - 强制刷新以确保显示最新图片
             Glide.with(this)
-                .load(coverUrl)
+                .load(normalizedCoverUrl)
                 .placeholder(R.drawable.bg_default_light_cyan)
                 .error(R.drawable.bg_default_light_cyan)
-                .diskCacheStrategy(DiskCacheStrategy.NONE)
-                .skipMemoryCache(true)
+                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .into(binding.ivBackground)
 
             // 显示背景图片
             binding.ivBackground.visibility = View.VISIBLE
+
+            // LOCAL 场景兜底：远程图先落本地文件，再用文件路径稳定显示
+            if (isCurrentSongLocal() && normalizedCoverUrl.startsWith("http", ignoreCase = true)) {
+                lifecycleScope.launch {
+                    val localPath = withContext(Dispatchers.IO) {
+                        CoverImageManager.downloadAndCacheCoverByUrl(
+                            context = this@PlayerActivity,
+                            songId = songId,
+                            platform = persistencePlatformName(),
+                            coverUrl = normalizedCoverUrl
+                        )
+                    }
+                    if (!localPath.isNullOrBlank()) {
+                        val file = File(localPath)
+                        if (file.exists()) {
+                            Glide.with(this@PlayerActivity)
+                                .load(file)
+                                .placeholder(R.drawable.ic_album_default)
+                                .error(R.drawable.ic_album_default)
+                                .into(binding.ivAlbum)
+                            Glide.with(this@PlayerActivity)
+                                .load(file)
+                                .placeholder(R.drawable.bg_default_light_cyan)
+                                .error(R.drawable.bg_default_light_cyan)
+                                .into(binding.ivBackground)
+                            binding.ivBackground.visibility = View.VISIBLE
+                        }
+                    }
+                }
+            }
         } else {
             // 没有封面时隐藏背景
             binding.ivAlbum.setImageResource(R.drawable.ic_album_default)
             binding.ivBackground.visibility = View.GONE
+        }
+    }
+
+    private fun normalizeCoverUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        val trimmed = url.trim()
+        if (!trimmed.startsWith("http://", ignoreCase = true)) return trimmed
+        return if (trimmed.contains("music.126.net", ignoreCase = true)) {
+            trimmed.replaceFirst("http://", "https://", ignoreCase = true)
+        } else {
+            trimmed
         }
     }
 
@@ -1390,6 +1484,50 @@ class PlayerActivity : AppCompatActivity() {
                     putExtra(FloatingLyricsService.EXTRA_LYRICS, "") // 临时清空歌词
                 }
                 LocalBroadcastManager.getInstance(this@PlayerActivity).sendBroadcast(tempIntent)
+            }
+
+            // LOCAL 歌曲：优先本地文件播放，并从本地缓存读取封面/歌词
+            if (playlistSong.platform.equals("LOCAL", ignoreCase = true) || songId.startsWith("local_")) {
+                Log.d(TAG, "loadAndPlaySong 命中 LOCAL 分支: songId=$songId, name=$songName")
+                val localMusicInfoRepository = LocalMusicInfoRepository(this@PlayerActivity)
+                val hash = songId.removePrefix("local_").toIntOrNull()
+                val localMusic = withContext(Dispatchers.IO) {
+                    localMusicInfoRepository.getAllCachedMusic().firstOrNull { music ->
+                        (hash != null && music.path.hashCode() == hash) ||
+                            (music.title == songName && music.artist == songArtists)
+                    }
+                }
+
+                if (localMusic != null) {
+                    val cachedInfo = withContext(Dispatchers.IO) {
+                        localMusicInfoRepository.getCachedInfoByPath(localMusic.path)
+                    }
+                    Log.d(
+                        TAG,
+                        "LOCAL 缓存命中: cover=${!cachedInfo?.coverUrl.isNullOrBlank()}, lyrics=${!cachedInfo?.lyrics.isNullOrBlank()}"
+                    )
+                    val playUrl = localMusic.contentUri ?: localMusic.path
+
+                    songCover = cachedInfo?.coverUrl ?: localMusic.coverUri ?: playlistSong.coverUrl
+                    songLyrics = cachedInfo?.lyrics
+                    songDetail = SongDetail(
+                        url = playUrl,
+                        info = SongInfo(name = songName, artist = songArtists),
+                        cover = songCover,
+                        lyrics = songLyrics
+                    )
+
+                    loadCoverWithCachePriority()
+                    songDetail?.let { updateUI(it) }
+                    playSong(playUrl)
+
+                    if (songCover.isNullOrBlank() || songLyrics.isNullOrBlank()) {
+                        Log.d(TAG, "LOCAL 信息不完整，触发后台补齐: $songName")
+                        loadMissingInfoInBackground()
+                    }
+                    return
+                }
+                Log.w(TAG, "LOCAL 分支未匹配到本地歌曲记录，回退到通用播放链路: $songName")
             }
 
             // 检查本地文件是否存在
@@ -1767,7 +1905,7 @@ class PlayerActivity : AppCompatActivity() {
                     artists = songArtists,
                     coverUrl = songCover ?: ""
                 )
-                val isNowFavorite = favoriteRepository.toggleFavorite(song, platform.name)
+                val isNowFavorite = favoriteRepository.toggleFavorite(song, persistencePlatformName())
                 val message = if (isNowFavorite) "已添加到我喜欢" else "已从我喜欢移除"
                 Toast.makeText(this@PlayerActivity, message, Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
@@ -1847,7 +1985,7 @@ class PlayerActivity : AppCompatActivity() {
                     artists = songArtists,
                     coverUrl = songCover ?: ""
                 )
-                playlistRepository.addSongToPlaylist(playlistId, song, platform.name)
+                playlistRepository.addSongToPlaylist(playlistId, song, persistencePlatformName())
                 Toast.makeText(this@PlayerActivity, "已添加到歌单", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this@PlayerActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -1875,7 +2013,7 @@ class PlayerActivity : AppCompatActivity() {
                         name = songName,
                         artists = songArtists,
                         coverUrl = songCover,
-                        platform = platform.name
+                        platform = persistencePlatformName()
                     )
                     playlistManager.addSong(playlistSong)
                 } else {
@@ -1903,7 +2041,7 @@ class PlayerActivity : AppCompatActivity() {
                             name = songName,
                             artists = songArtists,
                             coverUrl = detail.cover ?: songCover,
-                            platform = platform.name
+                            platform = persistencePlatformName()
                         )
                         playlistManager.addSong(playlistSong)
                     } ?: run {
@@ -1932,7 +2070,7 @@ class PlayerActivity : AppCompatActivity() {
                         name = songName,
                         artists = songArtists,
                         coverUrl = songCover,
-                        platform = platform.name
+                        platform = persistencePlatformName()
                     )
                     playlistManager.addSong(playlistSong)
                 } else {
@@ -1960,7 +2098,7 @@ class PlayerActivity : AppCompatActivity() {
                             name = songName,
                             artists = songArtists,
                             coverUrl = detail.cover ?: songCover,
-                            platform = platform.name
+                            platform = persistencePlatformName()
                         )
                         playlistManager.addSong(playlistSong)
                     } ?: run {
@@ -2193,7 +2331,7 @@ class PlayerActivity : AppCompatActivity() {
                         name = songName,
                         artists = songArtists,
                         coverUrl = songCover,
-                        platform = platform.name
+                        platform = persistencePlatformName()
                     )
                     recentPlayRepository.addRecentPlayFromPlaylistSong(tempSong)
                 }

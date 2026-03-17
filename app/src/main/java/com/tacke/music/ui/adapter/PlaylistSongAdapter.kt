@@ -69,7 +69,8 @@ class PlaylistSongAdapter(
             tvIndex.text = (position + 1).toString()
 
             // 设置音源图标
-            setupSourceIcon(song.platform)
+            setupSourceIcon(song)
+            ivSource.visibility = View.VISIBLE
 
             // 加载封面
             loadCover(song)
@@ -78,9 +79,10 @@ class PlaylistSongAdapter(
             val isSelected = selectedItems.contains(song.id)
 
             if (isMultiSelectMode) {
-                // 显示圆形复选框，隐藏序号
+                // 显示圆形复选框，隐藏序号和音源图标
                 flCheckbox.visibility = View.VISIBLE
                 tvIndex.visibility = View.GONE
+                ivSource.visibility = View.GONE
 
                 // 设置复选框状态
                 updateCheckboxState(isSelected)
@@ -107,6 +109,7 @@ class PlaylistSongAdapter(
                 // 非多选模式
                 flCheckbox.visibility = View.GONE
                 tvIndex.visibility = View.VISIBLE
+                ivSource.visibility = View.VISIBLE
 
                 // 重置视觉状态
                 resetVisuals()
@@ -157,16 +160,22 @@ class PlaylistSongAdapter(
             cvCover.scaleY = 1f
         }
 
-        private fun setupSourceIcon(platform: String) {
-            val iconRes = when (platform.uppercase()) {
-                "KUWO" -> R.drawable.ic_kuwo_logo
-                "NETEASE" -> R.drawable.ic_netease_logo
+        private fun isLocalSong(song: PlaylistSong): Boolean {
+            return song.platform.equals("LOCAL", ignoreCase = true) || song.id.startsWith("local_")
+        }
+
+        private fun setupSourceIcon(song: PlaylistSong) {
+            val iconRes = when {
+                isLocalSong(song) -> R.drawable.ic_local_music
+                song.platform.uppercase() == "KUWO" -> R.drawable.ic_kuwo_logo
+                song.platform.uppercase() == "NETEASE" -> R.drawable.ic_netease_logo
                 else -> R.drawable.ic_music_note
             }
             ivSource.setImageResource(iconRes)
         }
 
         private fun loadCover(song: PlaylistSong) {
+            val isLocalSong = isLocalSong(song)
             lifecycleScope?.launch {
                 // 1. 首先尝试从本地缓存获取封面图片（最高优先级）
                 val localCoverPath = withContext(Dispatchers.IO) {
@@ -187,12 +196,24 @@ class PlaylistSongAdapter(
                 val coverUrl = song.coverUrl
                 when {
                     coverUrl.isNullOrEmpty() -> {
+                        if (isLocalSong) {
+                            ivCover.setImageResource(R.drawable.ic_music_note)
+                            return@launch
+                        }
                         // 没有封面URL，尝试从网络获取
                         ivCover.setImageResource(R.drawable.ic_music_note)
                         downloadAndCacheCover(song)
                     }
                     coverUrl.startsWith("http") -> {
                         // 网络图片，使用 Glide 加载
+                        Glide.with(itemView.context)
+                            .load(coverUrl)
+                            .placeholder(R.drawable.ic_music_note)
+                            .error(R.drawable.ic_music_note)
+                            .into(ivCover)
+                    }
+                    coverUrl.startsWith("content://") || coverUrl.startsWith("file://") -> {
+                        // 本地 URI（MediaStore/SAF/file）
                         Glide.with(itemView.context)
                             .load(coverUrl)
                             .placeholder(R.drawable.ic_music_note)
@@ -220,6 +241,10 @@ class PlaylistSongAdapter(
                         }
                     }
                     else -> {
+                        if (isLocalSong) {
+                            ivCover.setImageResource(R.drawable.ic_music_note)
+                            return@launch
+                        }
                         // 相对路径（如酷我音乐的封面URL），需要解析为完整URL
                         ivCover.setImageResource(R.drawable.ic_music_note)
                         resolveAndLoadCover(song, coverUrl)
@@ -229,6 +254,9 @@ class PlaylistSongAdapter(
         }
 
         private fun resolveAndLoadCover(song: PlaylistSong, relativeUrl: String) {
+            if (isLocalSong(song)) {
+                return
+            }
             lifecycleScope?.launch {
                 try {
                     val context = itemView.context
@@ -263,6 +291,9 @@ class PlaylistSongAdapter(
         }
 
         private fun downloadAndCacheCover(song: PlaylistSong) {
+            if (isLocalSong(song)) {
+                return
+            }
             lifecycleScope?.launch {
                 try {
                     val context = itemView.context

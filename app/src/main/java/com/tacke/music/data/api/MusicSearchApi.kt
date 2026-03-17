@@ -1,5 +1,6 @@
 package com.tacke.music.data.api
 
+import com.google.gson.JsonElement
 import com.google.gson.annotations.SerializedName
 import retrofit2.http.GET
 import retrofit2.http.Headers
@@ -59,7 +60,7 @@ interface MusicSearchApi {
 data class SearchResultItem(
     @SerializedName("id") val id: String?,  // 歌曲ID
     @SerializedName("name") val name: String?,  // 歌曲名
-    @SerializedName("artist") val artist: String?,  // 艺人
+    @SerializedName("artist") private val artistRaw: JsonElement?,  // 艺人（字符串或数组）
     @SerializedName("album") val album: String?,  // 专辑
     @SerializedName("pic_id") val picId: String?,  // 封面ID
     @SerializedName("lyric_id") val lyricId: String?,  // 歌词ID
@@ -67,7 +68,25 @@ data class SearchResultItem(
     @SerializedName("url_id") val urlId: String?,  // URL ID
     @SerializedName("duration") val duration: Int?,  // 时长(秒)
     @SerializedName("pic_url") val picUrl: String?  // 封面URL（如果有）
-)
+) {
+    val artist: String
+        get() {
+            val raw = artistRaw ?: return ""
+            if (raw.isJsonNull) return ""
+            if (raw.isJsonPrimitive) return raw.asString
+            if (raw.isJsonArray) {
+                return raw.asJsonArray.mapNotNull { item ->
+                    when {
+                        item.isJsonPrimitive -> item.asString
+                        item.isJsonObject && item.asJsonObject.has("name") -> item.asJsonObject.get("name")?.asString
+                        else -> null
+                    }
+                }.filter { it.isNotBlank() }
+                    .joinToString("、")
+            }
+            return ""
+        }
+}
 
 /**
  * 封面响应

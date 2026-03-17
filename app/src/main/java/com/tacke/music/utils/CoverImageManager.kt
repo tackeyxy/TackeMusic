@@ -93,6 +93,7 @@ object CoverImageManager {
                 Log.e(TAG, "无法获取封面URL: songId=$songId, platform=$platform")
                 return@withContext null
             }
+            coverUrl = normalizeImageUrl(coverUrl)
 
             // 下载图片
             val bitmap = downloadImage(coverUrl)
@@ -188,6 +189,30 @@ object CoverImageManager {
     }
 
     /**
+     * 直接使用封面URL下载并缓存（不依赖平台 songId 详情接口）
+     * 适用于本地歌曲已拿到远程封面URL但 Glide 直连解码失败的兜底场景
+     */
+    suspend fun downloadAndCacheCoverByUrl(
+        context: Context,
+        songId: String,
+        platform: String,
+        coverUrl: String
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val existingPath = getCoverPath(context, songId, platform)
+            if (existingPath != null) {
+                return@withContext existingPath
+            }
+            val normalizedUrl = normalizeImageUrl(coverUrl)
+            val bitmap = downloadImage(normalizedUrl) ?: return@withContext null
+            saveBitmapToCache(context, bitmap, songId, platform)
+        } catch (e: Exception) {
+            Log.e(TAG, "按URL下载封面失败: ${e.message}", e)
+            null
+        }
+    }
+
+    /**
      * 从网络下载图片
      */
     private fun downloadImage(urlString: String): Bitmap? {
@@ -213,6 +238,16 @@ object CoverImageManager {
         } catch (e: Exception) {
             Log.e(TAG, "下载图片异常: ${e.message}", e)
             null
+        }
+    }
+
+    private fun normalizeImageUrl(url: String): String {
+        val trimmed = url.trim()
+        if (!trimmed.startsWith("http://", ignoreCase = true)) return trimmed
+        return if (trimmed.contains("music.126.net", ignoreCase = true)) {
+            trimmed.replaceFirst("http://", "https://", ignoreCase = true)
+        } else {
+            trimmed
         }
     }
 

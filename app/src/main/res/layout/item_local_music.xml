@@ -11,6 +11,24 @@
     android:clickable="true"
     android:focusable="true">
 
+    <!-- 序号/复选框容器 -->
+    <FrameLayout
+        android:id="@+id/flIndex"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:visibility="gone">
+
+        <!-- 复选框 -->
+        <ImageView
+            android:id="@+id/ivCheckbox"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:src="@drawable/selector_checkbox"
+            android:visibility="gone"
+            tools:visibility="visible" />
+    </FrameLayout>
+
     <!-- 序号 -->
     <TextView
         android:id="@+id/tvIndex"

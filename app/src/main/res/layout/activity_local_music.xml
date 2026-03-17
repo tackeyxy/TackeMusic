@@ -173,6 +173,15 @@
             android:layout_gravity="center"
             android:visibility="gone" />
 
+        <!-- 批量操作栏 - 右侧居中 -->
+        <include
+            android:id="@+id/batchActionBarContainer"
+            layout="@layout/layout_batch_action_bar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical|end"
+            android:layout_marginEnd="8dp" />
+
     </FrameLayout>
 
 </LinearLayout>

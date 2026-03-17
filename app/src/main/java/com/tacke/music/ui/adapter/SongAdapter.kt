@@ -83,7 +83,7 @@ class SongAdapter(
             tvArtist.text = song.artists
 
             // 设置音源标签 - 使用歌曲自己的平台信息
-            setupSourceTag(song.platform)
+            setupSourceTag(song)
 
             // 加载封面（如果布局中有封面ImageView）
             ivCover?.let { loadCover(song, it) }
@@ -112,16 +112,22 @@ class SongAdapter(
             }
         }
 
-        private fun setupSourceTag(platform: String) {
-            val logoResId = when (platform.uppercase()) {
-                "KUWO" -> R.drawable.ic_kuwo_logo
-                "NETEASE" -> R.drawable.ic_netease_logo
-                else -> R.drawable.ic_kuwo_logo
+        private fun isLocalSong(song: Song): Boolean {
+            return song.platform.equals("LOCAL", ignoreCase = true) || song.id.startsWith("local_")
+        }
+
+        private fun setupSourceTag(song: Song) {
+            val logoResId = when {
+                isLocalSong(song) -> R.drawable.ic_local_music
+                song.platform.uppercase() == "KUWO" -> R.drawable.ic_kuwo_logo
+                song.platform.uppercase() == "NETEASE" -> R.drawable.ic_netease_logo
+                else -> R.drawable.ic_music_note
             }
             ivSource.setImageResource(logoResId)
         }
 
         private fun loadCover(song: Song, ivCover: ImageView) {
+            val isLocalSong = isLocalSong(song)
             lifecycleScope?.launch {
                 // 1. 首先尝试从本地缓存获取封面图片（最高优先级）
                 val localCoverPath = withContext(Dispatchers.IO) {
@@ -142,6 +148,10 @@ class SongAdapter(
                 val coverUrl = song.coverUrl
                 when {
                     coverUrl.isNullOrEmpty() -> {
+                        if (isLocalSong) {
+                            ivCover.setImageResource(R.drawable.ic_music_note)
+                            return@launch
+                        }
                         // 没有封面URL，尝试从网络获取
                         ivCover.setImageResource(R.drawable.ic_music_note)
                         downloadAndCacheCover(song, ivCover)
@@ -160,7 +170,7 @@ class SongAdapter(
                                     isFirstResource: Boolean
                                 ): Boolean {
                                     // 如果网络图片加载失败，尝试解析或下载封面
-                                    if (song.platform.equals("kuwo", ignoreCase = true)) {
+                                    if (song.platform.equals("kuwo", ignoreCase = true) && !isLocalSong) {
                                         resolveAndLoadCover(song, ivCover, coverUrl)
                                     } else {
                                         downloadAndCacheCover(song, ivCover)
@@ -178,6 +188,14 @@ class SongAdapter(
                                     return false
                                 }
                             })
+                            .into(ivCover)
+                    }
+                    coverUrl.startsWith("content://") || coverUrl.startsWith("file://") -> {
+                        // 本地 URI（MediaStore/SAF/file）
+                        Glide.with(itemView.context)
+                            .load(coverUrl)
+                            .placeholder(R.drawable.ic_music_note)
+                            .error(R.drawable.ic_music_note)
                             .into(ivCover)
                     }
                     coverUrl.startsWith("/") -> {
@@ -201,6 +219,10 @@ class SongAdapter(
                         }
                     }
                     else -> {
+                        if (isLocalSong) {
+                            ivCover.setImageResource(R.drawable.ic_music_note)
+                            return@launch
+                        }
                         // 相对路径（如酷我音乐的封面URL），需要解析为完整URL
                         ivCover.setImageResource(R.drawable.ic_music_note)
                         resolveAndLoadCover(song, ivCover, coverUrl)
@@ -210,6 +232,9 @@ class SongAdapter(
         }
 
         private fun resolveAndLoadCover(song: Song, ivCover: ImageView, relativeUrl: String) {
+            if (isLocalSong(song)) {
+                return
+            }
             lifecycleScope?.launch {
                 try {
                     val context = itemView.context
@@ -248,6 +273,9 @@ class SongAdapter(
         }
 
         private fun downloadAndCacheCover(song: Song, ivCover: ImageView) {
+            if (isLocalSong(song)) {
+                return
+            }
             lifecycleScope?.launch {
                 try {
                     val context = itemView.context

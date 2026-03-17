@@ -208,4 +208,45 @@ class SongPreloadManager private constructor(context: Context) {
             Log.d(TAG, "批量预加载播放列表完成")
         }
     }
+
+    /**
+     * 预加载本地音乐信息（封面和歌词）
+     * 优先从本地数据库获取，如果没有则通过API获取
+     *
+     * @param localMusic 本地音乐信息
+     * @param platform 音乐平台
+     */
+    fun preloadLocalMusicInfo(
+        localMusic: com.tacke.music.ui.LocalMusic,
+        platform: MusicRepository.Platform
+    ) {
+        preloadScope.launch {
+            try {
+                Log.d(TAG, "开始预加载本地音乐信息: ${localMusic.title}")
+
+                // 使用LocalMusicInfoRepository获取本地音乐信息（带缓存）
+                val localMusicInfoRepository = LocalMusicInfoRepository(appContext)
+                val musicInfo = localMusicInfoRepository.getLocalMusicInfo(localMusic)
+
+                if (musicInfo != null) {
+                    Log.d(TAG, "本地音乐信息获取成功: ${localMusic.title}, 封面=${musicInfo.coverUrl != null}, 歌词=${musicInfo.lyrics != null}")
+
+                    // 如果封面URL有效，预下载封面图片到本地缓存
+                    if (!musicInfo.coverUrl.isNullOrEmpty()) {
+                        preloadCoverImage(
+                            songId = "local_${localMusic.path.hashCode()}",
+                            platform = "LOCAL",
+                            coverUrl = musicInfo.coverUrl,
+                            songName = localMusic.title,
+                            artist = localMusic.artist
+                        )
+                    }
+                } else {
+                    Log.w(TAG, "本地音乐信息获取失败: ${localMusic.title}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "预加载本地音乐信息异常: ${localMusic.title}", e)
+            }
+        }
+    }
 }

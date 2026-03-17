@@ -34,6 +34,8 @@ class LocalMusicInfoRepository(private val context: Context) {
     suspend fun getAllCachedMusic(): List<LocalMusic> = withContext(Dispatchers.IO) {
         val entities = localMusicInfoDao.getAllSync()
         entities.map { entity ->
+            // 如果 path 是 content:// URI，则同时设置为 contentUri
+            val isUri = entity.path.startsWith("content://")
             LocalMusic(
                 id = entity.id,
                 title = entity.title,
@@ -41,7 +43,8 @@ class LocalMusicInfoRepository(private val context: Context) {
                 album = entity.album,
                 duration = 0L, // 从数据库加载时不存储时长
                 path = entity.path,
-                coverUri = entity.coverUrl
+                coverUri = entity.coverUrl,
+                contentUri = if (isUri) entity.path else null
             )
         }
     }
@@ -61,7 +64,10 @@ class LocalMusicInfoRepository(private val context: Context) {
         // 如果不是强制刷新，先检查缓存（通过文件路径）
         if (!forceRefresh) {
             val cachedInfo = localMusicInfoDao.getByPath(localMusic.path)
-            if (cachedInfo != null && isCacheValid(cachedInfo)) {
+            val hasCompleteCache = cachedInfo != null &&
+                !cachedInfo.coverUrl.isNullOrBlank() &&
+                !cachedInfo.lyrics.isNullOrBlank()
+            if (cachedInfo != null && isCacheValid(cachedInfo) && hasCompleteCache) {
                 Log.d(TAG, "从缓存获取本地音乐信息: ${localMusic.title}")
                 return@withContext cachedInfo
             }
@@ -98,7 +104,11 @@ class LocalMusicInfoRepository(private val context: Context) {
             try {
                 // 检查是否已有有效缓存（通过文件路径）
                 val cachedInfo = localMusicInfoDao.getByPath(music.path)
-                if (cachedInfo == null || !isCacheValid(cachedInfo)) {
+                val hasCompleteCache = cachedInfo != null &&
+                    !cachedInfo.coverUrl.isNullOrEmpty() &&
+                    !cachedInfo.lyrics.isNullOrEmpty()
+
+                if (cachedInfo == null || !isCacheValid(cachedInfo) || !hasCompleteCache) {
                     val info = fetchMusicInfoFromApi(music)
                     if (info != null) {
                         localMusicInfoDao.insert(info)
@@ -118,75 +128,118 @@ class LocalMusicInfoRepository(private val context: Context) {
      * 从API获取音乐信息
      */
     private suspend fun fetchMusicInfoFromApi(localMusic: LocalMusic): LocalMusicInfoEntity? {
-        // 1. 搜索歌曲
-        val searchResults = try {
-            musicSearchApi.searchSongs(
-                name = localMusic.title,
-                pages = 1
-            )
+        val title = localMusic.title.trim()
+        val artist = localMusic.artist.trim()
+        val hasValidArtist = artist.isNotEmpty() &&
+            !artist.equals("未知艺术家", ignoreCase = true) &&
+            !artist.equals("未知艺人", ignoreCase = true)
+        val keyword = if (hasValidArtist) "$title $artist" else title
+        val musicRepository = MusicRepository()
+        val cachedRepo = CachedMusicRepository(context)
+
+        // 1. 按平台顺序搜索：酷我 -> 网易云；默认取各平台第一个结果
+        val kuwoResults = try {
+            musicRepository.searchMusic(MusicRepository.Platform.KUWO, keyword, 0)
         } catch (e: Exception) {
-            Log.e(TAG, "搜索歌曲失败: ${localMusic.title}", e)
+            Log.e(TAG, "酷我搜索失败: ${localMusic.title}", e)
+            emptyList()
+        }
+        val neteaseResults = try {
+            musicRepository.searchMusic(MusicRepository.Platform.NETEASE, keyword, 0)
+        } catch (e: Exception) {
+            Log.e(TAG, "网易云搜索失败: ${localMusic.title}", e)
+            emptyList()
+        }
+
+        val firstKuwo = kuwoResults.firstOrNull()
+        val firstNetease = neteaseResults.firstOrNull()
+
+        var selected: Pair<MusicRepository.Platform, com.tacke.music.data.model.Song>? = null
+        if (firstKuwo != null && isSongMatched(firstKuwo, title, artist)) {
+            selected = MusicRepository.Platform.KUWO to firstKuwo
+        } else if (firstNetease != null && isSongMatched(firstNetease, title, artist)) {
+            selected = MusicRepository.Platform.NETEASE to firstNetease
+        } else if (firstKuwo != null) {
+            // 两个平台首条都不严格匹配时，按顺序保底使用酷我首条
+            selected = MusicRepository.Platform.KUWO to firstKuwo
+        } else if (firstNetease != null) {
+            selected = MusicRepository.Platform.NETEASE to firstNetease
+        }
+
+        if (selected == null) {
+            Log.w(TAG, "双平台搜索无结果: ${localMusic.title}")
             return null
         }
 
-        if (searchResults.isEmpty()) {
-            Log.w(TAG, "搜索歌曲无结果: ${localMusic.title}")
-            return null
-        }
+        val (selectedPlatform, selectedSong) = selected
+        val source = if (selectedPlatform == MusicRepository.Platform.KUWO) "kuwo" else "netease"
 
-        // 2. 获取第一个搜索结果（最匹配的）
-        val firstResult = searchResults[0]
-        val picId = firstResult.picId
-        val lyricId = firstResult.lyricId
-        val source = firstResult.source
+        Log.d(
+            TAG,
+            "双平台最佳匹配: platform=${selectedPlatform.name}, title=${selectedSong.name}, artist=${selectedSong.artists}, id=${selectedSong.id}"
+        )
 
-        if (picId.isNullOrEmpty() || lyricId.isNullOrEmpty() || source.isNullOrEmpty()) {
-            Log.w(TAG, "搜索结果缺少必要信息: ${localMusic.title}")
-            return null
-        }
-
-        // 3. 获取封面URL
-        var coverUrl: String? = null
-        try {
-            val picResponse = musicSearchApi.getSongPic(
-                source = source,
-                id = picId
+        // 2. 使用原有在线播放链路获取图词（复用酷我/网易云原规则）
+        val detail = try {
+            cachedRepo.getSongDetail(
+                platform = selectedPlatform,
+                songId = selectedSong.id,
+                quality = "320k",
+                coverUrlFromSearch = selectedSong.coverUrl,
+                songName = localMusic.title,
+                artists = localMusic.artist
             )
-            if (picResponse.code == 200) {
-                coverUrl = picResponse.url
-            }
         } catch (e: Exception) {
-            Log.e(TAG, "获取封面失败: ${localMusic.title}", e)
+            Log.e(TAG, "双平台详情获取失败: ${localMusic.title}", e)
+            null
         }
 
-        // 4. 获取歌词
-        var lyrics: String? = null
-        try {
-            val lyricResponse = musicSearchApi.getSongLyric(
-                source = source,
-                id = lyricId
-            )
-            if (lyricResponse.code == 200) {
-                lyrics = lyricResponse.lyric
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "获取歌词失败: ${localMusic.title}", e)
-        }
+        val coverUrl = detail?.cover ?: selectedSong.coverUrl
+        val lyrics = detail?.lyrics
 
-        // 5. 创建并返回实体
+        // 3. 写入本地缓存实体
         return LocalMusicInfoEntity(
             id = 0, // 自增ID
             title = localMusic.title,
             artist = localMusic.artist,
             album = localMusic.album,
             path = localMusic.path,
-            picId = picId,
-            lyricId = lyricId,
+            // 双平台搜索结果中没有独立 pic/lyric id，使用 songId 作为追踪字段
+            picId = selectedSong.id,
+            lyricId = selectedSong.id,
             source = source,
             coverUrl = coverUrl,
             lyrics = lyrics,
             updatedAt = System.currentTimeMillis()
         )
+    }
+
+    private fun isSongMatched(song: com.tacke.music.data.model.Song, title: String, artist: String): Boolean {
+        val normalizedTargetTitle = normalizeForMatch(title)
+        val normalizedSongTitle = normalizeForMatch(song.name)
+        if (normalizedTargetTitle.isEmpty() || normalizedSongTitle.isEmpty()) return false
+
+        val titleMatched =
+            normalizedTargetTitle == normalizedSongTitle ||
+            normalizedSongTitle.contains(normalizedTargetTitle) ||
+            normalizedTargetTitle.contains(normalizedSongTitle)
+        if (!titleMatched) return false
+
+        val normalizedTargetArtist = normalizeForMatch(artist)
+        if (normalizedTargetArtist.isEmpty()) return true
+
+        val normalizedSongArtist = normalizeForMatch(song.artists)
+        if (normalizedSongArtist.isEmpty()) return false
+
+        return normalizedSongArtist == normalizedTargetArtist ||
+            normalizedSongArtist.contains(normalizedTargetArtist) ||
+            normalizedTargetArtist.contains(normalizedSongArtist)
+    }
+
+    private fun normalizeForMatch(value: String?): String {
+        return value.orEmpty()
+            .lowercase()
+            .replace(Regex("[\\s\\p{P}\\p{S}]"), "")
     }
 
     /**
@@ -218,6 +271,20 @@ class LocalMusicInfoRepository(private val context: Context) {
      */
     suspend fun deleteCacheByPath(path: String) {
         localMusicInfoDao.deleteByPath(path)
+    }
+
+    /**
+     * 根据路径删除本地音乐（用于批量操作）
+     */
+    suspend fun deleteByPath(path: String) {
+        localMusicInfoDao.deleteByPath(path)
+    }
+
+    /**
+     * 删除所有本地音乐记录
+     */
+    suspend fun deleteAll() {
+        localMusicInfoDao.deleteAll()
     }
 
     /**
@@ -253,8 +320,24 @@ class LocalMusicInfoRepository(private val context: Context) {
 
         musicFiles.forEach { music ->
             try {
+                // 检查文件是否可访问
+                // 对于 SAF URI (content://)，不需要检查文件是否存在
+                // 对于文件路径，检查文件是否存在
+                if (!music.path.startsWith("content://")) {
+                    val file = File(music.path)
+                    if (!file.exists()) {
+                        Log.w(TAG, "跳过已删除的文件: ${music.path}")
+                        completed++
+                        onProgress?.invoke(completed, total)
+                        return@forEach
+                    }
+                }
+
                 // 从文件元数据获取信息（优先）
-                val metadata = extractMetadataFromFile(music.path)
+                // 优先使用 contentUri（MediaStore URI），这在 Android 10+ 上更可靠
+                // 对于 SAF 选择的文件，使用 path 作为 URI
+                val uriToUse = if (music.path.startsWith("content://")) music.path else music.contentUri
+                val metadata = extractMetadataFromFile(music.path, uriToUse)
 
                 val title: String
                 val artist: String
@@ -275,64 +358,12 @@ class LocalMusicInfoRepository(private val context: Context) {
                     Log.d(TAG, "解析文件名: $title - $artist (原始: ${music.title})")
                 }
 
-                // 搜索在线信息获取封面和歌词
-                val searchResults = try {
-                    musicSearchApi.searchSongs(
-                        name = title,
-                        pages = 1
-                    )
-                } catch (e: Exception) {
-                    Log.e(TAG, "搜索歌曲失败: $title", e)
-                    emptyList()
-                }
-
-                var coverUrl: String? = null
-                var lyrics: String? = null
-                var picId: String? = null
-                var lyricId: String? = null
-                var source: String? = null
-
-                if (searchResults.isNotEmpty()) {
-                    // 尝试找到最匹配的结果（歌名和歌手都匹配）
-                    val matchedResult = searchResults.find { song ->
-                        song.name.equals(title, ignoreCase = true) &&
-                        song.artist.equals(artist, ignoreCase = true)
-                    } ?: searchResults[0] // 如果没有完全匹配的，使用第一个结果
-
-                    picId = matchedResult.picId
-                    lyricId = matchedResult.lyricId
-                    source = matchedResult.source
-
-                    // 获取封面URL
-                    if (!picId.isNullOrEmpty() && !source.isNullOrEmpty()) {
-                        try {
-                            val picResponse = musicSearchApi.getSongPic(
-                                source = source,
-                                id = picId
-                            )
-                            if (picResponse.code == 200) {
-                                coverUrl = picResponse.url
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "获取封面失败: $title", e)
-                        }
-                    }
-
-                    // 获取歌词
-                    if (!lyricId.isNullOrEmpty() && !source.isNullOrEmpty()) {
-                        try {
-                            val lyricResponse = musicSearchApi.getSongLyric(
-                                source = source,
-                                id = lyricId
-                            )
-                            if (lyricResponse.code == 200) {
-                                lyrics = lyricResponse.lyric
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "获取歌词失败: $title", e)
-                        }
-                    }
-                }
+                // 扫描阶段只落库本地元数据，不做在线封面/歌词请求
+                val coverUrl: String? = null
+                val lyrics: String? = null
+                val picId: String? = null
+                val lyricId: String? = null
+                val source: String? = null
 
                 // 检查是否已存在相同路径的歌曲
                 val existingEntity = localMusicInfoDao.getByPath(music.path)
@@ -379,15 +410,53 @@ class LocalMusicInfoRepository(private val context: Context) {
 
     /**
      * 从文件提取元数据
+     * 支持通过文件路径或URI访问文件
      */
-    private fun extractMetadataFromFile(path: String): MetadataInfo? {
+    private fun extractMetadataFromFile(path: String, contentUri: String? = null): MetadataInfo? {
         val retriever = MediaMetadataRetriever()
         return try {
-            retriever.setDataSource(path)
-            val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: ""
-            val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
-            val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
-            MetadataInfo(title, artist, album)
+            // 优先尝试使用 contentUri（MediaStore URI 或 SAF URI），这在 Android 10+ 上更可靠
+            if (!contentUri.isNullOrEmpty()) {
+                try {
+                    val uri = Uri.parse(contentUri)
+                    retriever.setDataSource(context, uri)
+                    val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: ""
+                    val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
+                    val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
+                    Log.d(TAG, "使用 URI 提取元数据成功: $contentUri")
+                    return MetadataInfo(title, artist, album)
+                } catch (e: Exception) {
+                    Log.w(TAG, "使用 URI 提取元数据失败，尝试使用文件路径: $contentUri", e)
+                }
+            }
+
+            // 如果 path 是 content:// URI，也尝试使用它
+            if (path.startsWith("content://")) {
+                try {
+                    val uri = Uri.parse(path)
+                    retriever.setDataSource(context, uri)
+                    val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: ""
+                    val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
+                    val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
+                    Log.d(TAG, "使用 path URI 提取元数据成功: $path")
+                    return MetadataInfo(title, artist, album)
+                } catch (e: Exception) {
+                    Log.w(TAG, "使用 path URI 提取元数据失败: $path", e)
+                }
+            }
+
+            // 尝试使用文件路径
+            val file = File(path)
+            if (file.exists() && file.canRead()) {
+                retriever.setDataSource(path)
+                val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE) ?: ""
+                val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: ""
+                val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: ""
+                return MetadataInfo(title, artist, album)
+            } else {
+                Log.w(TAG, "文件不存在或无法读取: $path")
+                null
+            }
         } catch (e: Exception) {
             Log.e(TAG, "提取元数据失败: $path", e)
             null
