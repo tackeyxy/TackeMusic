@@ -8,8 +8,10 @@ import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.RecentPlay
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.model.SongDetail
+import com.tacke.music.data.model.SongInfo
 import com.tacke.music.data.preferences.PlaybackPreferences
 import com.tacke.music.data.repository.CachedMusicRepository
+import com.tacke.music.data.repository.LocalMusicInfoRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.SongPreloadManager
 import com.tacke.music.playlist.PlaylistManager
@@ -56,6 +58,10 @@ class PlaybackManager private constructor(context: Context) {
     }
 
     private val repository = MusicRepository()
+
+    private fun isLocalPlaylistSong(song: PlaylistSong): Boolean {
+        return song.platform.equals("LOCAL", ignoreCase = true) || song.id.startsWith("local_")
+    }
 
     /**
      * 播放歌曲（从搜索列表）- 优化版本
@@ -291,6 +297,18 @@ class PlaybackManager private constructor(context: Context) {
         playUrl: String,
         songDetail: SongDetail? = null
     ) {
+        // LOCAL 平台歌曲：优先本地文件立即播放，封面/歌词后台补全
+        if (isLocalPlaylistSong(song)) {
+            playLocalSongById(
+                context = context,
+                songId = song.id,
+                songName = song.name,
+                songArtists = song.artists,
+                fallbackCoverUrl = song.coverUrl
+            )
+            return
+        }
+
         val platform = try {
             MusicRepository.Platform.valueOf(song.platform.uppercase())
         } catch (e: Exception) {
@@ -366,6 +384,17 @@ class PlaybackManager private constructor(context: Context) {
         autoSkipOnFailure: Boolean = true
     ) {
         Log.d(TAG, "快速播放歌单歌曲: ${song.name}")
+
+        if (isLocalPlaylistSong(song)) {
+            playLocalSongById(
+                context = context,
+                songId = song.id,
+                songName = song.name,
+                songArtists = song.artists,
+                fallbackCoverUrl = song.coverUrl
+            )
+            return
+        }
 
         val platform = try {
             MusicRepository.Platform.valueOf(song.platform.uppercase())
@@ -485,6 +514,17 @@ class PlaybackManager private constructor(context: Context) {
         playUrl: String,
         songDetail: SongDetail? = null
     ) {
+        if (song.platform.equals("LOCAL", ignoreCase = true)) {
+            playLocalSongById(
+                context = context,
+                songId = song.id,
+                songName = song.name,
+                songArtists = song.artists,
+                fallbackCoverUrl = song.coverUrl
+            )
+            return
+        }
+
         val platform = try {
             MusicRepository.Platform.valueOf(song.platform.uppercase())
         } catch (e: Exception) {
@@ -565,13 +605,21 @@ class PlaybackManager private constructor(context: Context) {
      * @param song 播放列表歌曲
      */
     suspend fun addPlaylistSongWithoutPlay(song: PlaylistSong) {
+        val normalizedSong = if (isLocalPlaylistSong(song)) {
+            enrichLocalPlaylistSong(song)
+        } else {
+            song
+        }
+
         // 添加到播放列表（不触发自动播放）
-        playlistManager.addSong(song, autoPlay = false)
+        playlistManager.addSong(normalizedSong, autoPlay = false)
 
         // 后台预加载
-        preloadManager.preloadPlaylistSong(song)
+        if (!isLocalPlaylistSong(normalizedSong)) {
+            preloadManager.preloadPlaylistSong(normalizedSong)
+        }
 
-        Log.d(TAG, "添加播放列表歌曲并后台预加载: ${song.name}")
+        Log.d(TAG, "添加播放列表歌曲并后台预加载: ${normalizedSong.name}")
     }
 
     /**
@@ -663,16 +711,56 @@ class PlaybackManager private constructor(context: Context) {
      * @return Pair<添加数量, 重复数量>
      */
     suspend fun addPlaylistSongsWithoutPlay(songs: List<PlaylistSong>): Pair<Int, Int> {
+        val normalizedSongs = songs.map { song ->
+            if (isLocalPlaylistSong(song)) {
+                enrichLocalPlaylistSong(song)
+            } else {
+                song
+            }
+        }
+
         // 批量添加到播放列表（不触发自动播放）
-        val result = playlistManager.addSongs(songs)
+        val result = playlistManager.addSongs(normalizedSongs)
 
         // 后台预加载
-        songs.forEach { song ->
-            preloadManager.preloadPlaylistSong(song)
+        normalizedSongs.forEach { song ->
+            if (!isLocalPlaylistSong(song)) {
+                preloadManager.preloadPlaylistSong(song)
+            }
         }
 
         Log.d(TAG, "批量添加 ${result.first} 首播放列表歌曲，${result.second} 首已存在")
         return result
+    }
+
+    /**
+     * LOCAL 歌曲加入播放列表时，优先使用本地缓存封面/歌词；
+     * 若缺失则后台拉取并缓存（不阻塞添加流程）。
+     */
+    private suspend fun enrichLocalPlaylistSong(song: PlaylistSong): PlaylistSong {
+        val localMusicInfoRepository = LocalMusicInfoRepository(appContext)
+        val allLocalMusic = withContext(Dispatchers.IO) {
+            localMusicInfoRepository.getAllCachedMusic()
+        }
+        if (allLocalMusic.isEmpty()) {
+            return song
+        }
+
+        val hash = song.id.removePrefix("local_").toIntOrNull()
+        val matchedMusic = allLocalMusic.firstOrNull { hash != null && it.path.hashCode() == hash }
+            ?: allLocalMusic.firstOrNull { it.title == song.name && it.artist == song.artists }
+            ?: return song
+
+        val cachedInfo = withContext(Dispatchers.IO) {
+            localMusicInfoRepository.getCachedInfoByPath(matchedMusic.path)
+        }
+
+        if (cachedInfo == null || cachedInfo.coverUrl.isNullOrBlank() || cachedInfo.lyrics.isNullOrBlank()) {
+            preloadManager.preloadLocalMusicInfo(matchedMusic, MusicRepository.Platform.KUWO)
+        }
+
+        val bestCover = cachedInfo?.coverUrl ?: matchedMusic.coverUri ?: song.coverUrl
+        return song.copy(coverUrl = bestCover)
     }
 
     /**
@@ -796,6 +884,17 @@ class PlaybackManager private constructor(context: Context) {
         context: Context,
         recentPlay: RecentPlay
     ): Boolean {
+        // LOCAL 平台歌曲：优先本地文件立即播放，封面/歌词后台补全
+        if (recentPlay.platform.equals("LOCAL", ignoreCase = true) || recentPlay.id.startsWith("local_")) {
+            return playLocalSongById(
+                context = context,
+                songId = recentPlay.id,
+                songName = recentPlay.name,
+                songArtists = recentPlay.artists,
+                fallbackCoverUrl = recentPlay.coverUrl
+            )
+        }
+
         // 验证平台可用性
         val platform = getValidPlatform(recentPlay.platform)
 
@@ -937,6 +1036,157 @@ class PlaybackManager private constructor(context: Context) {
             songCover = detail?.cover ?: coverUrl,
             songLyrics = detail?.lyrics
         )
+        return true
+    }
+
+    /**
+     * 通过 LOCAL 歌曲ID（local_<pathHash>）快速定位本地文件并播放
+     * 优先使用本地缓存的封面和歌词，缺失时在后台补全
+     */
+    suspend fun playLocalSongById(
+        context: Context,
+        songId: String,
+        songName: String,
+        songArtists: String,
+        fallbackCoverUrl: String? = null
+    ): Boolean {
+        if (!songId.startsWith("local_")) {
+            return false
+        }
+
+        return try {
+            val localMusicInfoRepository = LocalMusicInfoRepository(context)
+            val allLocalMusic = withContext(Dispatchers.IO) {
+                localMusicInfoRepository.getAllCachedMusic()
+            }
+
+            if (allLocalMusic.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "未找到本地音乐记录，请先重新扫描本地音乐", Toast.LENGTH_SHORT).show()
+                }
+                return false
+            }
+
+            val hash = songId.removePrefix("local_").toIntOrNull()
+            val matchedMusic = allLocalMusic.firstOrNull { hash != null && it.path.hashCode() == hash }
+                ?: allLocalMusic.firstOrNull { it.title == songName && it.artist == songArtists }
+
+            if (matchedMusic == null) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "未找到本地文件，请先重新扫描本地音乐", Toast.LENGTH_SHORT).show()
+                }
+                return false
+            }
+
+            val cachedInfo = withContext(Dispatchers.IO) {
+                localMusicInfoRepository.getCachedInfoByPath(matchedMusic.path)
+            }
+
+            playFromLocalMusic(
+                context = context,
+                localMusic = matchedMusic,
+                coverUrl = cachedInfo?.coverUrl ?: fallbackCoverUrl ?: matchedMusic.coverUri,
+                lyrics = cachedInfo?.lyrics
+            )
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "本地播放失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+            false
+        }
+    }
+
+    /**
+     * 播放本地音乐
+     * 优先使用本地数据库缓存的封面和歌词，如果没有则使用通用接口获取
+     *
+     * @param context 上下文
+     * @param localMusic 本地音乐信息
+     * @param coverUrl 本地封面URI或URL
+     * @param lyrics 本地缓存歌词
+     * @param platform 音源平台（可选，默认KUWO）
+     */
+    suspend fun playFromLocalMusic(
+        context: Context,
+        localMusic: com.tacke.music.ui.LocalMusic,
+        coverUrl: String? = null,
+        lyrics: String? = null,
+        platform: MusicRepository.Platform = MusicRepository.Platform.KUWO
+    ): Boolean {
+        Log.d(TAG, "播放本地音乐: ${localMusic.title}")
+
+        // 生成唯一ID（使用文件路径的hashCode）
+        val songId = "local_${localMusic.path.hashCode()}"
+
+        // 创建播放列表歌曲
+        val playlistSong = PlaylistSong(
+            id = songId,
+            name = localMusic.title,
+            artists = localMusic.artist,
+            coverUrl = coverUrl ?: localMusic.coverUri ?: "",
+            platform = "LOCAL" // 使用LOCAL标识本地音乐
+        )
+
+        // 添加到播放列表
+        playlistManager.addSong(playlistSong)
+        // 关键修复：将当前播放索引切到本次点击播放的本地歌曲
+        // 否则从列表页再次进入播放页时，可能按旧索引恢复成上一首歌曲信息
+        val songIndex = playlistManager.currentPlaylist.value.indexOfFirst { it.id == songId }
+        if (songIndex != -1) {
+            playlistManager.setCurrentIndex(songIndex)
+        }
+
+        // 获取用户设置的试听音质
+        val playbackQuality = SettingsActivity.getPlaybackQuality(appContext)
+
+        // 优先使用 contentUri（MediaStore URI），这在 Android 10+ 上更可靠
+        // 如果没有 contentUri，则使用文件路径
+        val playUrl = if (!localMusic.contentUri.isNullOrEmpty()) {
+            Log.d(TAG, "使用 MediaStore URI 播放: ${localMusic.contentUri}")
+            localMusic.contentUri
+        } else {
+            Log.d(TAG, "使用文件路径播放: ${localMusic.path}")
+            localMusic.path
+        }
+
+        // 创建SongDetail，优先使用本地缓存的封面和歌词
+        val songDetail = SongDetail(
+            url = playUrl, // 使用 contentUri 或文件路径作为播放URL
+            info = SongInfo(
+                name = localMusic.title,
+                artist = localMusic.artist
+            ),
+            cover = coverUrl ?: localMusic.coverUri,
+            lyrics = lyrics
+        )
+
+        // 保存播放状态
+        savePlaybackState(
+            songId = songId,
+            position = 0L,
+            isPlaying = true,
+            quality = playbackQuality,
+            songDetail = songDetail
+        )
+
+        // 启动播放页面
+        startPlayerActivity(
+            context = context,
+            songId = songId,
+            songName = localMusic.title,
+            songArtists = localMusic.artist,
+            platform = platform, // 使用传入的平台，用于后续获取在线封面和歌词
+            songUrl = playUrl,
+            songCover = songDetail.cover,
+            songLyrics = songDetail.lyrics
+        )
+
+        // 后台尝试获取在线封面和歌词（如果本地没有）
+        if (coverUrl == null || lyrics == null) {
+            Log.d(TAG, "后台获取在线封面和歌词: ${localMusic.title}")
+            preloadManager.preloadLocalMusicInfo(localMusic, platform)
+        }
+
         return true
     }
 }

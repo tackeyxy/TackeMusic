@@ -160,14 +160,29 @@ class RecentPlayActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        // 下载按钮 - 真正的下载功能
+        // 下载按钮 - 真正的下载功能（跳过本地音乐）
         binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             val selectedSongs = adapter.getAllRecentPlays().filter { selectedItems.contains(it.id) }
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            showBatchDownloadQualityDialog(selectedSongs)
+
+            // 过滤掉本地音乐
+            val (localSongs, onlineSongs) = selectedSongs.partition { it.platform.uppercase() == "LOCAL" }
+
+            if (onlineSongs.isEmpty()) {
+                // 所有选中的都是本地音乐
+                Toast.makeText(this, "本地音乐无需下载", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            if (localSongs.isNotEmpty()) {
+                // 有本地音乐被跳过
+                Toast.makeText(this, "已跳过 ${localSongs.size} 首本地音乐，仅下载在线音乐", Toast.LENGTH_SHORT).show()
+            }
+
+            showBatchDownloadQualityDialog(onlineSongs)
         }
 
         // 移除按钮 - 删除播放记录
@@ -364,12 +379,28 @@ class RecentPlayActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 // 添加所有歌曲到播放列表（不清空原有列表）
-                recentPlays.forEach { recentPlay ->
-                    playlistManager.addSong(recentPlay.toPlaylistSong())
-                }
+                val playlistSongs = recentPlays.map { it.toPlaylistSong() }
+                playbackManager.addPlaylistSongsWithoutPlay(playlistSongs)
 
                 // 播放第一首 - 使用 PlaylistSong 方式播放，避免 playFromRecentPlay 清空列表
                 val firstPlay = recentPlays.first()
+
+                if (firstPlay.platform.equals("LOCAL", ignoreCase = true) || firstPlay.id.startsWith("local_")) {
+                    val played = playbackManager.playLocalSongById(
+                        context = this@RecentPlayActivity,
+                        songId = firstPlay.id,
+                        songName = firstPlay.name,
+                        songArtists = firstPlay.artists,
+                        fallbackCoverUrl = firstPlay.coverUrl
+                    )
+                    if (played) {
+                        Toast.makeText(this@RecentPlayActivity, "开始播放全部", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@RecentPlayActivity, "未找到本地文件，请先重新扫描本地音乐", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
                 val platform = try {
                     MusicRepository.Platform.valueOf(firstPlay.platform.uppercase())
                 } catch (e: Exception) {

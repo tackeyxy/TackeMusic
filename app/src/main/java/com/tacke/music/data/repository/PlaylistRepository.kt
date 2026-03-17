@@ -25,6 +25,42 @@ class PlaylistRepository(private val context: Context) {
         private const val TAG = "PlaylistRepository"
     }
 
+    private fun isLocalSong(songId: String, platform: String): Boolean {
+        return platform.equals("LOCAL", ignoreCase = true) || songId.startsWith("local_")
+    }
+
+    private fun cachePlatform(platform: String): String = platform.lowercase()
+
+    private suspend fun downloadCoverForSong(song: Song, platform: String): String? {
+        val normalizedPlatform = cachePlatform(platform)
+        val coverUrl = song.coverUrl?.trim()
+        val isOnlineSong = normalizedPlatform == "kuwo" || normalizedPlatform == "netease"
+
+        // 在线歌曲默认使用搜索列表封面：有 coverUrl 时仅缓存该 URL，不再改拉其他封面来源
+        if (isOnlineSong && !coverUrl.isNullOrEmpty() && coverUrl.startsWith("http", ignoreCase = true)) {
+            val byUrlPath = CoverImageManager.downloadAndCacheCoverByUrl(
+                context = context,
+                songId = song.id,
+                platform = normalizedPlatform,
+                coverUrl = coverUrl
+            )
+            if (!byUrlPath.isNullOrEmpty()) {
+                return byUrlPath
+            }
+            Log.w(TAG, "搜索封面缓存失败，保持原始coverUrl不覆盖: ${song.name}")
+            return null
+        }
+
+        // 仅在缺失搜索封面时兜底：按平台与歌曲信息获取
+        return CoverImageManager.downloadAndCacheCover(
+            context = context,
+            songId = song.id,
+            platform = normalizedPlatform,
+            songName = song.name,
+            artist = song.artists
+        )
+    }
+
     fun getAllPlaylists(): Flow<List<Playlist>> {
         return playlistDao.getAllPlaylists().map { entities ->
             entities.map { it.toPlaylist() }
@@ -108,18 +144,20 @@ class PlaylistRepository(private val context: Context) {
         playlistDao.addSongToPlaylist(playlistId, playlistSong, songEntityDao)
         
         Log.d(TAG, "添加歌曲到歌单: ${song.name}, 封面将在后台异步下载")
+
+        if (isLocalSong(song.id, platform)) {
+            return
+        }
         
         // 后台异步下载封面
         GlobalScope.launch(Dispatchers.IO) {
             try {
-                val localCoverPath = CoverImageManager.downloadAndCacheCover(
-                    context,
-                    song.id,
-                    platform
-                )
+                val localCoverPath = downloadCoverForSong(song, platform)
                 if (localCoverPath != null) {
                     // 下载成功，更新数据库中的封面路径
                     playlistDao.updateSongCoverUrl(playlistId, song.id, localCoverPath)
+                    // 同步刷新歌单封面，避免仍显示添加时的旧封面
+                    updatePlaylistCoverToLatest(playlistId)
                     Log.d(TAG, "封面异步下载完成: ${song.name}, 路径: $localCoverPath")
                 }
             } catch (e: Exception) {
@@ -142,17 +180,17 @@ class PlaylistRepository(private val context: Context) {
         playlistDao.addSongsToPlaylist(playlistId, playlistSongs, songEntityDao)
         
         Log.d(TAG, "批量添加 ${songs.size} 首歌曲到歌单，封面将在后台异步下载")
+
+        if (songs.all { isLocalSong(it.id, platform) }) {
+            return
+        }
         
         // 后台异步批量下载封面
         GlobalScope.launch(Dispatchers.IO) {
             var successCount = 0
             songs.forEach { song ->
                 try {
-                    val localCoverPath = CoverImageManager.downloadAndCacheCover(
-                        context,
-                        song.id,
-                        platform
-                    )
+                    val localCoverPath = downloadCoverForSong(song, platform)
                     if (localCoverPath != null) {
                         // 下载成功，更新数据库中的封面路径
                         playlistDao.updateSongCoverUrl(playlistId, song.id, localCoverPath)
@@ -161,6 +199,10 @@ class PlaylistRepository(private val context: Context) {
                 } catch (e: Exception) {
                     Log.e(TAG, "封面异步下载失败: ${song.name}, ${e.message}")
                 }
+            }
+            if (successCount > 0) {
+                // 批量回写后刷新一次歌单封面
+                updatePlaylistCoverToLatest(playlistId)
             }
             Log.d(TAG, "批量封面异步下载完成: $successCount/${songs.size}")
         }
@@ -233,6 +275,9 @@ class PlaylistRepository(private val context: Context) {
         var updatedCount = 0
         
         songs.forEach { song ->
+            if (isLocalSong(song.id, song.platform)) {
+                return@forEach
+            }
             // 检查是否已经有本地缓存的封面
             val existingPath = CoverImageManager.getCoverPath(context, song.id, song.platform)
             
@@ -253,6 +298,45 @@ class PlaylistRepository(private val context: Context) {
         }
         
         Log.d(TAG, "刷新歌单 $playlistId 封面完成，更新了 $updatedCount 首歌曲")
+    }
+
+    /**
+     * 回填本地歌曲（LOCAL）封面到“自建歌单”历史数据
+     * @param localCoverMap key=songId(local_xxx), value=coverUrl
+     * @return 更新条数
+     */
+    suspend fun backfillLocalSongCovers(localCoverMap: Map<String, String>): Int {
+        if (localCoverMap.isEmpty()) return 0
+
+        val playlists = getAllPlaylistsSync()
+        if (playlists.isEmpty()) return 0
+
+        var updatedCount = 0
+        val processedSongIds = mutableSetOf<String>()
+
+        playlists.forEach { playlist ->
+            val songs = playlistDao.getSongsInPlaylistSync(playlist.id)
+            songs.forEach { song ->
+                if (!isLocalSong(song.id, song.platform)) return@forEach
+                if (!processedSongIds.add(song.id)) return@forEach
+
+                val cover = localCoverMap[song.id]
+                if (!cover.isNullOrBlank() && cover != song.coverUrl) {
+                    playlistDao.updateSongCoverUrlBySongId(song.id, cover)
+                    updatedCount++
+                }
+            }
+        }
+
+        // 回填后刷新各歌单封面（取最新有效歌曲封面）
+        playlists.forEach { playlist ->
+            updatePlaylistCoverToLatest(playlist.id)
+        }
+
+        if (updatedCount > 0) {
+            Log.d(TAG, "本地歌曲封面回填完成(歌单): $updatedCount")
+        }
+        return updatedCount
     }
 
     private fun PlaylistEntity.toPlaylist(): Playlist {
