@@ -93,20 +93,37 @@
         app:layout_constraintBottom_toTopOf="@id/progressContainer"
         tools:listitem="@layout/item_lyric_line" />
 
-    <!-- 定位到当前歌词按钮 -->
+    <!-- 定位到当前歌词按钮（现代图标样式） -->
     <ImageButton
         android:id="@+id/btnLocateCurrent"
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:layout_marginEnd="16dp"
         android:layout_marginBottom="16dp"
-        android:src="@drawable/ic_play"
         android:background="@drawable/bg_button_primary"
-        android:tint="@color/white"
+        android:elevation="4dp"
+        android:padding="10dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_lyrics_locate_jump"
+        android:tint="@android:color/white"
         android:visibility="gone"
         android:contentDescription="定位到当前歌词"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@id/progressContainer" />
+
+    <ImageButton
+        android:id="@+id/btnJumpToLyric"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="16dp"
+        android:src="@drawable/ic_play"
+        android:background="@drawable/bg_button_primary"
+        android:tint="@color/white"
+        android:visibility="gone"
+        android:contentDescription="跳转播放此句歌词"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="@id/rvLyrics"
+        app:layout_constraintBottom_toBottomOf="@id/rvLyrics" />
 
     <!-- 底部进度条容器 -->
     <LinearLayout

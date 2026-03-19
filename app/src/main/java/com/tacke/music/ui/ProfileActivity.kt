@@ -19,6 +19,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.model.Playlist
 import com.tacke.music.data.repository.FavoriteRepository
+import com.tacke.music.data.repository.ListCoverRepairManager
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityProfileBinding
 import com.tacke.music.download.DownloadManager
@@ -32,6 +33,7 @@ class ProfileActivity : AppCompatActivity() {
     private lateinit var downloadManager: DownloadManager
     private lateinit var playlistRepository: PlaylistRepository
     private lateinit var favoriteRepository: FavoriteRepository
+    private lateinit var listCoverRepairManager: ListCoverRepairManager
     private lateinit var playlistAdapter: PlaylistListAdapter
     private var isShowingAllPlaylists = true
     private var allPlaylists: List<com.tacke.music.data.model.Playlist> = emptyList()
@@ -75,6 +77,7 @@ class ProfileActivity : AppCompatActivity() {
             downloadManager = DownloadManager.getInstance(this)
             playlistRepository = PlaylistRepository(this)
             favoriteRepository = FavoriteRepository(this)
+            listCoverRepairManager = ListCoverRepairManager.getInstance(this)
 
             setupCardBackgrounds()
             setupClickListeners()
@@ -97,6 +100,7 @@ class ProfileActivity : AppCompatActivity() {
             refreshPlaylistList()
             // 每次进入页面时刷新卡片背景色
             setupCardBackgrounds()
+            listCoverRepairManager.repairPlaylistsAsync()
         }
     }
 

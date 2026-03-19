@@ -76,6 +76,12 @@
             android:screenOrientation="portrait" />
 
         <activity
+            android:name=".ui.BackupRestoreActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="备份与恢复" />
+
+        <activity
             android:name=".ui.LyricSettingsActivity"
             android:exported="false"
             android:screenOrientation="portrait"

@@ -27,6 +27,7 @@ import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
+import com.tacke.music.data.repository.ListCoverRepairManager
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityPlaylistDetailBinding
@@ -48,6 +49,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
     private lateinit var playlistManager: PlaylistManager
     private lateinit var playbackManager: PlaybackManager
     private lateinit var downloadManager: DownloadManager
+    private lateinit var listCoverRepairManager: ListCoverRepairManager
     private lateinit var songAdapter: FavoriteSongAdapter
     private var favoriteSongs: List<FavoriteSongEntity> = emptyList()
     private var isMultiSelectMode = false
@@ -77,11 +79,17 @@ class FavoriteSongsActivity : AppCompatActivity() {
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
         downloadManager = DownloadManager.getInstance(this)
+        listCoverRepairManager = ListCoverRepairManager.getInstance(this)
 
         setupUI()
         setupRecyclerView()
         setupClickListeners()
         observeFavoriteSongs()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        listCoverRepairManager.repairFavoritesAsync()
     }
 
     private fun setupUI() {

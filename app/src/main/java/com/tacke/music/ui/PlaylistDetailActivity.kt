@@ -18,6 +18,7 @@ import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
+import com.tacke.music.data.repository.ListCoverRepairManager
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityPlaylistDetailBinding
@@ -38,6 +39,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
     private lateinit var playlistManager: PlaylistManager
     private lateinit var playbackManager: PlaybackManager
     private lateinit var downloadManager: DownloadManager
+    private lateinit var listCoverRepairManager: ListCoverRepairManager
     private lateinit var songAdapter: PlaylistSongAdapter
 
     private var playlistId: String = ""
@@ -72,11 +74,17 @@ class PlaylistDetailActivity : AppCompatActivity() {
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
         downloadManager = DownloadManager.getInstance(this)
+        listCoverRepairManager = ListCoverRepairManager.getInstance(this)
 
         setupUI()
         setupRecyclerView()
         setupClickListeners()
         observeSongs()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        listCoverRepairManager.repairPlaylistsAsync()
     }
 
     private fun setupUI() {

@@ -8,11 +8,13 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.content.ServiceConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.graphics.BitmapFactory
 import android.provider.Settings
 import android.util.Log
 import android.view.GestureDetector
@@ -31,10 +33,13 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import android.graphics.Bitmap
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.tacke.music.R
 import com.tacke.music.data.model.PlaylistSong
@@ -60,6 +65,7 @@ import kotlinx.coroutines.Dispatchers
 import com.tacke.music.util.ImmersiveStatusBarHelper
 import com.tacke.music.utils.CoverUrlResolver
 import com.tacke.music.utils.CoverImageManager
+import com.tacke.music.utils.LyricStyleSettings
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -89,6 +95,20 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var seekReceiver: BroadcastReceiver
     private lateinit var playbackControlReceiver: BroadcastReceiver
     private var loadingToast: Toast? = null
+    private var pendingRestoreFromNotification = false
+    private val lyricStylePrefs by lazy { getSharedPreferences(LyricStyleSettings.PREFS_NAME, Context.MODE_PRIVATE) }
+    private val lyricStyleListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == null) return@OnSharedPreferenceChangeListener
+        if (
+            key == LyricStyleSettings.KEY_PLAYER_LYRIC_COLOR ||
+            key == LyricStyleSettings.KEY_PLAYER_LYRIC_SIZE
+        ) {
+            runOnUiThread {
+                applyPlayerLyricStyle()
+                updateLyrics(exoPlayer?.currentPosition ?: 0L)
+            }
+        }
+    }
 
     private lateinit var playlistManager: PlaylistManager
     private lateinit var playbackPreferences: PlaybackPreferences
@@ -107,6 +127,53 @@ class PlayerActivity : AppCompatActivity() {
         return if (isCurrentSongLocal()) "LOCAL" else platform.name
     }
 
+    private fun isLocalPlaylistSong(song: PlaylistSong): Boolean {
+        return song.platform.equals("LOCAL", ignoreCase = true) || song.id.startsWith("local_")
+    }
+
+    private fun preferNonBlank(newValue: String?, fallback: String?): String? {
+        return if (newValue.isNullOrBlank()) fallback else newValue
+    }
+
+    private suspend fun resolveLocalSongDetail(
+        localSongId: String,
+        localSongName: String,
+        localSongArtists: String,
+        fallbackCoverUrl: String?
+    ): SongDetail? {
+        val persistedDetail = playbackPreferences.getSongDetail(localSongId)
+        val localMusicInfoRepository = LocalMusicInfoRepository(this@PlayerActivity)
+        val hash = localSongId.removePrefix("local_").toIntOrNull()
+        val localMusic = withContext(Dispatchers.IO) {
+            localMusicInfoRepository.getAllCachedMusic().firstOrNull { music ->
+                (hash != null && music.path.hashCode() == hash) ||
+                    (music.title == localSongName && music.artist == localSongArtists)
+            }
+        }
+
+        // 本地扫描数据缺失时，优先回退到已缓存的播放详情，避免重进播放页丢封面/歌词
+        if (localMusic == null) {
+            return persistedDetail?.copy(
+                info = SongInfo(name = localSongName, artist = localSongArtists),
+                cover = persistedDetail.cover ?: fallbackCoverUrl,
+                lyrics = persistedDetail.lyrics
+            )
+        }
+
+        val cachedInfo = withContext(Dispatchers.IO) {
+            localMusicInfoRepository.getCachedInfoByPath(localMusic.path)
+        }
+        val playUrl = localMusic.contentUri ?: localMusic.path
+        val cover = cachedInfo?.coverUrl ?: persistedDetail?.cover ?: localMusic.coverUri ?: fallbackCoverUrl
+        val lyrics = cachedInfo?.lyrics ?: persistedDetail?.lyrics
+        return SongDetail(
+            url = playUrl,
+            info = SongInfo(name = localSongName, artist = localSongArtists),
+            cover = cover,
+            lyrics = lyrics
+        )
+    }
+
     // Service connection
     private var musicService: MusicPlaybackService? = null
     private var serviceBound = false
@@ -118,6 +185,19 @@ class PlayerActivity : AppCompatActivity() {
             exoPlayer = binder.getPlayer()
             serviceBound = true
             setupPlayerListeners()
+
+            if (pendingRestoreFromNotification ||
+                intent.getStringExtra(EXTRA_LAUNCH_MODE) == LAUNCH_MODE_RESTORE
+            ) {
+                lifecycleScope.launch {
+                    val restored = restoreFromCurrentPlayback()
+                    if (!restored) {
+                        syncCurrentPlaybackState()
+                    }
+                    pendingRestoreFromNotification = false
+                }
+                return
+            }
 
             val currentMediaItem = exoPlayer?.currentMediaItem
 
@@ -288,6 +368,20 @@ class PlayerActivity : AppCompatActivity() {
         val isRestoreMode = newLaunchMode == LAUNCH_MODE_RESTORE
         val newSongId = intent.getStringExtra("song_id")
 
+        if (isRestoreMode) {
+            pendingRestoreFromNotification = true
+            if (serviceBound) {
+                lifecycleScope.launch {
+                    val restored = restoreFromCurrentPlayback()
+                    if (!restored) {
+                        syncCurrentPlaybackState()
+                    }
+                    pendingRestoreFromNotification = false
+                }
+            }
+            return
+        }
+
         // 如果是恢复模式或空状态，且播放器正在播放，直接更新UI即可
         if ((isNewEmptyState || isRestoreMode) && exoPlayer?.currentMediaItem != null) {
             // 从播放列表获取当前歌曲信息
@@ -337,10 +431,63 @@ class PlayerActivity : AppCompatActivity() {
      * @return 是否成功恢复
      */
     private suspend fun restoreFromCurrentPlayback(): Boolean {
-        val currentSong = playlistManager.getCurrentSong()
+        if (playlistManager.currentPlaylist.value.isEmpty()) {
+            playlistManager.loadPlaylist()
+        }
+
         val currentMediaItem = exoPlayer?.currentMediaItem
+        val mediaSongId = currentMediaItem?.mediaId?.takeIf { it.isNotBlank() }
+
+        if (mediaSongId != null) {
+            val mediaIndex = playlistManager.currentPlaylist.value.indexOfFirst { it.id == mediaSongId }
+            if (mediaIndex >= 0) {
+                playlistManager.setCurrentIndex(mediaIndex)
+            }
+        } else {
+            val savedSongId = playbackPreferences.currentSongId
+            if (!savedSongId.isNullOrBlank()) {
+                val savedIndex = playlistManager.currentPlaylist.value.indexOfFirst { it.id == savedSongId }
+                if (savedIndex >= 0) {
+                    playlistManager.setCurrentIndex(savedIndex)
+                }
+            }
+        }
+
+        val currentSong = playlistManager.getCurrentSong()
 
         if (currentSong != null) {
+            if (isLocalPlaylistSong(currentSong)) {
+                val localDetail = resolveLocalSongDetail(
+                    localSongId = currentSong.id,
+                    localSongName = currentSong.name,
+                    localSongArtists = currentSong.artists,
+                    fallbackCoverUrl = currentSong.coverUrl
+                )
+                if (localDetail != null) {
+                    songId = currentSong.id
+                    songName = currentSong.name
+                    songArtists = currentSong.artists
+                    platform = MusicRepository.Platform.KUWO
+                    currentQuality = playbackPreferences.currentQuality
+                    isFromEmptyState = false
+                    songDetail = localDetail
+                    songLyrics = localDetail.lyrics
+                    songCover = localDetail.cover ?: currentSong.coverUrl
+                    binding.tvSongName.text = songName
+                    binding.tvArtist.text = songArtists
+                    updateUI(localDetail)
+                    loadCoverAndBackground(songCover)
+                    if (currentMediaItem == null || currentMediaItem.mediaId != currentSong.id) {
+                        loadSongButNotPlay(localDetail.url, 0L, false)
+                    }
+                    if (songCover.isNullOrBlank() || songLyrics.isNullOrBlank()) {
+                        loadMissingInfoInBackground()
+                    }
+                    updateUIForCurrentSong()
+                    return true
+                }
+            }
+
             // 恢复歌曲信息
             songId = currentSong.id
             songName = currentSong.name
@@ -556,6 +703,11 @@ class PlayerActivity : AppCompatActivity() {
     private fun handlePlayerError(error: PlaybackException) {
         Log.e(TAG, "Player error: ${error.errorCodeName}", error)
 
+        if (songId.startsWith("local_") || playlistManager.getCurrentSong()?.platform.equals("LOCAL", ignoreCase = true)) {
+            Toast.makeText(this@PlayerActivity, "本地歌曲播放失败，请检查文件是否存在", Toast.LENGTH_LONG).show()
+            return
+        }
+
         // 检查是否是URL过期导致的错误（403 Forbidden）
         if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED) {
@@ -651,6 +803,38 @@ class PlayerActivity : AppCompatActivity() {
     private suspend fun restorePlaybackState() {
         val currentSong = playlistManager.getCurrentSong()
         if (currentSong != null) {
+            if (isLocalPlaylistSong(currentSong)) {
+                val localDetail = resolveLocalSongDetail(
+                    localSongId = currentSong.id,
+                    localSongName = currentSong.name,
+                    localSongArtists = currentSong.artists,
+                    fallbackCoverUrl = currentSong.coverUrl
+                )
+                if (localDetail != null) {
+                    songId = currentSong.id
+                    songName = currentSong.name
+                    songArtists = currentSong.artists
+                    platform = MusicRepository.Platform.KUWO
+                    currentQuality = playbackPreferences.currentQuality
+                    binding.tvSongName.text = songName
+                    binding.tvArtist.text = songArtists
+                    songDetail = localDetail
+                    songLyrics = localDetail.lyrics
+                    songCover = localDetail.cover ?: currentSong.coverUrl
+                    updateUI(localDetail)
+                    updateLyrics(0)
+                    val savedPosition = playbackPreferences.currentPosition
+                    val wasPlaying = playbackPreferences.isPlaying
+                    loadSongButNotPlay(localDetail.url, savedPosition, wasPlaying)
+                    loadCoverAndBackground(songCover)
+                    if (songCover.isNullOrBlank() || songLyrics.isNullOrBlank()) {
+                        loadMissingInfoInBackground()
+                    }
+                    isFromEmptyState = false
+                    return
+                }
+            }
+
             songId = currentSong.id
             songName = currentSong.name
             songArtists = currentSong.artists
@@ -666,14 +850,8 @@ class PlayerActivity : AppCompatActivity() {
 
             try {
                 var detail = playbackPreferences.getSongDetail(songId)
-                var needRefreshUrl = false
 
-                // 检查缓存的URL是否过期
-                if (detail != null && playbackPreferences.isSongDetailExpired(songId)) {
-                    needRefreshUrl = true
-                }
-
-                if (detail == null || needRefreshUrl) {
+                if (detail == null) {
                     // 使用带缓存的Repository获取歌曲详情
                     val cachedRepository = CachedMusicRepository(this@PlayerActivity)
                     detail = withContext(Dispatchers.IO) {
@@ -1061,27 +1239,58 @@ class PlayerActivity : AppCompatActivity() {
                         val newSongName = intent.getStringExtra(MusicPlaybackService.EXTRA_SONG_NAME)
                         val newSongArtists = intent.getStringExtra(MusicPlaybackService.EXTRA_SONG_ARTISTS)
                         val newSongCover = intent.getStringExtra(MusicPlaybackService.EXTRA_SONG_COVER)
-
-                        if (newSongId != null && newSongId != songId) {
-                            // 更新当前歌曲信息
-                            songId = newSongId
-                            songName = newSongName ?: ""
-                            songArtists = newSongArtists ?: ""
-                            songCover = newSongCover
-
-                            // 更新UI
-                            binding.tvSongName.text = songName
-                            binding.tvArtist.text = songArtists
-                            loadCoverAndBackground(songCover)
-
-                            // 从Preferences获取歌曲详情
-                            val detail = playbackPreferences.getSongDetail(songId)
-                            if (detail != null) {
-                                songDetail = detail
-                                songLyrics = detail.lyrics
-                                updateUI(detail)
-                            }
+                        val newSongLyrics = intent.getStringExtra(MusicPlaybackService.EXTRA_SONG_LYRICS)
+                        if (newSongId.isNullOrBlank()) {
+                            return
                         }
+
+                        val isSongChanged = newSongId != songId
+                        val hasCoverIncrementalUpdate =
+                            !newSongCover.isNullOrBlank() && newSongCover != songCover
+                        val hasLyricsIncrementalUpdate =
+                            !newSongLyrics.isNullOrBlank() && newSongLyrics != songLyrics
+
+                        // 同一首歌曲的增量图词回填也需要刷新UI，不能只在songId变化时处理
+                        if (!isSongChanged && !hasCoverIncrementalUpdate && !hasLyricsIncrementalUpdate) {
+                            return
+                        }
+
+                        // 更新当前歌曲信息
+                        songId = newSongId
+                        songName = preferNonBlank(newSongName, songName) ?: songName
+                        songArtists = preferNonBlank(newSongArtists, songArtists) ?: songArtists
+                        songCover = preferNonBlank(newSongCover, songCover)
+                        songLyrics = preferNonBlank(newSongLyrics, songLyrics)
+
+                        // 更新UI
+                        binding.tvSongName.text = songName
+                        binding.tvArtist.text = songArtists
+                        loadCoverAndBackground(songCover)
+
+                        // 从Preferences获取歌曲详情
+                        val detail = playbackPreferences.getSongDetail(songId)
+                        if (detail != null) {
+                            songDetail = detail
+                            songLyrics = preferNonBlank(detail.lyrics, songLyrics)
+                            songCover = preferNonBlank(detail.cover, songCover)
+                            updateUI(detail)
+                            loadCoverAndBackground(songCover)
+                        }
+
+                        // 本地歌曲切歌后如果图词仍缺失，触发后台补齐
+                        if ((songCover.isNullOrBlank() || songLyrics.isNullOrBlank()) &&
+                            (songId.startsWith("local_") || playlistManager.getCurrentSong()?.platform.equals("LOCAL", ignoreCase = true))
+                        ) {
+                            loadMissingInfoInBackground()
+                        }
+                    }
+                    MusicPlaybackService.ACTION_PLAY_MODE_CHANGED -> {
+                        val incomingMode = intent.getIntExtra(
+                            MusicPlaybackService.EXTRA_PLAY_MODE,
+                            playlistManager.playMode.value
+                        )
+                        playlistManager.setPlayMode(incomingMode)
+                        updatePlayModeIcon()
                     }
                 }
             }
@@ -1095,10 +1304,13 @@ class PlayerActivity : AppCompatActivity() {
             addAction(LyricsActivity.ACTION_REQUEST_PLAYBACK_STATUS)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(seekReceiver, filter)
+        lyricStylePrefs.registerOnSharedPreferenceChangeListener(lyricStyleListener)
+        applyPlayerLyricStyle()
 
         // 注册歌曲变更广播接收器（用于Service切歌后更新UI）
         val controlFilter = IntentFilter().apply {
             addAction(MusicPlaybackService.ACTION_SONG_CHANGED)
+            addAction(MusicPlaybackService.ACTION_PLAY_MODE_CHANGED)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(playbackControlReceiver, controlFilter)
 
@@ -1128,7 +1340,7 @@ class PlayerActivity : AppCompatActivity() {
                 songId = currentPlaylistSong.id
                 songName = currentPlaylistSong.name
                 songArtists = currentPlaylistSong.artists
-                songCover = currentPlaylistSong.coverUrl
+                songCover = preferNonBlank(currentPlaylistSong.coverUrl, songCover)
                 platform = try {
                     MusicRepository.Platform.valueOf(currentPlaylistSong.platform.uppercase())
                 } catch (e: Exception) {
@@ -1142,11 +1354,34 @@ class PlayerActivity : AppCompatActivity() {
                 binding.tvSongName.text = songName
                 binding.tvArtist.text = songArtists
 
+                // LOCAL 歌曲在同步时优先走本地详情，避免被空的 playlist cover/lyrics 覆盖
+                if (isLocalPlaylistSong(currentPlaylistSong)) {
+                    val localDetail = resolveLocalSongDetail(
+                        localSongId = currentPlaylistSong.id,
+                        localSongName = currentPlaylistSong.name,
+                        localSongArtists = currentPlaylistSong.artists,
+                        fallbackCoverUrl = currentPlaylistSong.coverUrl
+                    )
+                    if (localDetail != null) {
+                        songDetail = localDetail
+                        songLyrics = preferNonBlank(localDetail.lyrics, songLyrics)
+                        songCover = preferNonBlank(localDetail.cover, songCover)
+                        updateUI(localDetail)
+                        loadCoverAndBackground(songCover)
+                        if (songCover.isNullOrBlank() || songLyrics.isNullOrBlank()) {
+                            loadMissingInfoInBackground()
+                        }
+                        updateUIForCurrentSong()
+                        return@launch
+                    }
+                }
+
                 // 尝试从Preferences获取歌曲详情
                 val detail = playbackPreferences.getSongDetail(songId)
                 if (detail != null) {
                     songDetail = detail
-                    songLyrics = detail.lyrics
+                    songLyrics = preferNonBlank(detail.lyrics, songLyrics)
+                    songCover = preferNonBlank(detail.cover, songCover)
                     updateUI(detail)
                 } else {
                     // 如果Preferences中没有，尝试重新获取
@@ -1164,8 +1399,8 @@ class PlayerActivity : AppCompatActivity() {
                         }
                         if (newDetail != null) {
                             songDetail = newDetail
-                            songLyrics = newDetail.lyrics
-                            songCover = newDetail.cover ?: songCover
+                            songLyrics = preferNonBlank(newDetail.lyrics, songLyrics)
+                            songCover = preferNonBlank(newDetail.cover, songCover)
                             updateUI(newDetail)
                         }
                     } catch (e: Exception) {
@@ -1198,6 +1433,7 @@ class PlayerActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(seekReceiver)
+        lyricStylePrefs.unregisterOnSharedPreferenceChangeListener(lyricStyleListener)
         // 注销播放控制广播接收器
         try {
             LocalBroadcastManager.getInstance(this).unregisterReceiver(playbackControlReceiver)
@@ -1223,6 +1459,10 @@ class PlayerActivity : AppCompatActivity() {
     private fun loadCoverAndBackground(coverUrl: String?) {
         val normalizedCoverUrl = normalizeCoverUrl(coverUrl)
         if (!normalizedCoverUrl.isNullOrEmpty()) {
+            val coverTargetSongId = songId
+            val coverTargetSongName = songName
+            val coverTargetArtist = songArtists
+
             // 加载专辑封面 - 强制刷新以确保显示最新图片
             Glide.with(this)
                 .load(normalizedCoverUrl)
@@ -1241,6 +1481,22 @@ class PlayerActivity : AppCompatActivity() {
 
             // 显示背景图片
             binding.ivBackground.visibility = View.VISIBLE
+
+            // 同步把封面回传给通知栏，避免首播时只显示默认背景
+            Glide.with(this)
+                .asBitmap()
+                .load(normalizedCoverUrl)
+                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                .into(object : CustomTarget<Bitmap>() {
+                    override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
+                        if (songId == coverTargetSongId) {
+                            musicService?.updateMediaMetadata(coverTargetSongName, coverTargetArtist, resource)
+                        }
+                    }
+
+                    override fun onLoadCleared(placeholder: android.graphics.drawable.Drawable?) {
+                    }
+                })
 
             // LOCAL 场景兜底：远程图先落本地文件，再用文件路径稳定显示
             if (isCurrentSongLocal() && normalizedCoverUrl.startsWith("http", ignoreCase = true)) {
@@ -1267,6 +1523,13 @@ class PlayerActivity : AppCompatActivity() {
                                 .error(R.drawable.bg_default_light_cyan)
                                 .into(binding.ivBackground)
                             binding.ivBackground.visibility = View.VISIBLE
+                            if (songId == coverTargetSongId) {
+                                musicService?.updateMediaMetadata(
+                                    coverTargetSongName,
+                                    coverTargetArtist,
+                                    BitmapFactory.decodeFile(file.absolutePath)
+                                )
+                            }
                         }
                     }
                 }
@@ -1405,6 +1668,7 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnShuffle.setOnClickListener {
             val newMode = playlistManager.togglePlayMode()
             updatePlayModeIcon()
+            refreshPlaybackNotification()
             val modeName = playlistManager.getPlayModeName()
             Toast.makeText(this, modeName, Toast.LENGTH_SHORT).show()
         }
@@ -1693,6 +1957,7 @@ class PlayerActivity : AppCompatActivity() {
                 val newMode = playlistManager.togglePlayMode()
                 updatePlayModeDisplay()
                 updatePlayModeIcon()
+                refreshPlaybackNotification()
                 val modeName = playlistManager.getPlayModeName()
                 Toast.makeText(this@PlayerActivity, modeName, Toast.LENGTH_SHORT).show()
             }
@@ -1804,6 +2069,7 @@ class PlayerActivity : AppCompatActivity() {
         if (FloatingLyricsService.isRunning) {
             // 关闭悬浮歌词
             stopService(Intent(this, FloatingLyricsService::class.java))
+            refreshPlaybackNotification()
             Toast.makeText(this, "悬浮歌词已关闭", Toast.LENGTH_SHORT).show()
         } else {
             // 检查悬浮窗权限
@@ -1861,6 +2127,7 @@ class PlayerActivity : AppCompatActivity() {
         } else {
             startService(intent)
         }
+        refreshPlaybackNotification()
         
         // 延迟发送当前播放状态，确保服务已经启动并初始化完成
         exoPlayer?.let { player ->
@@ -1873,6 +2140,10 @@ class PlayerActivity : AppCompatActivity() {
         }
         
         Toast.makeText(this, "悬浮歌词已开启", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun refreshPlaybackNotification() {
+        startService(Intent(this, MusicPlaybackService::class.java))
     }
 
     private fun sendFloatingLyricsUpdate(position: Long, isPlaying: Boolean) {
@@ -2060,6 +2331,40 @@ class PlayerActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
+                if (songId.startsWith("local_") || platform.name.equals("LOCAL", ignoreCase = true)) {
+                    val localDetail = resolveLocalSongDetail(
+                        localSongId = songId,
+                        localSongName = songName,
+                        localSongArtists = songArtists,
+                        fallbackCoverUrl = songCover
+                    )
+                    hideLoadingToast()
+                    if (localDetail != null) {
+                        songDetail = localDetail
+                        songCover = preferNonBlank(localDetail.cover, songCover)
+                        songLyrics = preferNonBlank(localDetail.lyrics, songLyrics)
+                        updateUI(localDetail)
+                        loadCoverAndBackground(songCover)
+                        loadSongButNotPlay(localDetail.url)
+
+                        val playlistSong = PlaylistSong(
+                            id = songId,
+                            name = songName,
+                            artists = songArtists,
+                            coverUrl = songCover,
+                            platform = persistencePlatformName()
+                        )
+                        playlistManager.addSong(playlistSong)
+
+                        if (songCover.isNullOrBlank() || songLyrics.isNullOrBlank()) {
+                            loadMissingInfoInBackground()
+                        }
+                    } else {
+                        Toast.makeText(this@PlayerActivity, "本地歌曲加载失败", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
                 if (songUrl.isNotEmpty()) {
                     // 如果已经有URL（从搜索列表播放），直接播放
                     playSong(songUrl)
@@ -2185,6 +2490,8 @@ class PlayerActivity : AppCompatActivity() {
     private fun updateLyrics(currentPosition: Long) {
         if (parsedLyrics.isEmpty()) return
 
+        applyPlayerLyricStyle()
+
         var currentIndex = -1
         for (i in parsedLyrics.indices) {
             if (parsedLyrics[i].first <= currentPosition) {
@@ -2194,12 +2501,8 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
 
-        // 获取用户设置的歌词颜色
-        val lyricColor = LyricSettingsActivity.getPlayerLyricColor(this)
-
         if (currentIndex >= 0) {
             binding.tvLyricsCurrent.text = parsedLyrics[currentIndex].second
-            binding.tvLyricsCurrent.setTextColor(lyricColor)
             val nextIndex = currentIndex + 1
             if (nextIndex < parsedLyrics.size) {
                 binding.tvLyricsNext.text = parsedLyrics[nextIndex].second
@@ -2208,9 +2511,17 @@ class PlayerActivity : AppCompatActivity() {
             }
         } else {
             binding.tvLyricsCurrent.text = parsedLyrics.firstOrNull()?.second ?: ""
-            binding.tvLyricsCurrent.setTextColor(lyricColor)
             binding.tvLyricsNext.text = if (parsedLyrics.size > 1) parsedLyrics[1].second else ""
         }
+    }
+
+    private fun applyPlayerLyricStyle() {
+        val lyricColor = LyricStyleSettings.getPlayerLyricColor(this)
+        val lyricSize = LyricStyleSettings.getPlayerLyricSize(this)
+        binding.tvLyricsCurrent.setTextColor(lyricColor)
+        binding.tvLyricsCurrent.textSize = lyricSize
+        binding.tvLyricsNext.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
+        binding.tvLyricsNext.textSize = (lyricSize * 0.78f).coerceAtLeast(12f)
     }
 
     private fun playSong(url: String) {

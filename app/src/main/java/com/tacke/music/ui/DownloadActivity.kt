@@ -22,6 +22,7 @@ import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
+import com.tacke.music.data.repository.ListCoverRepairManager
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityDownloadBinding
@@ -40,6 +41,7 @@ class DownloadActivity : AppCompatActivity() {
     private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playlistRepository: PlaylistRepository
     private lateinit var playbackManager: PlaybackManager
+    private lateinit var listCoverRepairManager: ListCoverRepairManager
     private lateinit var downloadingAdapter: DownloadTaskAdapter
     private lateinit var historyAdapter: DownloadTaskAdapter
     private var isMultiSelectMode = false
@@ -56,12 +58,19 @@ class DownloadActivity : AppCompatActivity() {
         favoriteRepository = FavoriteRepository(this)
         playlistRepository = PlaylistRepository(this)
         playbackManager = PlaybackManager.getInstance(this)
+        listCoverRepairManager = ListCoverRepairManager.getInstance(this)
 
         setupToolbar()
         setupTabLayout()
         setupRecyclerViews()
         setupBatchActions()
         observeDownloadData()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        listCoverRepairManager.repairDownloadingListAsync()
+        listCoverRepairManager.repairDownloadHistoryAsync()
     }
 
     private fun setupToolbar() {

@@ -18,6 +18,9 @@ interface FavoriteSongDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFavoriteSong(song: FavoriteSongEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFavoriteSongs(songs: List<FavoriteSongEntity>)
+
     @Delete
     suspend fun deleteFavoriteSong(song: FavoriteSongEntity)
 
@@ -35,4 +38,7 @@ interface FavoriteSongDao {
 
     @Query("UPDATE favorite_songs SET coverUrl = :coverUrl WHERE id = :songId")
     suspend fun updateSongCoverUrl(songId: String, coverUrl: String?)
+
+    @Query("DELETE FROM favorite_songs")
+    suspend fun deleteAllFavoriteSongs()
 }

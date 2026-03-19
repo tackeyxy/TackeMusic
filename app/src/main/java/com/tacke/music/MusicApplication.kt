@@ -4,7 +4,9 @@ import android.app.Application
 import android.content.Context
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.util.AppLogger
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 class MusicApplication : Application() {
@@ -12,6 +14,10 @@ class MusicApplication : Application() {
     companion object {
         lateinit var context: Context
             private set
+    }
+
+    val applicationScope: CoroutineScope by lazy {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 
     override fun onCreate() {
@@ -32,7 +38,7 @@ class MusicApplication : Application() {
      * 清理过期的歌曲详情缓存
      */
     private fun cleanExpiredCache() {
-        GlobalScope.launch {
+        applicationScope.launch {
             try {
                 val cachedMusicRepository = CachedMusicRepository(context)
                 cachedMusicRepository.cleanExpiredCache()

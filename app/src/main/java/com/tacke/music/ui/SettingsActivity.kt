@@ -208,7 +208,6 @@ class SettingsActivity : AppCompatActivity() {
         setupClickListeners()
         updateDefaultSourceText()
         updateDownloadPathText()
-        updateLyricColorPreview()
         updateConcurrentDownloadsText()
         updatePlaybackQualityText()
         updateCacheExpiryText()
@@ -254,6 +253,10 @@ class SettingsActivity : AppCompatActivity() {
 
         binding.layoutCacheExpiry.setOnClickListener {
             showCacheExpiryDialog()
+        }
+
+        binding.layoutBackupRestore.setOnClickListener {
+            startActivity(Intent(this, BackupRestoreActivity::class.java))
         }
 
         binding.layoutCheckUpdate.setOnClickListener {
@@ -382,11 +385,6 @@ class SettingsActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun updateLyricColorPreview() {
-        val currentColor = getLyricColor(this)
-        binding.viewLyricColorPreview.setBackgroundColor(currentColor)
-    }
-
     private fun showLyricColorPickerDialog() {
         val currentColor = getLyricColor(this)
         val dialogView: android.view.View = layoutInflater.inflate(R.layout.dialog_lyric_color_picker, null)
@@ -458,7 +456,6 @@ class SettingsActivity : AppCompatActivity() {
         // 确认按钮
         dialogView.findViewById<android.widget.Button>(R.id.btnConfirm)?.setOnClickListener {
             setLyricColor(this, selectedColor)
-            updateLyricColorPreview()
             Toast.makeText(this, "歌词颜色已更新", Toast.LENGTH_SHORT).show()
             dialog.dismiss()
         }

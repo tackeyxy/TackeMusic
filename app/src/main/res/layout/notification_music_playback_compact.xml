@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/notificationRoot"
+    android:layout_width="match_parent"
+    android:layout_height="148dp"
+    android:background="@drawable/bg_notification_card_shape"
+    android:clipToOutline="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:padding="6dp">
+
+        <FrameLayout
+            android:layout_width="112dp"
+            android:layout_height="112dp">
+
+            <ImageView
+                android:id="@+id/notificationBackground"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:src="@drawable/bg_notification_default_background" />
+
+            <ImageView
+                android:id="@+id/notificationScrim"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_notification_scrim" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:text=""
+                android:textColor="@android:color/transparent" />
+
+            <LinearLayout
+                android:id="@+id/notificationTextBlock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/notificationTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="歌曲名称"
+                    android:textColor="@android:color/white"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/notificationArtist"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="歌手"
+                    android:textColor="#E6FFFFFF"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:text=""
+                android:textColor="@android:color/transparent" />
+
+            <LinearLayout
+                android:id="@+id/notificationControlRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/notificationLyricsToggle"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginEnd="8dp"
+                    android:background="@drawable/bg_notification_lyrics_toggle_dark"
+                    android:contentDescription="悬浮歌词开关"
+                    android:gravity="center"
+                    android:text="词"
+                    android:textColor="@android:color/white"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:id="@+id/notificationPrevious"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="@drawable/bg_notification_control_circle"
+                    android:contentDescription="上一首"
+                    android:padding="7dp"
+                    android:src="@drawable/ic_skip_previous"
+                    android:tint="@android:color/white" />
+
+                <ImageView
+                    android:id="@+id/notificationPlayPause"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginHorizontal="10dp"
+                    android:background="@drawable/bg_notification_control_circle"
+                    android:contentDescription="播放暂停"
+                    android:padding="9dp"
+                    android:src="@drawable/ic_play_filled_modern"
+                    android:tint="@android:color/white" />
+
+                <ImageView
+                    android:id="@+id/notificationNext"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="@drawable/bg_notification_control_circle"
+                    android:contentDescription="下一首"
+                    android:padding="7dp"
+                    android:src="@drawable/ic_skip_next"
+                    android:tint="@android:color/white" />
+
+                <ImageView
+                    android:id="@+id/notificationPlayMode"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_notification_control_circle"
+                    android:contentDescription="切换播放模式"
+                    android:padding="7dp"
+                    android:src="@drawable/ic_sequential"
+                    android:tint="@android:color/white" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/notificationProgressRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/notificationTimeCurrent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0:00"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="6dp"
+                    android:layout_marginHorizontal="8dp"
+                    android:layout_weight="1">
+
+                    <ProgressBar
+                        android:id="@+id/notificationProgress"
+                        style="@android:style/Widget.ProgressBar.Horizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="6dp"
+                        android:background="@android:color/transparent"
+                        android:indeterminate="false"
+                        android:max="1000"
+                        android:progress="0"
+                        android:progressDrawable="@drawable/bg_notification_progress" />
+
+                    <ProgressBar
+                        android:id="@+id/notificationProgressDark"
+                        style="@android:style/Widget.ProgressBar.Horizontal"
+                        android:layout_width="match_parent"
+                        android:layout_height="6dp"
+                        android:background="@android:color/transparent"
+                        android:indeterminate="false"
+                        android:max="1000"
+                        android:progress="0"
+                        android:progressDrawable="@drawable/bg_notification_progress_dark"
+                        android:visibility="gone" />
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/notificationTimeTotal"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0:00"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

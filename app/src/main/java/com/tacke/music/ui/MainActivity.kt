@@ -3,7 +3,10 @@ package com.tacke.music.ui
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ObjectAnimator
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -14,6 +17,7 @@ import android.widget.PopupWindow
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -109,6 +113,10 @@ class MainActivity : AppCompatActivity() {
     private var isLoadingPlaylists = false
     private var hasMorePlaylists = true
 
+    private companion object {
+        const val REQUEST_POST_NOTIFICATIONS = 2001
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -122,6 +130,7 @@ class MainActivity : AppCompatActivity() {
         favoriteRepository = FavoriteRepository(this)
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
+        requestNotificationPermissionIfNeeded()
         setupRecyclerView()
         setupPlaylistRecyclerView()
         setupClickListeners()
@@ -133,6 +142,35 @@ class MainActivity : AppCompatActivity() {
             loadAllChartData()
         }
         loadPlaylistTags()
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            REQUEST_POST_NOTIFICATIONS
+        )
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_POST_NOTIFICATIONS) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "通知权限已开启", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "未授予通知权限，状态栏播放卡片可能无法显示", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     /**

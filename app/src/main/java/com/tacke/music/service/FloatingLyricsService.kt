@@ -11,6 +11,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -37,6 +38,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.tacke.music.R
 import com.tacke.music.data.preferences.PlaybackPreferences
 import com.tacke.music.ui.PlayerActivity
+import com.tacke.music.utils.LyricStyleSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -77,18 +79,21 @@ class FloatingLyricsService : Service() {
     
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
-    
-    // 8种颜色选项（移除白色和蓝灰色）
-    private val colorOptions = listOf(
-        0xFF4FC3F7.toInt(), // 浅蓝
-        0xFF81C784.toInt(), // 浅绿
-        0xFFFFF176.toInt(), // 浅黄
-        0xFFFF8A65.toInt(), // 浅橙
-        0xFFF06292.toInt(), // 粉红
-        0xFFBA68C8.toInt(), // 浅紫
-        0xFF4DD0E1.toInt(), // 青色
-        0xFFA1887F.toInt()  // 棕色
-    )
+    private val stylePrefs by lazy { getSharedPreferences(LyricStyleSettings.PREFS_NAME, Context.MODE_PRIVATE) }
+    private val stylePrefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == null) return@OnSharedPreferenceChangeListener
+        if (
+            key == LyricStyleSettings.KEY_FLOATING_LYRIC_COLOR ||
+            key == LyricStyleSettings.KEY_FLOATING_LYRIC_SIZE
+        ) {
+            loadStyleSettings()
+            if (floatingView != null) {
+                updateLyricColor()
+                updateLyricSize()
+                setupColorPicker()
+            }
+        }
+    }
     
     companion object {
         private const val TAG = "FloatingLyricsService"
@@ -125,6 +130,7 @@ class FloatingLyricsService : Service() {
         Log.d(TAG, "onCreate")
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         loadSettings()
+        stylePrefs.registerOnSharedPreferenceChangeListener(stylePrefsListener)
         createNotificationChannel()
         registerReceivers()
     }
@@ -188,22 +194,25 @@ class FloatingLyricsService : Service() {
         Log.d(TAG, "onDestroy")
         removeFloatingWindow()
         unregisterReceivers()
+        stylePrefs.unregisterOnSharedPreferenceChangeListener(stylePrefsListener)
         saveSettings()
         isRunning = false
     }
 
     private fun loadSettings() {
         isLocked = prefs.getBoolean(KEY_IS_LOCKED, false)
-        currentLyricColor = prefs.getInt(KEY_LYRIC_COLOR, -1)
-        currentLyricSize = prefs.getFloat(KEY_LYRIC_SIZE, 20f)
+        loadStyleSettings()
+    }
+
+    private fun loadStyleSettings() {
+        currentLyricColor = LyricStyleSettings.getFloatingLyricColor(this)
+        currentLyricSize = LyricStyleSettings.getFloatingLyricSize(this)
         nextLyricSize = currentLyricSize * 0.7f
     }
 
     private fun saveSettings() {
         prefs.edit().apply {
             putBoolean(KEY_IS_LOCKED, isLocked)
-            putInt(KEY_LYRIC_COLOR, currentLyricColor)
-            putFloat(KEY_LYRIC_SIZE, currentLyricSize)
             apply()
         }
     }
@@ -383,7 +392,7 @@ class FloatingLyricsService : Service() {
     private fun setupColorPicker() {
         colorPickerContainer?.removeAllViews()
         
-        colorOptions.forEach { color ->
+        LyricStyleSettings.PRESET_FLOATING_LYRIC_COLORS.forEach { color ->
             val colorView = createColorCircle(color)
             colorPickerContainer?.addView(colorView)
         }
@@ -407,7 +416,8 @@ class FloatingLyricsService : Service() {
                 setColor(color)
             }
             setOnClickListener {
-                currentLyricColor = color
+                LyricStyleSettings.setFloatingLyricColor(this@FloatingLyricsService, color)
+                loadStyleSettings()
                 updateLyricColor()
                 setupColorPicker() // 刷新选中状态
                 scheduleHideControls()
@@ -469,7 +479,8 @@ class FloatingLyricsService : Service() {
         // 字体减小
         btnFontDecrease?.setOnClickListener {
             if (currentLyricSize > 12f) {
-                currentLyricSize -= 2f
+                LyricStyleSettings.setFloatingLyricSize(this, currentLyricSize - 2f)
+                loadStyleSettings()
                 updateLyricSize()
             }
             scheduleHideControls()
@@ -478,7 +489,8 @@ class FloatingLyricsService : Service() {
         // 字体增大
         btnFontIncrease?.setOnClickListener {
             if (currentLyricSize < 32f) {
-                currentLyricSize += 2f
+                LyricStyleSettings.setFloatingLyricSize(this, currentLyricSize + 2f)
+                loadStyleSettings()
                 updateLyricSize()
             }
             scheduleHideControls()

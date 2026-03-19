@@ -41,4 +41,8 @@ class RecentPlayRepository(context: Context) {
     suspend fun getCount(): Int {
         return recentPlayDao.getCount()
     }
+
+    suspend fun updateCoverUrl(songId: String, coverUrl: String?) {
+        recentPlayDao.updateCoverUrl(songId, coverUrl)
+    }
 }

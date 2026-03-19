@@ -19,6 +19,7 @@ import com.tacke.music.data.model.RecentPlay
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
+import com.tacke.music.data.repository.ListCoverRepairManager
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.data.repository.RecentPlayRepository
@@ -41,6 +42,7 @@ class RecentPlayActivity : AppCompatActivity() {
     private lateinit var playbackManager: PlaybackManager
     private lateinit var playlistManager: PlaylistManager
     private lateinit var downloadManager: DownloadManager
+    private lateinit var listCoverRepairManager: ListCoverRepairManager
     private lateinit var adapter: RecentPlayAdapter
 
     private var isMultiSelectMode = false
@@ -60,10 +62,16 @@ class RecentPlayActivity : AppCompatActivity() {
         playbackManager = PlaybackManager.getInstance(this)
         playlistManager = PlaylistManager.getInstance(this)
         downloadManager = DownloadManager.getInstance(this)
+        listCoverRepairManager = ListCoverRepairManager.getInstance(this)
 
         setupRecyclerView()
         setupClickListeners()
         observeRecentPlays()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        listCoverRepairManager.repairRecentPlayAsync()
     }
 
     private fun setupRecyclerView() {

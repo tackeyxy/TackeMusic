@@ -280,6 +280,17 @@ class CachedMusicRepository(private val context: Context) {
     }
 
     /**
+     * 仅从本地缓存读取完整歌曲详情（不触发任何网络请求）
+     */
+    suspend fun getLocalSongDetail(songId: String): SongDetail? = withContext(Dispatchers.IO) {
+        val cachedDetail = songDetailRepository.getSongDetail(songId)
+        if (cachedDetail != null) {
+            Log.d(TAG, "命中本地完整缓存（直放）: $songId")
+        }
+        cachedDetail
+    }
+
+    /**
      * 获取搜索音乐方法（透传给MusicRepository）
      */
     suspend fun searchMusic(platform: MusicRepository.Platform, keyword: String, page: Int = 0): List<com.tacke.music.data.model.Song> {

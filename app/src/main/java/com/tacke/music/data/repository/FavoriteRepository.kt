@@ -212,6 +212,7 @@ class FavoriteRepository(private val context: Context) {
             if (!isLocalSong(song.id, song.platform)) return@forEach
 
             val cover = localCoverMap[song.id]
+                ?: localCoverMap[buildNameArtistKey(song.name, song.artists)]
             if (!cover.isNullOrBlank() && cover != song.coverUrl) {
                 favoriteSongDao.updateSongCoverUrl(song.id, cover)
                 updatedCount++
@@ -222,5 +223,16 @@ class FavoriteRepository(private val context: Context) {
             Log.d(TAG, "本地歌曲封面回填完成(我喜欢): $updatedCount")
         }
         return updatedCount
+    }
+
+    private fun buildNameArtistKey(name: String, artists: String): String {
+        return "name_artist:${normalizeForMatch(name)}|${normalizeForMatch(artists)}"
+    }
+
+    private fun normalizeForMatch(value: String?): String {
+        return value.orEmpty()
+            .replace(Regex("[\\(（\\[【].*?[\\)）\\]】]"), "")
+            .lowercase()
+            .replace(Regex("[\\s\\p{P}\\p{S}]"), "")
     }
 }
