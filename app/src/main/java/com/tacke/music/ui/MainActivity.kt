@@ -115,6 +115,7 @@ class MainActivity : AppCompatActivity() {
 
     private companion object {
         const val REQUEST_POST_NOTIFICATIONS = 2001
+        const val REQUEST_PHONE_STATE = 2002
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -131,6 +132,7 @@ class MainActivity : AppCompatActivity() {
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
         requestNotificationPermissionIfNeeded()
+        requestPhoneStatePermissionIfNeeded()
         setupRecyclerView()
         setupPlaylistRecyclerView()
         setupClickListeners()
@@ -158,6 +160,19 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun requestPhoneStatePermissionIfNeeded() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.READ_PHONE_STATE),
+            REQUEST_PHONE_STATE
+        )
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
@@ -169,6 +184,12 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "通知权限已开启", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "未授予通知权限，状态栏播放卡片可能无法显示", Toast.LENGTH_SHORT).show()
+            }
+        } else if (requestCode == REQUEST_PHONE_STATE) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "通话状态权限已开启", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "未授予通话状态权限，来电自动暂停将不可用", Toast.LENGTH_SHORT).show()
             }
         }
     }

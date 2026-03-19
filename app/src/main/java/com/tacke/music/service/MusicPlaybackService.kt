@@ -1,5 +1,6 @@
 package com.tacke.music.service
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -12,16 +13,20 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.telephony.PhoneStateListener
+import android.telephony.TelephonyManager
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.view.View
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -67,6 +72,14 @@ class MusicPlaybackService : Service() {
     private var currentNotificationCover: Bitmap? = null
     private var currentNotificationCoverKey: String? = null
     private var notificationProgressJob: Job? = null
+    private var telephonyManager: TelephonyManager? = null
+    private var lastCallState: Int = TelephonyManager.CALL_STATE_IDLE
+    private var manualPlayOverrideDuringCall = false
+    private val phoneStateListener = object : PhoneStateListener() {
+        override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+            handleCallStateChanged(state)
+        }
+    }
 
     private data class NotificationUiStyle(
         val primaryTextColor: Int,
@@ -112,6 +125,7 @@ class MusicPlaybackService : Service() {
         initializePlayer()
         initializeMediaSession()
         registerBroadcastReceiver()
+        registerCallStateListener()
     }
 
     // 加载并播放指定歌曲
@@ -540,6 +554,7 @@ class MusicPlaybackService : Service() {
         mediaSession = MediaSessionCompat(this, "MusicPlaybackService").apply {
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() {
+                    markManualPlaybackDuringCallIfNeeded()
                     exoPlayer?.play()
                 }
 
@@ -548,15 +563,11 @@ class MusicPlaybackService : Service() {
                 }
 
                 override fun onSkipToNext() {
-                    serviceScope.launch {
-                        playNextSong()
-                    }
+                    handleUserSkipNext()
                 }
 
                 override fun onSkipToPrevious() {
-                    serviceScope.launch {
-                        playPreviousSong()
-                    }
+                    handleUserSkipPrevious()
                 }
 
                 override fun onStop() {
@@ -595,24 +606,90 @@ class MusicPlaybackService : Service() {
         LocalBroadcastManager.getInstance(this).registerReceiver(localControlReceiver, localFilter)
     }
 
+    private fun registerCallStateListener() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.w("MusicPlaybackService", "READ_PHONE_STATE not granted, call state listener disabled")
+            return
+        }
+        telephonyManager = getSystemService(TELEPHONY_SERVICE) as? TelephonyManager
+        @Suppress("DEPRECATION")
+        telephonyManager?.listen(phoneStateListener, PhoneStateListener.LISTEN_CALL_STATE)
+    }
+
+    private fun unregisterCallStateListener() {
+        @Suppress("DEPRECATION")
+        telephonyManager?.listen(phoneStateListener, PhoneStateListener.LISTEN_NONE)
+        telephonyManager = null
+    }
+
+    private fun handleCallStateChanged(state: Int) {
+        val previousState = lastCallState
+        lastCallState = state
+        when (state) {
+            TelephonyManager.CALL_STATE_RINGING,
+            TelephonyManager.CALL_STATE_OFFHOOK -> {
+                if (previousState != state) {
+                    pausePlaybackForCallIfNeeded()
+                }
+            }
+            TelephonyManager.CALL_STATE_IDLE -> {
+                manualPlayOverrideDuringCall = false
+            }
+        }
+    }
+
+    private fun pausePlaybackForCallIfNeeded() {
+        val player = exoPlayer ?: return
+        if (!player.isPlaying) return
+        if (manualPlayOverrideDuringCall) return
+        player.pause()
+        updateNotification()
+    }
+
+    private fun markManualPlaybackDuringCallIfNeeded() {
+        if (lastCallState != TelephonyManager.CALL_STATE_IDLE) {
+            manualPlayOverrideDuringCall = true
+        }
+    }
+
+    private fun handleUserPlayPauseToggle() {
+        val player = exoPlayer ?: return
+        if (player.isPlaying) {
+            player.pause()
+        } else {
+            markManualPlaybackDuringCallIfNeeded()
+            player.play()
+        }
+        updateNotification()
+    }
+
+    private fun handleUserSkipNext() {
+        markManualPlaybackDuringCallIfNeeded()
+        serviceScope.launch {
+            playNextSong()
+        }
+    }
+
+    private fun handleUserSkipPrevious() {
+        markManualPlaybackDuringCallIfNeeded()
+        serviceScope.launch {
+            playPreviousSong()
+        }
+    }
+
     private val controlReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 ACTION_PLAY_PAUSE -> {
-                    exoPlayer?.let {
-                        if (it.isPlaying) it.pause() else it.play()
-                    }
-                    updateNotification()
+                    handleUserPlayPauseToggle()
                 }
                 ACTION_NEXT -> {
-                    serviceScope.launch {
-                        playNextSong()
-                    }
+                    handleUserSkipNext()
                 }
                 ACTION_PREVIOUS -> {
-                    serviceScope.launch {
-                        playPreviousSong()
-                    }
+                    handleUserSkipPrevious()
                 }
                 ACTION_TOGGLE_FLOATING_LYRICS -> {
                     toggleFloatingLyricsFromNotification()
@@ -635,20 +712,13 @@ class MusicPlaybackService : Service() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 ACTION_PLAY_PAUSE -> {
-                    exoPlayer?.let {
-                        if (it.isPlaying) it.pause() else it.play()
-                    }
-                    updateNotification()
+                    handleUserPlayPauseToggle()
                 }
                 ACTION_NEXT -> {
-                    serviceScope.launch {
-                        playNextSong()
-                    }
+                    handleUserSkipNext()
                 }
                 ACTION_PREVIOUS -> {
-                    serviceScope.launch {
-                        playPreviousSong()
-                    }
+                    handleUserSkipPrevious()
                 }
                 ACTION_TOGGLE_FLOATING_LYRICS -> {
                     toggleFloatingLyricsFromNotification()
@@ -826,19 +896,14 @@ class MusicPlaybackService : Service() {
             setImageViewResource(R.id.notificationNext, R.drawable.ic_skip_next)
             setImageViewResource(R.id.notificationPlayMode, resolvePlayModeIconRes())
             val lyricsToggleOn = FloatingLyricsService.isRunning
-            val activeColor = uiStyle.iconTintColor
-            val inactiveColor = applyAlpha(uiStyle.iconTintColor, 0.45f)
+            val activeColor = Color.parseColor("#FFE53935")
+            val inactiveColor = resolveNotificationLyricsInactiveColor(
+                coverBitmap = coverBitmap,
+                uiStyle = uiStyle
+            )
             setTextViewText(R.id.notificationLyricsToggle, "词")
             setTextColor(R.id.notificationLyricsToggle, if (lyricsToggleOn) activeColor else inactiveColor)
-            setInt(
-                R.id.notificationLyricsToggle,
-                "setBackgroundResource",
-                if (uiStyle.useDarkProgressStyle) {
-                    R.drawable.bg_notification_lyrics_toggle_light
-                } else {
-                    R.drawable.bg_notification_lyrics_toggle_dark
-                }
-            )
+            setInt(R.id.notificationLyricsToggle, "setBackgroundResource", uiStyle.controlBackgroundRes)
             setInt(R.id.notificationPrevious, "setColorFilter", uiStyle.iconTintColor)
             setInt(R.id.notificationPlayPause, "setColorFilter", uiStyle.iconTintColor)
             setInt(R.id.notificationNext, "setColorFilter", uiStyle.iconTintColor)
@@ -1046,6 +1111,65 @@ class MusicPlaybackService : Service() {
         return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))
     }
 
+    private fun resolveNotificationLyricsInactiveColor(
+        coverBitmap: Bitmap?,
+        uiStyle: NotificationUiStyle
+    ): Int {
+        val sampled = sampleNotificationCoverColor(coverBitmap)
+        if (sampled == null) {
+            return if (uiStyle.useDarkProgressStyle) {
+                Color.parseColor("#FF111827")
+            } else {
+                Color.WHITE
+            }
+        }
+        return if (isColorDark(sampled)) Color.WHITE else Color.parseColor("#FF111827")
+    }
+
+    private fun sampleNotificationCoverColor(bitmap: Bitmap?): Int? {
+        val bmp = bitmap ?: return null
+        if (bmp.width <= 0 || bmp.height <= 0) return null
+
+        val startX = (bmp.width * 0.62f).toInt().coerceIn(0, bmp.width - 1)
+        val endX = (bmp.width * 0.96f).toInt().coerceIn(startX, bmp.width - 1)
+        val startY = (bmp.height * 0.40f).toInt().coerceIn(0, bmp.height - 1)
+        val endY = (bmp.height * 0.82f).toInt().coerceIn(startY, bmp.height - 1)
+        val stepX = ((endX - startX) / 4).coerceAtLeast(1)
+        val stepY = ((endY - startY) / 4).coerceAtLeast(1)
+
+        var r = 0L
+        var g = 0L
+        var b = 0L
+        var count = 0
+
+        var y = startY
+        while (y <= endY) {
+            var x = startX
+            while (x <= endX) {
+                val c = bmp.getPixel(x, y)
+                r += Color.red(c)
+                g += Color.green(c)
+                b += Color.blue(c)
+                count++
+                x += stepX
+            }
+            y += stepY
+        }
+
+        if (count <= 0) return null
+        return Color.rgb(
+            (r / count).toInt().coerceIn(0, 255),
+            (g / count).toInt().coerceIn(0, 255),
+            (b / count).toInt().coerceIn(0, 255)
+        )
+    }
+
+    private fun isColorDark(color: Int): Boolean {
+        val luminance =
+            (0.299 * Color.red(color) + 0.587 * Color.green(color) + 0.114 * Color.blue(color)) / 255.0
+        return luminance < 0.55
+    }
+
     private fun resolvePlayModeIconRes(): Int {
         return when (playlistManager.playMode.value) {
             PlaylistManager.PLAY_MODE_SEQUENTIAL -> R.drawable.ic_sequential
@@ -1175,6 +1299,11 @@ class MusicPlaybackService : Service() {
         }
         try {
             LocalBroadcastManager.getInstance(this).unregisterReceiver(localControlReceiver)
+        } catch (e: Exception) {
+            // Ignore if not registered
+        }
+        try {
+            unregisterCallStateListener()
         } catch (e: Exception) {
             // Ignore if not registered
         }

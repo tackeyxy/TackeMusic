@@ -96,12 +96,11 @@
                     android:layout_width="34dp"
                     android:layout_height="34dp"
                     android:layout_marginEnd="10dp"
-                    android:background="@drawable/bg_notification_lyrics_toggle_dark"
                     android:contentDescription="悬浮歌词开关"
                     android:gravity="center"
                     android:text="词"
                     android:textColor="@android:color/white"
-                    android:textSize="15sp"
+                    android:textSize="16sp"
                     android:textStyle="bold" />
 
                 <ImageView

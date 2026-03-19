@@ -113,6 +113,7 @@ class FloatingLyricsService : Service() {
         const val ACTION_UPDATE_PLAYBACK = "com.tacke.music.ACTION_UPDATE_PLAYBACK"
         const val ACTION_SONG_CHANGED = "com.tacke.music.ACTION_SONG_CHANGED"
         const val ACTION_RESET_POSITION = "com.tacke.music.ACTION_RESET_POSITION"
+        const val ACTION_STATE_CHANGED = "com.tacke.music.ACTION_FLOATING_LYRICS_STATE_CHANGED"
         
         const val EXTRA_LYRICS = "lyrics"
         const val EXTRA_CURRENT_POSITION = "current_position"
@@ -120,6 +121,7 @@ class FloatingLyricsService : Service() {
         const val EXTRA_SONG_ID = "song_id"
         const val EXTRA_SONG_NAME = "song_name"
         const val EXTRA_SONG_ARTISTS = "song_artists"
+        const val EXTRA_RUNNING = "running"
         
         var isRunning = false
             private set
@@ -157,11 +159,13 @@ class FloatingLyricsService : Service() {
                 
                 startForeground(NOTIFICATION_ID, createNotification())
                 isRunning = true
+                broadcastRunningState(true)
             }
             ACTION_HIDE -> {
                 removeFloatingWindow()
-                stopSelf()
                 isRunning = false
+                broadcastRunningState(false)
+                stopSelf()
             }
             ACTION_UPDATE_LYRICS -> {
                 val lyrics = intent.getStringExtra(EXTRA_LYRICS)
@@ -197,6 +201,15 @@ class FloatingLyricsService : Service() {
         stylePrefs.unregisterOnSharedPreferenceChangeListener(stylePrefsListener)
         saveSettings()
         isRunning = false
+        broadcastRunningState(false)
+    }
+
+    private fun broadcastRunningState(running: Boolean) {
+        LocalBroadcastManager.getInstance(this).sendBroadcast(
+            Intent(ACTION_STATE_CHANGED).apply {
+                putExtra(EXTRA_RUNNING, running)
+            }
+        )
     }
 
     private fun loadSettings() {

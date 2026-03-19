@@ -5,6 +5,7 @@ import android.animation.ValueAnimator
 import android.app.ProgressDialog
 import android.content.BroadcastReceiver
 import android.content.ComponentName
+import android.content.res.Configuration
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -15,6 +16,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
 import android.provider.Settings
 import android.util.Log
 import android.view.GestureDetector
@@ -117,6 +119,7 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playlistRepository: PlaylistRepository
     private var isFromEmptyState = false
+    private var favoriteSidebarRefreshToken = 0
 
     private fun isCurrentSongLocal(): Boolean {
         if (songId.startsWith("local_")) return true
@@ -693,6 +696,7 @@ class PlayerActivity : AppCompatActivity() {
         // 更新歌词显示
         updateLyrics(currentPosition)
         updatePlayPauseButton(exoPlayer?.isPlaying == true)
+        refreshSidebarActionButtons()
         if (exoPlayer?.isPlaying == true) {
             startAlbumRotation()
         }
@@ -775,6 +779,7 @@ class PlayerActivity : AppCompatActivity() {
         binding.seekBar.progress = 0
         binding.seekBar.max = 0
         updatePlayPauseButton(false)
+        refreshSidebarActionButtons()
 
         // 尝试恢复上次播放状态（播放列表已加载完成）
         // 关键修复：必须同时满足以下条件才恢复播放：
@@ -1292,6 +1297,13 @@ class PlayerActivity : AppCompatActivity() {
                         playlistManager.setPlayMode(incomingMode)
                         updatePlayModeIcon()
                     }
+                    FloatingLyricsService.ACTION_STATE_CHANGED -> {
+                        val running = intent.getBooleanExtra(
+                            FloatingLyricsService.EXTRA_RUNNING,
+                            FloatingLyricsService.isRunning
+                        )
+                        refreshSidebarActionButtons(running)
+                    }
                 }
             }
         }
@@ -1311,11 +1323,13 @@ class PlayerActivity : AppCompatActivity() {
         val controlFilter = IntentFilter().apply {
             addAction(MusicPlaybackService.ACTION_SONG_CHANGED)
             addAction(MusicPlaybackService.ACTION_PLAY_MODE_CHANGED)
+            addAction(FloatingLyricsService.ACTION_STATE_CHANGED)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(playbackControlReceiver, controlFilter)
 
         // 从后台恢复时，同步当前播放的歌曲信息
         syncCurrentPlaybackState()
+        refreshSidebarActionButtons()
     }
 
     /**
@@ -1610,6 +1624,7 @@ class PlayerActivity : AppCompatActivity() {
                             isFromEmptyState = false
                             exoPlayer?.play()
                             startAlbumRotation()
+                            refreshSidebarActionButtons()
                         } else {
                             Toast.makeText(this@PlayerActivity, "加载歌曲失败", Toast.LENGTH_SHORT).show()
                         }
@@ -1677,6 +1692,22 @@ class PlayerActivity : AppCompatActivity() {
             showPlaylistDialog()
         }
 
+        binding.btnFavoriteSidebar.setOnClickListener {
+            if (songId.isBlank()) {
+                Toast.makeText(this, "暂无歌曲", Toast.LENGTH_SHORT).show()
+            } else {
+                toggleFavorite()
+            }
+        }
+
+        binding.btnFloatingLyricsSidebar.setOnClickListener {
+            if (songId.isBlank()) {
+                Toast.makeText(this, "暂无歌曲", Toast.LENGTH_SHORT).show()
+            } else {
+                toggleFloatingLyrics()
+            }
+        }
+
         binding.btnMore.setOnClickListener {
             if (isFromEmptyState) {
                 Toast.makeText(this, "暂无歌曲", Toast.LENGTH_SHORT).show()
@@ -1684,6 +1715,8 @@ class PlayerActivity : AppCompatActivity() {
                 showMoreOptions()
             }
         }
+
+        refreshSidebarActionButtons()
     }
 
     private fun playNextSong() {
@@ -2045,20 +2078,15 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun showMoreOptions() {
         lifecycleScope.launch {
-            val isFavorite = favoriteRepository.isFavorite(songId)
-            val favoriteOption = if (isFavorite) "添加到我喜欢的 ✓" else "添加到我喜欢的"
-            val floatingLyricsOption = if (FloatingLyricsService.isRunning) "关闭悬浮歌词 ✓" else "开启悬浮歌词"
-            val options = arrayOf(favoriteOption, "下载", "选择音质", "添加到歌单", floatingLyricsOption)
+            val options = arrayOf("下载", "选择音质", "添加到歌单")
 
             AlertDialog.Builder(this@PlayerActivity)
                 .setTitle("更多选项")
                 .setItems(options) { _, which ->
                     when (which) {
-                        0 -> toggleFavorite()
-                        1 -> showQualityDialogForDownload()
-                        2 -> showQualityDialog()
-                        3 -> showAddToPlaylistDialog()
-                        4 -> toggleFloatingLyrics()
+                        0 -> showQualityDialogForDownload()
+                        1 -> showQualityDialog()
+                        2 -> showAddToPlaylistDialog()
                     }
                 }
                 .show()
@@ -2070,12 +2098,14 @@ class PlayerActivity : AppCompatActivity() {
             // 关闭悬浮歌词
             stopService(Intent(this, FloatingLyricsService::class.java))
             refreshPlaybackNotification()
+            refreshSidebarActionButtons(false)
             Toast.makeText(this, "悬浮歌词已关闭", Toast.LENGTH_SHORT).show()
         } else {
             // 检查悬浮窗权限
             if (Settings.canDrawOverlays(this)) {
                 // 开启悬浮歌词
                 startFloatingLyricsService()
+                refreshSidebarActionButtons(true)
             } else {
                 // 请求悬浮窗权限
                 requestOverlayPermission()
@@ -2103,6 +2133,7 @@ class PlayerActivity : AppCompatActivity() {
     ) { _ ->
         if (Settings.canDrawOverlays(this)) {
             startFloatingLyricsService()
+            refreshSidebarActionButtons(true)
         } else {
             Toast.makeText(this, "需要悬浮窗权限才能使用悬浮歌词", Toast.LENGTH_SHORT).show()
         }
@@ -2128,6 +2159,7 @@ class PlayerActivity : AppCompatActivity() {
             startService(intent)
         }
         refreshPlaybackNotification()
+        refreshSidebarActionButtons(true)
         
         // 延迟发送当前播放状态，确保服务已经启动并初始化完成
         exoPlayer?.let { player ->
@@ -2179,6 +2211,7 @@ class PlayerActivity : AppCompatActivity() {
                 val isNowFavorite = favoriteRepository.toggleFavorite(song, persistencePlatformName())
                 val message = if (isNowFavorite) "已添加到我喜欢" else "已从我喜欢移除"
                 Toast.makeText(this@PlayerActivity, message, Toast.LENGTH_SHORT).show()
+                refreshSidebarActionButtons()
             } catch (e: Exception) {
                 Toast.makeText(this@PlayerActivity, "操作失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -2268,6 +2301,159 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnPlayPause.setImageResource(
             if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
         )
+    }
+
+    private fun isNightModeEnabled(): Boolean {
+        return (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    }
+
+    private fun resolveSidebarTextColor(): Int {
+        return if (isNightModeEnabled()) {
+            ContextCompat.getColor(this, R.color.white)
+        } else {
+            ContextCompat.getColor(this, R.color.text_primary)
+        }
+    }
+
+    private fun refreshSidebarActionButtons(forceLyricsRunning: Boolean? = null) {
+        val hasSong = songId.isNotBlank()
+        val heartOutlineColor = resolveSidebarTextColor()
+        val lyricsRunning = forceLyricsRunning ?: FloatingLyricsService.isRunning
+        val sampledBgColor = sampleSidebarBackgroundColor()
+        val lyricsInactiveColor = resolveLyricsInactiveColor(sampledBgColor)
+        val lyricsActiveColor = ContextCompat.getColor(this, R.color.error)
+        val strokeColor = if (isColorDark(lyricsActiveColor)) {
+            ContextCompat.getColor(this, R.color.white)
+        } else {
+            ContextCompat.getColor(this, R.color.black)
+        }
+
+        binding.btnFloatingLyricsSidebar.inactiveColor = lyricsInactiveColor
+        binding.btnFloatingLyricsSidebar.isActiveState = lyricsRunning
+        binding.btnFloatingLyricsSidebar.activeColor = ContextCompat.getColor(this, R.color.error)
+        binding.btnFloatingLyricsSidebar.emphasizeStrokeOnActive =
+            lyricsRunning && sampledBgColor?.let { isColorReddish(it) } == true
+        binding.btnFloatingLyricsSidebar.strokeColor = strokeColor
+        binding.btnFloatingLyricsSidebar.strokeWidthPx = resources.displayMetrics.density * 1.6f
+        binding.btnFloatingLyricsSidebar.isEnabled = hasSong || lyricsRunning
+        binding.btnFloatingLyricsSidebar.alpha =
+            if (lyricsRunning || hasSong) 1f else 0.45f
+        binding.btnFloatingLyricsSidebar.contentDescription =
+            if (lyricsRunning) "关闭悬浮歌词" else "开启悬浮歌词"
+
+        binding.btnFavoriteSidebar.alpha = if (hasSong) 1f else 0.45f
+        binding.btnFavoriteSidebar.isEnabled = hasSong
+
+        if (!hasSong) {
+            binding.btnFavoriteSidebar.setImageResource(R.drawable.ic_heart_outline)
+            binding.btnFavoriteSidebar.setColorFilter(heartOutlineColor)
+            binding.btnFavoriteSidebar.contentDescription = "添加到我喜欢的"
+            return
+        }
+
+        binding.btnFavoriteSidebar.setImageResource(R.drawable.ic_heart_outline)
+        binding.btnFavoriteSidebar.setColorFilter(heartOutlineColor)
+        binding.btnFavoriteSidebar.contentDescription = "添加到我喜欢的"
+
+        val currentSongId = songId
+        val requestToken = ++favoriteSidebarRefreshToken
+        lifecycleScope.launch {
+            try {
+                val isFavorite = withContext(Dispatchers.IO) {
+                    favoriteRepository.isFavorite(currentSongId)
+                }
+                if (
+                    requestToken != favoriteSidebarRefreshToken ||
+                    currentSongId != songId ||
+                    isFinishing ||
+                    isDestroyed
+                ) {
+                    return@launch
+                }
+
+                binding.btnFavoriteSidebar.setImageResource(
+                    if (isFavorite) R.drawable.ic_heart else R.drawable.ic_heart_outline
+                )
+                binding.btnFavoriteSidebar.setColorFilter(
+                    if (isFavorite) {
+                        ContextCompat.getColor(this@PlayerActivity, R.color.error)
+                    } else {
+                        heartOutlineColor
+                    }
+                )
+                binding.btnFavoriteSidebar.contentDescription =
+                    if (isFavorite) "取消我喜欢" else "添加到我喜欢的"
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to refresh favorite sidebar state", e)
+            }
+        }
+    }
+
+    private fun resolveLyricsInactiveColor(sampledBgColor: Int?): Int {
+        if (sampledBgColor == null) {
+            return resolveSidebarTextColor()
+        }
+        return if (isColorDark(sampledBgColor)) {
+            ContextCompat.getColor(this, R.color.white)
+        } else {
+            ContextCompat.getColor(this, R.color.text_primary)
+        }
+    }
+
+    private fun sampleSidebarBackgroundColor(): Int? {
+        if (binding.ivBackground.visibility != View.VISIBLE) return null
+        val drawable = binding.ivBackground.drawable as? BitmapDrawable ?: return null
+        val bitmap = drawable.bitmap ?: return null
+        if (bitmap.width <= 0 || bitmap.height <= 0) return null
+
+        // 采样右侧中下区域（贴近“词”按钮所在位置），用于提升对比度判断准确性
+        val startX = (bitmap.width * 0.72f).toInt().coerceIn(0, bitmap.width - 1)
+        val endX = (bitmap.width * 0.96f).toInt().coerceIn(startX, bitmap.width - 1)
+        val startY = (bitmap.height * 0.52f).toInt().coerceIn(0, bitmap.height - 1)
+        val endY = (bitmap.height * 0.84f).toInt().coerceIn(startY, bitmap.height - 1)
+        val sampleXStep = ((endX - startX) / 4).coerceAtLeast(1)
+        val sampleYStep = ((endY - startY) / 4).coerceAtLeast(1)
+
+        var sumR = 0L
+        var sumG = 0L
+        var sumB = 0L
+        var count = 0
+
+        var y = startY
+        while (y <= endY) {
+            var x = startX
+            while (x <= endX) {
+                val color = bitmap.getPixel(x, y)
+                sumR += android.graphics.Color.red(color)
+                sumG += android.graphics.Color.green(color)
+                sumB += android.graphics.Color.blue(color)
+                count++
+                x += sampleXStep
+            }
+            y += sampleYStep
+        }
+
+        if (count <= 0) return null
+        return android.graphics.Color.rgb(
+            (sumR / count).toInt().coerceIn(0, 255),
+            (sumG / count).toInt().coerceIn(0, 255),
+            (sumB / count).toInt().coerceIn(0, 255)
+        )
+    }
+
+    private fun isColorDark(color: Int): Boolean {
+        val luminance =
+            (0.299 * android.graphics.Color.red(color) +
+                0.587 * android.graphics.Color.green(color) +
+                0.114 * android.graphics.Color.blue(color)) / 255.0
+        return luminance < 0.55
+    }
+
+    private fun isColorReddish(color: Int): Boolean {
+        val r = android.graphics.Color.red(color)
+        val g = android.graphics.Color.green(color)
+        val b = android.graphics.Color.blue(color)
+        return r >= 130 && r > g * 1.18f && r > b * 1.18f
     }
 
     private fun loadSongDetail(quality: String) {
