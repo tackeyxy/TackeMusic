@@ -3,8 +3,10 @@ package com.tacke.music.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.provider.Settings
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.tacke.music.BuildConfig
@@ -112,6 +114,11 @@ class NewVersionActivity : AppCompatActivity() {
     // 下载速度计算
     private var lastDownloadedBytes: Long = 0
     private var lastSpeedUpdateTime: Long = 0
+
+    private val unknownSourcesSettingsLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            tryInstallDownloadedApk()
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -270,7 +277,8 @@ class NewVersionActivity : AppCompatActivity() {
         apkDownloadManager.startDownload(downloadUrl) { success ->
             runOnUiThread {
                 if (success) {
-                    Toast.makeText(this, "下载完成，开始安装", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "下载完成", Toast.LENGTH_SHORT).show()
+                    tryInstallDownloadedApk()
                 } else {
                     Toast.makeText(this, "下载失败，请重试", Toast.LENGTH_SHORT).show()
                     binding.btnDownloadUpdate.isEnabled = true
@@ -278,6 +286,45 @@ class NewVersionActivity : AppCompatActivity() {
                     binding.btnDownloadUpdate.text = "立即更新"
                 }
             }
+        }
+    }
+
+    private fun tryInstallDownloadedApk() {
+        if (apkDownloadManager.canRequestPackageInstalls()) {
+            val started = apkDownloadManager.installApk(this)
+            if (!started) {
+                Toast.makeText(this, "无法启动安装器，请手动安装", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+
+        Toast.makeText(this, "请先允许“安装未知应用”权限", Toast.LENGTH_LONG).show()
+        val opened = openUnknownAppSourcesSettingsWithResult()
+        if (!opened) {
+            Toast.makeText(this, "无法打开安装权限设置，请手动前往系统设置开启", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun openUnknownAppSourcesSettingsWithResult(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            try {
+                unknownSourcesSettingsLauncher.launch(
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = android.net.Uri.parse("package:$packageName")
+                    }
+                )
+                return true
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "Failed to open ACTION_MANAGE_UNKNOWN_APP_SOURCES: ${e.message}")
+            }
+        }
+
+        // 厂商ROM兜底：交由管理器依次尝试多个设置入口
+        return try {
+            apkDownloadManager.openUnknownSourcesSettings(this)
+        } catch (e: Exception) {
+            AppLogger.w(TAG, "Failed to open fallback settings: ${e.message}")
+            false
         }
     }
 

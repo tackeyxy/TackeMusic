@@ -1,5 +1,6 @@
 package com.tacke.music.update
 
+import android.app.Activity
 import android.app.DownloadManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -8,7 +9,9 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.Settings
 import android.widget.Toast
+import androidx.core.content.FileProvider
 import com.tacke.music.util.AppLogger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -122,7 +125,6 @@ class ApkDownloadManager(private val context: Context) {
                             _isDownloading.value = false
                             _downloadProgress.value = 100
                             _downloadSpeed.value = 0L
-                            installApk()
                             onComplete(true)
                         } else {
                             val reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
@@ -194,32 +196,112 @@ class ApkDownloadManager(private val context: Context) {
     /**
      * 安装APK
      */
-    fun installApk() {
+    fun installApk(activity: Activity? = null): Boolean {
         try {
             val file = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), APK_FILE_NAME)
             if (!file.exists()) {
                 Toast.makeText(context, "安装文件不存在", Toast.LENGTH_SHORT).show()
-                return
+                return false
             }
 
-            val uri = androidx.core.content.FileProvider.getUriForFile(
+            val canInstall = canRequestPackageInstalls()
+            if (!canInstall) {
+                AppLogger.w(TAG, "Install blocked: canRequestPackageInstalls=false")
+                Toast.makeText(context, "请先允许“安装未知应用”权限", Toast.LENGTH_SHORT).show()
+                return false
+            }
+
+            val uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
                 file
             )
 
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+            val installIntents = buildInstallIntents(uri, activity == null)
+            for (intent in installIntents) {
+                if (intent.resolveActivity(context.packageManager) != null) {
+                    if (activity != null) {
+                        activity.startActivity(intent)
+                    } else {
+                        context.startActivity(intent)
+                    }
+                    AppLogger.d(TAG, "Started APK installation via intent: action=${intent.action}, package=${intent.`package`}")
+                    return true
+                }
             }
 
-            context.startActivity(intent)
-            AppLogger.d(TAG, "Started APK installation")
+            AppLogger.e(TAG, "No activity can handle APK install intent")
+            Toast.makeText(context, "未找到可用安装器，请手动安装", Toast.LENGTH_LONG).show()
+            return false
 
         } catch (e: Exception) {
             AppLogger.e(TAG, "Failed to install APK", e)
             Toast.makeText(context, "安装失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            return false
         }
+    }
+
+    fun canRequestPackageInstalls(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
+    }
+
+    fun openUnknownSourcesSettings(activity: Activity): Boolean {
+        val intents = mutableListOf<Intent>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            intents += Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                data = Uri.parse("package:${context.packageName}")
+            }
+        }
+        intents += Intent(Settings.ACTION_SECURITY_SETTINGS)
+        intents += Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:${context.packageName}")
+        }
+
+        for (intent in intents) {
+            try {
+                activity.startActivity(intent)
+                AppLogger.d(TAG, "Opened install permission settings: action=${intent.action}")
+                return true
+            } catch (e: Exception) {
+                AppLogger.w(TAG, "Failed to open settings action=${intent.action}: ${e.message}")
+            }
+        }
+        return false
+    }
+
+    private fun buildInstallIntents(apkUri: Uri, addNewTask: Boolean): List<Intent> {
+        val baseFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or if (addNewTask) Intent.FLAG_ACTIVITY_NEW_TASK else 0
+        val mimeType = "application/vnd.android.package-archive"
+
+        val genericInstall = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+            data = apkUri
+            addFlags(baseFlags)
+            putExtra(Intent.EXTRA_RETURN_RESULT, false)
+        }
+
+        val genericView = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, mimeType)
+            addFlags(baseFlags)
+        }
+
+        val knownInstallerPackages = listOf(
+            "com.android.packageinstaller",
+            "com.google.android.packageinstaller",
+            "com.miui.packageinstaller",
+            "com.oplus.packageinstaller",
+            "com.coloros.safecenter",
+            "com.oneplus.security",
+            "com.huawei.systemmanager"
+        )
+
+        val explicit = knownInstallerPackages.flatMap { pkg ->
+            listOf(
+                Intent(genericInstall).setPackage(pkg),
+                Intent(genericView).setPackage(pkg)
+            )
+        }
+
+        return listOf(genericInstall, genericView) + explicit
     }
 
     /**

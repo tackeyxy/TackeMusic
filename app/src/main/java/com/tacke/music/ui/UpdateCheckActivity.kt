@@ -39,9 +39,9 @@ class UpdateCheckActivity : AppCompatActivity() {
         const val CHANNEL_DEV = "dev"
 
         // 稳定版 URL
-        private const val URL_STABLE = "https://raw.githubusercontent.com/tackeyxy/TackeMusic/main/version.json"
+        private const val URL_STABLE = "https://gh-proxy.org/https://github.com/tackeyxy/TackeMusic/blob/main/version.json"
         // 开发版 URL
-        private const val URL_DEV = "https://raw.githubusercontent.com/tackeyxy/TackeMusic/dev/version.json"
+        private const val URL_DEV = "https://gh-proxy.org/https://github.com/tackeyxy/TackeMusic/blob/dev/version.json"
 
         fun getUpdateChannel(context: Context): String {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
