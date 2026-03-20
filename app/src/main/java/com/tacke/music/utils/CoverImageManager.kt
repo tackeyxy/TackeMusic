@@ -42,13 +42,17 @@ object CoverImageManager {
      * @param songId 歌曲ID
      * @param platform 平台 (kuwo/netease)
      * @param quality 音质质量，用于获取歌曲详情
+     * @param songName 歌曲名称（用于网易云平台搜索后备方案）
+     * @param artist 歌手名称（用于网易云平台搜索后备方案）
      * @return 本地图片文件路径，下载失败返回null
      */
     suspend fun downloadAndCacheCover(
         context: Context,
         songId: String,
         platform: String,
-        quality: String = "320k"
+        quality: String = "320k",
+        songName: String? = null,
+        artist: String? = null
     ): String? = withContext(Dispatchers.IO) {
         try {
             // 检查是否已缓存
@@ -71,11 +75,25 @@ object CoverImageManager {
             val musicRepository = MusicRepository()
             val songDetail = musicRepository.getSongDetail(platformEnum, songId, quality)
             
-            val coverUrl = songDetail?.cover
+            var coverUrl = songDetail?.cover
+            
+            // 如果无法获取封面URL，尝试使用网易云平台搜索后备方案
+            if (coverUrl.isNullOrEmpty()) {
+                Log.w(TAG, "无法从原平台获取封面URL，尝试网易云平台搜索: songId=$songId, platform=$platform")
+                coverUrl = getCoverFromNeteaseSearch(musicRepository, songName, artist)
+            }
+            
+            // 如果网易云平台搜索也失败，尝试只使用歌曲名搜索
+            if (coverUrl.isNullOrEmpty() && !songName.isNullOrEmpty()) {
+                Log.w(TAG, "尝试只使用歌曲名搜索: $songName")
+                coverUrl = getCoverFromNeteaseSearch(musicRepository, songName, null)
+            }
+            
             if (coverUrl.isNullOrEmpty()) {
                 Log.e(TAG, "无法获取封面URL: songId=$songId, platform=$platform")
                 return@withContext null
             }
+            coverUrl = normalizeImageUrl(coverUrl)
 
             // 下载图片
             val bitmap = downloadImage(coverUrl)
@@ -92,6 +110,58 @@ object CoverImageManager {
             cachePath
         } catch (e: Exception) {
             Log.e(TAG, "下载封面失败: ${e.message}", e)
+            null
+        }
+    }
+    
+    /**
+     * 从网易云平台搜索获取专辑图
+     * 使用"歌曲+歌手"格式搜索，取返回的第一个歌曲的专辑图
+     * @param musicRepository MusicRepository实例
+     * @param songName 歌曲名称
+     * @param artist 歌手名称
+     * @return 专辑图URL，获取失败返回null
+     */
+    private suspend fun getCoverFromNeteaseSearch(
+        musicRepository: MusicRepository,
+        songName: String?,
+        artist: String?
+    ): String? {
+        if (songName.isNullOrEmpty()) {
+            return null
+        }
+        
+        return try {
+            // 构建搜索关键词："歌曲+歌手"
+            val keyword = if (!artist.isNullOrEmpty()) {
+                "$songName $artist"
+            } else {
+                songName
+            }
+            
+            Log.d(TAG, "从网易云平台搜索封面: keyword=$keyword")
+            
+            // 使用 MusicRepository 的搜索方法
+            val searchResults = musicRepository.searchMusic(
+                MusicRepository.Platform.NETEASE,
+                keyword,
+                0
+            )
+            
+            if (searchResults.isNotEmpty()) {
+                // 取返回的第一个歌曲的专辑图
+                val firstSong = searchResults.first()
+                val coverUrl = firstSong.coverUrl
+                if (!coverUrl.isNullOrEmpty()) {
+                    Log.d(TAG, "从网易云平台获取到封面URL: $coverUrl")
+                    return coverUrl
+                }
+            }
+            
+            Log.w(TAG, "网易云平台搜索未返回结果: keyword=$keyword")
+            null
+        } catch (e: Exception) {
+            Log.e(TAG, "从网易云平台搜索封面失败: ${e.message}", e)
             null
         }
     }
@@ -116,6 +186,30 @@ object CoverImageManager {
             }
         }
         results
+    }
+
+    /**
+     * 直接使用封面URL下载并缓存（不依赖平台 songId 详情接口）
+     * 适用于本地歌曲已拿到远程封面URL但 Glide 直连解码失败的兜底场景
+     */
+    suspend fun downloadAndCacheCoverByUrl(
+        context: Context,
+        songId: String,
+        platform: String,
+        coverUrl: String
+    ): String? = withContext(Dispatchers.IO) {
+        try {
+            val existingPath = getCoverPath(context, songId, platform)
+            if (existingPath != null) {
+                return@withContext existingPath
+            }
+            val normalizedUrl = normalizeImageUrl(coverUrl)
+            val bitmap = downloadImage(normalizedUrl) ?: return@withContext null
+            saveBitmapToCache(context, bitmap, songId, platform)
+        } catch (e: Exception) {
+            Log.e(TAG, "按URL下载封面失败: ${e.message}", e)
+            null
+        }
     }
 
     /**
@@ -144,6 +238,16 @@ object CoverImageManager {
         } catch (e: Exception) {
             Log.e(TAG, "下载图片异常: ${e.message}", e)
             null
+        }
+    }
+
+    private fun normalizeImageUrl(url: String): String {
+        val trimmed = url.trim()
+        if (!trimmed.startsWith("http://", ignoreCase = true)) return trimmed
+        return if (trimmed.contains("music.126.net", ignoreCase = true)) {
+            trimmed.replaceFirst("http://", "https://", ignoreCase = true)
+        } else {
+            trimmed
         }
     }
 

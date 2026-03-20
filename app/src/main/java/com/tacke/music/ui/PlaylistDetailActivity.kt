@@ -16,7 +16,9 @@ import com.tacke.music.R
 import com.tacke.music.data.model.Playlist
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
+import com.tacke.music.data.repository.ListCoverRepairManager
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityPlaylistDetailBinding
@@ -25,6 +27,7 @@ import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.PlaylistSongAdapter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -36,6 +39,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
     private lateinit var playlistManager: PlaylistManager
     private lateinit var playbackManager: PlaybackManager
     private lateinit var downloadManager: DownloadManager
+    private lateinit var listCoverRepairManager: ListCoverRepairManager
     private lateinit var songAdapter: PlaylistSongAdapter
 
     private var playlistId: String = ""
@@ -43,6 +47,10 @@ class PlaylistDetailActivity : AppCompatActivity() {
     private var currentPlaylist: Playlist? = null
     private var isMultiSelectMode = false
     private val selectedSongs = mutableSetOf<String>()
+
+    private fun isLocalSong(songId: String, platform: String): Boolean {
+        return platform.equals("LOCAL", ignoreCase = true) || songId.startsWith("local_")
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,11 +74,17 @@ class PlaylistDetailActivity : AppCompatActivity() {
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
         downloadManager = DownloadManager.getInstance(this)
+        listCoverRepairManager = ListCoverRepairManager.getInstance(this)
 
         setupUI()
         setupRecyclerView()
         setupClickListeners()
         observeSongs()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        listCoverRepairManager.repairPlaylistsAsync()
     }
 
     private fun setupUI() {
@@ -189,14 +203,29 @@ class PlaylistDetailActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        // 下载按钮 - 真正的下载功能
+        // 下载按钮 - 真正的下载功能（跳过本地音乐）
         binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             val selectedSongList = songAdapter.getAllSongs().filter { selectedSongs.contains(it.id) }
             if (selectedSongList.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            showBatchDownloadQualityDialog(selectedSongList)
+
+            // 过滤掉本地音乐
+            val (localSongs, onlineSongs) = selectedSongList.partition { isLocalSong(it.id, it.platform) }
+
+            if (onlineSongs.isEmpty()) {
+                // 所有选中的都是本地音乐
+                Toast.makeText(this, "本地音乐无需下载", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            if (localSongs.isNotEmpty()) {
+                // 有本地音乐被跳过
+                Toast.makeText(this, "已跳过 ${localSongs.size} 首本地音乐，仅下载在线音乐", Toast.LENGTH_SHORT).show()
+            }
+
+            showBatchDownloadQualityDialog(onlineSongs)
         }
 
         // 移除按钮 - 从歌单中移除
@@ -258,6 +287,7 @@ class PlaylistDetailActivity : AppCompatActivity() {
                             updateSelectedCount()
                         }
                     }
+
                 }
             }
         }
@@ -448,6 +478,20 @@ class PlaylistDetailActivity : AppCompatActivity() {
     private fun playSong(song: PlaylistSong) {
         lifecycleScope.launch {
             try {
+                if (isLocalSong(song.id, song.platform)) {
+                    val played = playbackManager.playLocalSongById(
+                        context = this@PlaylistDetailActivity,
+                        songId = song.id,
+                        songName = song.name,
+                        songArtists = song.artists,
+                        fallbackCoverUrl = song.coverUrl
+                    )
+                    if (!played) {
+                        Toast.makeText(this@PlaylistDetailActivity, "未找到本地文件，请先重新扫描本地音乐", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
                 val platform = try {
                     MusicRepository.Platform.valueOf(song.platform.uppercase())
                 } catch (e: Exception) {
@@ -460,17 +504,44 @@ class PlaylistDetailActivity : AppCompatActivity() {
                     downloadManager.getLocalSongPath(song.id)
                 }
 
-                // 获取歌曲详情（用于歌词和封面）
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@PlaylistDetailActivity)
+
+                // 如果本地文件存在，直接播放本地文件
+                if (localPath != null) {
+                    // 使用带缓存的Repository获取歌曲详情（用于歌词和封面）
+                    val cachedRepository = CachedMusicRepository(this@PlaylistDetailActivity)
+                    val detail = withContext(Dispatchers.IO) {
+                        cachedRepository.getSongDetail(
+                            platform = platform,
+                            songId = song.id,
+                            quality = playbackQuality,
+                            songName = song.name,
+                            artists = song.artists,
+                            coverUrlFromSearch = song.coverUrl
+                        )
+                    }
+                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, song, localPath, detail)
+                    return@launch
+                }
+
+                // 非下载管理页面且本地文件不存在，强制重新获取最新URL
+                val cachedRepository = CachedMusicRepository(this@PlaylistDetailActivity)
                 val detail = withContext(Dispatchers.IO) {
-                    MusicRepository().getSongDetail(platform, song.id, "320k")
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = song.id,
+                        quality = playbackQuality,
+                        songName = song.name,
+                        artists = song.artists,
+                        useCache = true,
+                        coverUrlFromSearch = song.coverUrl
+                    )
                 }
 
                 if (detail != null) {
-                    // 优先使用本地文件路径，如果没有则使用在线URL
-                    val playUrl = localPath ?: detail.url
-
                     // 使用统一播放管理器播放歌曲
-                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, song, playUrl, detail)
+                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, song, detail.url, detail)
                 } else {
                     Toast.makeText(this@PlaylistDetailActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
                 }
@@ -490,12 +561,27 @@ class PlaylistDetailActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 // 添加所有歌曲到播放列表（不清空原有列表）
-                songs.forEach { song ->
-                    playlistManager.addSong(song)
-                }
+                playbackManager.addPlaylistSongsWithoutPlay(songs)
 
                 // 播放第一首
                 val firstSong = songs.first()
+
+                if (isLocalSong(firstSong.id, firstSong.platform)) {
+                    val played = playbackManager.playLocalSongById(
+                        context = this@PlaylistDetailActivity,
+                        songId = firstSong.id,
+                        songName = firstSong.name,
+                        songArtists = firstSong.artists,
+                        fallbackCoverUrl = firstSong.coverUrl
+                    )
+                    if (played) {
+                        Toast.makeText(this@PlaylistDetailActivity, "开始播放全部", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@PlaylistDetailActivity, "未找到本地文件，请先重新扫描本地音乐", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
                 val platform = try {
                     MusicRepository.Platform.valueOf(firstSong.platform.uppercase())
                 } catch (e: Exception) {
@@ -507,13 +593,43 @@ class PlaylistDetailActivity : AppCompatActivity() {
                     downloadManager.getLocalSongPath(firstSong.id)
                 }
 
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@PlaylistDetailActivity)
+
+                // 如果本地文件存在，直接播放本地文件
+                if (localPath != null) {
+                    val cachedRepository = CachedMusicRepository(this@PlaylistDetailActivity)
+                    val detail = withContext(Dispatchers.IO) {
+                        cachedRepository.getSongDetail(
+                            platform = platform,
+                            songId = firstSong.id,
+                            quality = playbackQuality,
+                            songName = firstSong.name,
+                            artists = firstSong.artists,
+                            coverUrlFromSearch = firstSong.coverUrl
+                        )
+                    }
+                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, firstSong, localPath, detail)
+                    Toast.makeText(this@PlaylistDetailActivity, "开始播放全部", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                // 非下载管理页面且本地文件不存在，强制重新获取最新URL
+                val cachedRepository = CachedMusicRepository(this@PlaylistDetailActivity)
                 val detail = withContext(Dispatchers.IO) {
-                    MusicRepository().getSongDetail(platform, firstSong.id, "320k")
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = firstSong.id,
+                        quality = playbackQuality,
+                        songName = firstSong.name,
+                        artists = firstSong.artists,
+                        useCache = true,
+                        coverUrlFromSearch = firstSong.coverUrl
+                    )
                 }
 
                 if (detail != null) {
-                    val playUrl = localPath ?: detail.url
-                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, firstSong, playUrl, detail)
+                    playbackManager.playFromPlaylist(this@PlaylistDetailActivity, firstSong, detail.url, detail)
                     Toast.makeText(this@PlaylistDetailActivity, "开始播放全部", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
@@ -555,19 +671,17 @@ class PlaylistDetailActivity : AppCompatActivity() {
     }
 
     private fun addSongsToNowPlaying(songs: List<PlaylistSong>) {
+        // 立即退出多选模式，提升用户体验
+        exitMultiSelectMode()
+
         lifecycleScope.launch {
             try {
-                var addedCount = 0
-                var duplicateCount = 0
-                songs.forEach { song ->
-                    val currentList = playlistManager.currentPlaylist.value
-                    if (currentList.none { it.id == song.id }) {
-                        playlistManager.addSong(song)
-                        addedCount++
-                    } else {
-                        duplicateCount++
-                    }
-                }
+                // 使用批量添加方法，不触发自动播放，不预获取URL
+                // 新歌曲追加到列表末尾，不影响当前播放状态
+                val result = playbackManager.addPlaylistSongsWithoutPlay(songs)
+                val addedCount = result.first
+                val duplicateCount = result.second
+
                 val message = when {
                     duplicateCount > 0 -> "已添加 $addedCount 首，$duplicateCount 首已存在"
                     else -> "已添加 $addedCount 首歌曲到正在播放列表"
@@ -675,49 +789,58 @@ class PlaylistDetailActivity : AppCompatActivity() {
     }
 
     private fun batchDownloadSongs(songs: List<PlaylistSong>, quality: String) {
-        lifecycleScope.launch {
-            var successCount = 0
-            var failCount = 0
+        val context = applicationContext
+        val cachedRepository = CachedMusicRepository(context)
+        val dm = DownloadManager.getInstance(context)
 
+        // 立即显示添加下载任务提示
+        Toast.makeText(
+            this@PlaylistDetailActivity,
+            "已添加 ${songs.size} 首歌曲到下载队列",
+            Toast.LENGTH_SHORT
+        ).show()
+
+        // 使用 GlobalScope 确保 Activity 销毁后任务继续执行
+        GlobalScope.launch(Dispatchers.IO) {
             songs.forEach { song ->
-                try {
-                    val platform = try {
-                        MusicRepository.Platform.valueOf(song.platform.uppercase())
-                    } catch (e: Exception) {
-                        MusicRepository.Platform.KUWO
-                    }
-                    val detail = MusicRepository().getSongDetail(platform, song.id, quality)
-                    if (detail != null) {
-                        val task = downloadManager.createDownloadTask(
-                            Song(
-                                index = 0,
-                                id = song.id,
-                                name = song.name,
-                                artists = song.artists,
-                                coverUrl = song.coverUrl
-                            ),
-                            detail,
-                            quality,
-                            song.platform
+                launch {
+                    try {
+                        val platform = try {
+                            MusicRepository.Platform.valueOf(song.platform.uppercase())
+                        } catch (e: Exception) {
+                            MusicRepository.Platform.KUWO
+                        }
+                        val detail = cachedRepository.getSongUrlWithCache(
+                            platform = platform,
+                            songId = song.id,
+                            quality = quality,
+                            songName = song.name,
+                            artists = song.artists,
+                            useCache = true
                         )
-                        downloadManager.startDownload(task)
-                        successCount++
-                    } else {
-                        failCount++
+                        if (detail != null) {
+                            val task = dm.createDownloadTask(
+                                Song(
+                                    index = 0,
+                                    id = song.id,
+                                    name = song.name,
+                                    artists = song.artists,
+                                    coverUrl = detail.cover ?: song.coverUrl
+                                ),
+                                detail,
+                                quality,
+                                song.platform
+                            )
+                            dm.startDownload(task)
+                        }
+                    } catch (e: Exception) {
+                        // 忽略异常，继续处理下一首
                     }
-                } catch (e: Exception) {
-                    failCount++
                 }
             }
-
-            Toast.makeText(
-                this@PlaylistDetailActivity,
-                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
-                Toast.LENGTH_LONG
-            ).show()
-
-            exitMultiSelectMode()
         }
+
+        exitMultiSelectMode()
     }
 
     override fun onBackPressed() {
@@ -731,15 +854,16 @@ class PlaylistDetailActivity : AppCompatActivity() {
     /**
      * Android 16: 设置 Edge-to-Edge 模式
      * 处理系统栏（状态栏和导航栏）的 insets
-     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
+     * 为状态栏占位视图设置高度，防止内容被状态栏遮挡
      */
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 为顶部 Toolbar 添加状态栏高度 padding
-            binding.toolbar.updatePadding(
-                top = insets.top
-            )
+
+            // 为状态栏占位视图设置高度
+            binding.statusBarPlaceholder.layoutParams.height = insets.top
+            binding.statusBarPlaceholder.requestLayout()
+
             // 为底部设置 padding
             view.updatePadding(
                 bottom = insets.bottom

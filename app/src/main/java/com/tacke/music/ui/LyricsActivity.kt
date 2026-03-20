@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.GestureDetector
 import android.view.MotionEvent
@@ -12,6 +13,7 @@ import android.view.View
 import android.widget.SeekBar
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.tacke.music.util.ImmersiveStatusBarHelper
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -19,8 +21,14 @@ import androidx.recyclerview.widget.LinearSmoothScroller
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.tacke.music.R
+import com.tacke.music.data.repository.CachedMusicRepository
+import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.databinding.ActivityLyricsBinding
 import com.tacke.music.ui.adapter.LyricsAdapter
+import com.tacke.music.utils.LyricStyleSettings
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -45,7 +53,28 @@ class LyricsActivity : AppCompatActivity() {
     private var isUserScrolling = false
     private var userScrollTimeout: android.os.Handler? = null
     private val SCROLL_TIMEOUT = 5000L // 5秒后恢复自动居中
-    
+
+    // 歌曲信息（用于重新获取歌词）
+    private var songName: String = ""
+    private var songArtists: String = ""
+    private var songId: String = ""
+    private var platform: MusicRepository.Platform = MusicRepository.Platform.KUWO
+    private var coverUrl: String? = null
+    private var isLoadingLyrics = false
+    private var pendingLyricJumpTime: Long? = null
+    private val lyricStylePrefs by lazy { getSharedPreferences(LyricStyleSettings.PREFS_NAME, Context.MODE_PRIVATE) }
+    private val lyricStyleListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == null) return@OnSharedPreferenceChangeListener
+        if (
+            key == LyricStyleSettings.KEY_FULLSCREEN_LYRIC_COLOR ||
+            key == LyricStyleSettings.KEY_FULLSCREEN_LYRIC_SIZE
+        ) {
+            runOnUiThread {
+                applyFullscreenLyricStyle()
+            }
+        }
+    }
+
     companion object {
         const val REQUEST_CODE = 1001
         const val ACTION_REQUEST_PLAYBACK_STATUS = "com.tacke.music.REQUEST_PLAYBACK_STATUS"
@@ -58,7 +87,9 @@ class LyricsActivity : AppCompatActivity() {
             lyrics: String?,
             currentPosition: Long,
             duration: Long,
-            isPlaying: Boolean
+            isPlaying: Boolean,
+            songId: String = "",
+            platform: MusicRepository.Platform = MusicRepository.Platform.KUWO
         ) {
             val intent = Intent(activity, LyricsActivity::class.java).apply {
                 putExtra("song_name", songName)
@@ -68,6 +99,8 @@ class LyricsActivity : AppCompatActivity() {
                 putExtra("current_position", currentPosition)
                 putExtra("duration", duration)
                 putExtra("is_playing", isPlaying)
+                putExtra("song_id", songId)
+                putExtra("platform", platform.name)
             }
             activity.startActivityForResult(intent, REQUEST_CODE)
         }
@@ -165,6 +198,8 @@ class LyricsActivity : AppCompatActivity() {
             addAction(PlayerActivity.ACTION_PLAYBACK_UPDATE)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(playbackReceiver, filter)
+        lyricStylePrefs.registerOnSharedPreferenceChangeListener(lyricStyleListener)
+        applyFullscreenLyricStyle()
 
         // 请求当前播放状态
         LocalBroadcastManager.getInstance(this).sendBroadcast(Intent(ACTION_REQUEST_PLAYBACK_STATUS))
@@ -173,14 +208,23 @@ class LyricsActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         LocalBroadcastManager.getInstance(this).unregisterReceiver(playbackReceiver)
+        lyricStylePrefs.unregisterOnSharedPreferenceChangeListener(lyricStyleListener)
     }
 
     private fun setupRecyclerView() {
-        lyricsAdapter = LyricsAdapter { position ->
-            // 点击歌词，跳转到对应时间
-            val time = if (position < parsedLyrics.size) parsedLyrics[position].first else 0
-            seekTo(time)
-        }
+        lyricsAdapter = LyricsAdapter(
+            onLyricClick = { _ ->
+                // 按需求：单击歌词不跳转进度，只允许“长按+右侧按钮”触发跳转
+            },
+            onLyricLongClick = { position ->
+                onLyricLineLongPressed(position)
+            },
+            onLyricJumpClick = { position ->
+                if (position in parsedLyrics.indices) {
+                    seekTo(parsedLyrics[position].first)
+                }
+            }
+        )
 
         layoutManager = LinearLayoutManager(this)
         binding.rvLyrics.layoutManager = layoutManager
@@ -208,6 +252,7 @@ class LyricsActivity : AppCompatActivity() {
                         userScrollTimeout?.postDelayed({
                             isUserScrolling = false
                             hideLocateButton()
+                            hideLyricJumpButton()
                             // 恢复居中显示当前歌词
                             if (currentLyricIndex >= 0) {
                                 scrollToCenter(currentLyricIndex)
@@ -239,6 +284,14 @@ class LyricsActivity : AppCompatActivity() {
             if (currentLyricIndex >= 0) {
                 scrollToCenter(currentLyricIndex)
             }
+        }
+
+        binding.btnJumpToLyric.setOnClickListener {
+            val target = pendingLyricJumpTime
+            if (target != null) {
+                seekTo(target)
+            }
+            hideLyricJumpButton()
         }
     }
 
@@ -277,11 +330,19 @@ class LyricsActivity : AppCompatActivity() {
     }
 
     private fun loadSongInfo() {
+        hideLyricJumpButton()
         // 从 Intent 获取歌曲信息
-        val songName = intent.getStringExtra("song_name") ?: "未知"
-        val songArtists = intent.getStringExtra("song_artists") ?: "未知"
-        val coverUrl = intent.getStringExtra("cover_url")
+        songName = intent.getStringExtra("song_name") ?: "未知"
+        songArtists = intent.getStringExtra("song_artists") ?: "未知"
+        coverUrl = intent.getStringExtra("cover_url")
         val lyricsText = intent.getStringExtra("lyrics")
+        songId = intent.getStringExtra("song_id") ?: ""
+        val platformStr = intent.getStringExtra("platform") ?: "KUWO"
+        platform = try {
+            MusicRepository.Platform.valueOf(platformStr)
+        } catch (e: Exception) {
+            MusicRepository.Platform.KUWO
+        }
         currentPosition = intent.getLongExtra("current_position", 0)
         duration = intent.getLongExtra("duration", 0)
         isPlaying = intent.getBooleanExtra("is_playing", false)
@@ -293,8 +354,8 @@ class LyricsActivity : AppCompatActivity() {
         loadBackground(coverUrl)
 
         // 解析歌词
-        lyricsText?.let { text ->
-            parsedLyrics = parseLyrics(text)
+        if (!lyricsText.isNullOrEmpty()) {
+            parsedLyrics = parseLyrics(lyricsText)
             if (parsedLyrics.isNotEmpty()) {
                 lyricsAdapter.submitList(parsedLyrics.map { it.second })
                 // 高亮当前播放的歌词
@@ -302,16 +363,68 @@ class LyricsActivity : AppCompatActivity() {
             } else {
                 lyricsAdapter.submitList(listOf("纯音乐，请欣赏"))
             }
-        } ?: run {
+        } else {
+            // 没有歌词，尝试从网络获取
             parsedLyrics = emptyList()
-            lyricsAdapter.submitList(listOf("暂无歌词"))
+            lyricsAdapter.submitList(listOf("正在加载歌词..."))
+            loadLyricsFromNetwork()
         }
-        
+
         // 初始化进度条
         binding.seekBar.max = duration.toInt()
         binding.seekBar.progress = currentPosition.toInt()
         binding.tvCurrentTime.text = formatTime(currentPosition)
         binding.tvTotalTime.text = formatTime(duration)
+    }
+
+    /**
+     * 从网络加载歌词
+     */
+    private fun loadLyricsFromNetwork() {
+        if (isLoadingLyrics || songId.isEmpty()) {
+            if (songId.isEmpty()) {
+                lyricsAdapter.submitList(listOf("暂无歌词"))
+            }
+            return
+        }
+
+        isLoadingLyrics = true
+        lifecycleScope.launch {
+            try {
+                val cachedRepository = CachedMusicRepository(this@LyricsActivity)
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@LyricsActivity)
+                val detail = withContext(Dispatchers.IO) {
+                    cachedRepository.getSongDetail(
+                        platform = platform,
+                        songId = songId,
+                        quality = playbackQuality,
+                        coverUrlFromSearch = coverUrl,
+                        songName = songName,
+                        artists = songArtists
+                    )
+                }
+
+                if (detail?.lyrics != null && detail.lyrics.isNotEmpty()) {
+                    // 成功获取到歌词
+                    parsedLyrics = parseLyrics(detail.lyrics)
+                    if (parsedLyrics.isNotEmpty()) {
+                        lyricsAdapter.submitList(parsedLyrics.map { it.second })
+                        updateLyricsHighlight(currentPosition)
+                        Toast.makeText(this@LyricsActivity, "歌词加载成功", Toast.LENGTH_SHORT).show()
+                    } else {
+                        lyricsAdapter.submitList(listOf("纯音乐，请欣赏"))
+                    }
+                } else {
+                    // 获取歌词失败
+                    lyricsAdapter.submitList(listOf("暂无歌词"))
+                }
+            } catch (e: Exception) {
+                lyricsAdapter.submitList(listOf("暂无歌词"))
+            } finally {
+                isLoadingLyrics = false
+            }
+        }
     }
 
     private fun updateLyricsHighlight(position: Long) {
@@ -335,6 +448,10 @@ class LyricsActivity : AppCompatActivity() {
                 scrollToCenter(newIndex)
             }
         }
+    }
+
+    private fun applyFullscreenLyricStyle() {
+        lyricsAdapter.notifyDataSetChanged()
     }
 
     private fun scrollToCenter(position: Int) {
@@ -399,6 +516,21 @@ class LyricsActivity : AppCompatActivity() {
         updateLyricsHighlight(time)
         binding.seekBar.progress = time.toInt()
         binding.tvCurrentTime.text = formatTime(time)
+        hideLyricJumpButton()
+    }
+
+    private fun onLyricLineLongPressed(position: Int) {
+        if (position !in parsedLyrics.indices) return
+        val target = parsedLyrics[position].first
+        pendingLyricJumpTime = target
+        lyricsAdapter.setJumpTarget(position, formatTime(target))
+        binding.btnJumpToLyric.visibility = View.GONE
+    }
+
+    private fun hideLyricJumpButton() {
+        pendingLyricJumpTime = null
+        binding.btnJumpToLyric.visibility = View.GONE
+        lyricsAdapter.clearJumpTarget()
     }
 
     private fun loadBackground(coverUrl: String?) {

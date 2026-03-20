@@ -1,6 +1,7 @@
 package com.tacke.music.ui
 
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -13,9 +14,12 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
+import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.RecentPlay
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
+import com.tacke.music.data.repository.ListCoverRepairManager
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.data.repository.RecentPlayRepository
@@ -25,6 +29,7 @@ import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.RecentPlayAdapter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -37,6 +42,7 @@ class RecentPlayActivity : AppCompatActivity() {
     private lateinit var playbackManager: PlaybackManager
     private lateinit var playlistManager: PlaylistManager
     private lateinit var downloadManager: DownloadManager
+    private lateinit var listCoverRepairManager: ListCoverRepairManager
     private lateinit var adapter: RecentPlayAdapter
 
     private var isMultiSelectMode = false
@@ -56,10 +62,16 @@ class RecentPlayActivity : AppCompatActivity() {
         playbackManager = PlaybackManager.getInstance(this)
         playlistManager = PlaylistManager.getInstance(this)
         downloadManager = DownloadManager.getInstance(this)
+        listCoverRepairManager = ListCoverRepairManager.getInstance(this)
 
         setupRecyclerView()
         setupClickListeners()
         observeRecentPlays()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        listCoverRepairManager.repairRecentPlayAsync()
     }
 
     private fun setupRecyclerView() {
@@ -156,14 +168,29 @@ class RecentPlayActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        // 下载按钮 - 真正的下载功能
+        // 下载按钮 - 真正的下载功能（跳过本地音乐）
         binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             val selectedSongs = adapter.getAllRecentPlays().filter { selectedItems.contains(it.id) }
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            showBatchDownloadQualityDialog(selectedSongs)
+
+            // 过滤掉本地音乐
+            val (localSongs, onlineSongs) = selectedSongs.partition { it.platform.uppercase() == "LOCAL" }
+
+            if (onlineSongs.isEmpty()) {
+                // 所有选中的都是本地音乐
+                Toast.makeText(this, "本地音乐无需下载", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            if (localSongs.isNotEmpty()) {
+                // 有本地音乐被跳过
+                Toast.makeText(this, "已跳过 ${localSongs.size} 首本地音乐，仅下载在线音乐", Toast.LENGTH_SHORT).show()
+            }
+
+            showBatchDownloadQualityDialog(onlineSongs)
         }
 
         // 移除按钮 - 删除播放记录
@@ -360,25 +387,59 @@ class RecentPlayActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 // 添加所有歌曲到播放列表（不清空原有列表）
-                recentPlays.forEach { recentPlay ->
-                    playlistManager.addSong(recentPlay.toPlaylistSong())
-                }
+                val playlistSongs = recentPlays.map { it.toPlaylistSong() }
+                playbackManager.addPlaylistSongsWithoutPlay(playlistSongs)
 
                 // 播放第一首 - 使用 PlaylistSong 方式播放，避免 playFromRecentPlay 清空列表
                 val firstPlay = recentPlays.first()
+
+                if (firstPlay.platform.equals("LOCAL", ignoreCase = true) || firstPlay.id.startsWith("local_")) {
+                    val played = playbackManager.playLocalSongById(
+                        context = this@RecentPlayActivity,
+                        songId = firstPlay.id,
+                        songName = firstPlay.name,
+                        songArtists = firstPlay.artists,
+                        fallbackCoverUrl = firstPlay.coverUrl
+                    )
+                    if (played) {
+                        Toast.makeText(this@RecentPlayActivity, "开始播放全部", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@RecentPlayActivity, "未找到本地文件，请先重新扫描本地音乐", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
                 val platform = try {
                     MusicRepository.Platform.valueOf(firstPlay.platform.uppercase())
                 } catch (e: Exception) {
                     MusicRepository.Platform.KUWO
                 }
 
-                // 获取歌曲详情
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@RecentPlayActivity)
+
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                val cachedRepository = CachedMusicRepository(this@RecentPlayActivity)
                 val detail = withContext(Dispatchers.IO) {
-                    MusicRepository().getSongDetail(platform, firstPlay.id, "320k")
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = firstPlay.id,
+                        quality = playbackQuality,
+                        songName = firstPlay.name,
+                        artists = firstPlay.artists,
+                        useCache = true,
+                        coverUrlFromSearch = firstPlay.coverUrl
+                    )
                 }
 
                 if (detail != null) {
-                    val playlistSong = firstPlay.toPlaylistSong()
+                    // 使用获取到的封面，如果没有则尝试使用数据库中的封面
+                    val finalCoverUrl = detail.cover ?: firstPlay.coverUrl
+
+                    val playlistSong = firstPlay.toPlaylistSong().copy(
+                        coverUrl = finalCoverUrl ?: ""
+                    )
+
                     playbackManager.playFromPlaylist(
                         this@RecentPlayActivity,
                         playlistSong,
@@ -428,19 +489,20 @@ class RecentPlayActivity : AppCompatActivity() {
     }
 
     private fun addSongsToNowPlaying(recentPlays: List<RecentPlay>) {
+        // 立即退出多选模式，提升用户体验
+        exitMultiSelectMode()
+
         lifecycleScope.launch {
             try {
-                var addedCount = 0
-                var duplicateCount = 0
-                recentPlays.forEach { recentPlay ->
-                    val currentList = playlistManager.currentPlaylist.value
-                    if (currentList.none { it.id == recentPlay.id }) {
-                        playlistManager.addSong(recentPlay.toPlaylistSong())
-                        addedCount++
-                    } else {
-                        duplicateCount++
-                    }
-                }
+                // 转换为播放列表歌曲
+                val playlistSongs = recentPlays.map { it.toPlaylistSong() }
+
+                // 使用批量添加方法，不触发自动播放，不预获取URL
+                // 新歌曲追加到列表末尾，不影响当前播放状态
+                val result = playbackManager.addPlaylistSongsWithoutPlay(playlistSongs)
+                val addedCount = result.first
+                val duplicateCount = result.second
+
                 val message = when {
                     duplicateCount > 0 -> "已添加 $addedCount 首，$duplicateCount 首已存在"
                     else -> "已添加 $addedCount 首歌曲到正在播放列表"
@@ -548,49 +610,58 @@ class RecentPlayActivity : AppCompatActivity() {
     }
 
     private fun batchDownloadSongs(recentPlays: List<RecentPlay>, quality: String) {
-        lifecycleScope.launch {
-            var successCount = 0
-            var failCount = 0
+        val context = applicationContext
+        val cachedRepository = CachedMusicRepository(context)
+        val dm = DownloadManager.getInstance(context)
 
+        // 立即显示添加下载任务提示
+        Toast.makeText(
+            this@RecentPlayActivity,
+            "已添加 ${recentPlays.size} 首歌曲到下载队列",
+            Toast.LENGTH_SHORT
+        ).show()
+
+        // 使用 GlobalScope 确保 Activity 销毁后任务继续执行
+        GlobalScope.launch(Dispatchers.IO) {
             recentPlays.forEach { recentPlay ->
-                try {
-                    val platform = try {
-                        MusicRepository.Platform.valueOf(recentPlay.platform.uppercase())
-                    } catch (e: Exception) {
-                        MusicRepository.Platform.KUWO
-                    }
-                    val detail = MusicRepository().getSongDetail(platform, recentPlay.id, quality)
-                    if (detail != null) {
-                        val task = downloadManager.createDownloadTask(
-                            Song(
-                                index = 0,
-                                id = recentPlay.id,
-                                name = recentPlay.name,
-                                artists = recentPlay.artists,
-                                coverUrl = recentPlay.coverUrl
-                            ),
-                            detail,
-                            quality,
-                            recentPlay.platform
+                launch {
+                    try {
+                        val platform = try {
+                            MusicRepository.Platform.valueOf(recentPlay.platform.uppercase())
+                        } catch (e: Exception) {
+                            MusicRepository.Platform.KUWO
+                        }
+                        val detail = cachedRepository.getSongUrlWithCache(
+                            platform = platform,
+                            songId = recentPlay.id,
+                            quality = quality,
+                            songName = recentPlay.name,
+                            artists = recentPlay.artists,
+                            useCache = true
                         )
-                        downloadManager.startDownload(task)
-                        successCount++
-                    } else {
-                        failCount++
+                        if (detail != null) {
+                            val task = dm.createDownloadTask(
+                                Song(
+                                    index = 0,
+                                    id = recentPlay.id,
+                                    name = recentPlay.name,
+                                    artists = recentPlay.artists,
+                                    coverUrl = detail.cover ?: recentPlay.coverUrl
+                                ),
+                                detail,
+                                quality,
+                                recentPlay.platform
+                            )
+                            dm.startDownload(task)
+                        }
+                    } catch (e: Exception) {
+                        // 忽略异常，继续处理下一首
                     }
-                } catch (e: Exception) {
-                    failCount++
                 }
             }
-
-            Toast.makeText(
-                this@RecentPlayActivity,
-                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
-                Toast.LENGTH_LONG
-            ).show()
-
-            exitMultiSelectMode()
         }
+
+        exitMultiSelectMode()
     }
 
     override fun onBackPressed() {
@@ -604,15 +675,16 @@ class RecentPlayActivity : AppCompatActivity() {
     /**
      * Android 16: 设置 Edge-to-Edge 模式
      * 处理系统栏（状态栏和导航栏）的 insets
-     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
+     * 为状态栏占位视图设置高度，防止内容被状态栏遮挡
      */
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 为顶部 Toolbar 添加状态栏高度 padding
-            binding.toolbar.updatePadding(
-                top = insets.top
-            )
+
+            // 为状态栏占位视图设置高度
+            binding.statusBarPlaceholder.layoutParams.height = insets.top
+            binding.statusBarPlaceholder.requestLayout()
+
             // 为底部设置 padding
             view.updatePadding(
                 bottom = insets.bottom

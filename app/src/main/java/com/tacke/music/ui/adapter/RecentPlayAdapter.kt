@@ -131,47 +131,104 @@ class RecentPlayAdapter(
             val iconRes = when (platform.uppercase()) {
                 "KUWO" -> R.drawable.ic_kuwo_logo
                 "NETEASE" -> R.drawable.ic_netease_logo
+                "LOCAL" -> R.drawable.ic_local_music
                 else -> R.drawable.ic_music_note
             }
             ivSource.setImageResource(iconRes)
         }
 
         private fun loadCover(recentPlay: RecentPlay) {
-            val coverUrl = recentPlay.coverUrl
-
-            when {
-                coverUrl.isNullOrEmpty() -> {
-                    // 没有封面URL，尝试从网络获取
-                    ivCover.setImageResource(R.drawable.ic_music_note)
-                    downloadAndCacheCover(recentPlay)
+            lifecycleScope?.launch {
+                // 1. 首先尝试从本地缓存获取封面图片（最高优先级）
+                val localCoverPath = withContext(Dispatchers.IO) {
+                    CoverImageManager.getCoverPath(itemView.context, recentPlay.id, recentPlay.platform)
                 }
-                coverUrl.startsWith("http") -> {
-                    // 网络图片，使用 Glide 加载
+
+                if (localCoverPath != null) {
+                    // 本地有缓存，直接使用本地图片
                     Glide.with(itemView.context)
-                        .load(coverUrl)
+                        .load(File(localCoverPath))
                         .placeholder(R.drawable.ic_music_note)
                         .error(R.drawable.ic_music_note)
                         .into(ivCover)
+                    return@launch
                 }
-                else -> {
-                    // 本地图片路径
-                    try {
-                        val file = File(coverUrl)
-                        if (file.exists()) {
-                            Glide.with(itemView.context)
-                                .load(file)
-                                .placeholder(R.drawable.ic_music_note)
-                                .error(R.drawable.ic_music_note)
-                                .into(ivCover)
-                        } else {
-                            // 本地文件不存在，尝试重新下载
-                            ivCover.setImageResource(R.drawable.ic_music_note)
-                            downloadAndCacheCover(recentPlay)
-                        }
-                    } catch (e: Exception) {
+
+                // 2. 本地没有缓存，使用传入的coverUrl
+                val coverUrl = recentPlay.coverUrl
+                when {
+                    coverUrl.isNullOrEmpty() -> {
+                        // 没有封面URL，尝试从网络获取
                         ivCover.setImageResource(R.drawable.ic_music_note)
                         downloadAndCacheCover(recentPlay)
                     }
+                    coverUrl.startsWith("http") -> {
+                        // 网络图片，使用 Glide 加载
+                        Glide.with(itemView.context)
+                            .load(coverUrl)
+                            .placeholder(R.drawable.ic_music_note)
+                            .error(R.drawable.ic_music_note)
+                            .into(ivCover)
+                    }
+                    coverUrl.startsWith("/") -> {
+                        // 本地图片路径（以/开头的绝对路径）
+                        try {
+                            val file = File(coverUrl)
+                            if (file.exists()) {
+                                Glide.with(itemView.context)
+                                    .load(file)
+                                    .placeholder(R.drawable.ic_music_note)
+                                    .error(R.drawable.ic_music_note)
+                                    .into(ivCover)
+                            } else {
+                                // 本地文件不存在，尝试重新下载
+                                ivCover.setImageResource(R.drawable.ic_music_note)
+                                downloadAndCacheCover(recentPlay)
+                            }
+                        } catch (e: Exception) {
+                            ivCover.setImageResource(R.drawable.ic_music_note)
+                            downloadAndCacheCover(recentPlay)
+                        }
+                    }
+                    else -> {
+                        // 相对路径（如酷我音乐的封面URL），需要解析为完整URL
+                        ivCover.setImageResource(R.drawable.ic_music_note)
+                        resolveAndLoadCover(recentPlay, coverUrl)
+                    }
+                }
+            }
+        }
+
+        private fun resolveAndLoadCover(recentPlay: RecentPlay, relativeUrl: String) {
+            lifecycleScope?.launch {
+                try {
+                    val context = itemView.context
+                    val resolvedUrl = withContext(Dispatchers.IO) {
+                        com.tacke.music.utils.CoverUrlResolver.resolveCoverUrl(
+                            context,
+                            relativeUrl,
+                            recentPlay.id,
+                            recentPlay.platform
+                        )
+                    }
+
+                    if (resolvedUrl != null) {
+                        // 使用解析后的URL加载封面
+                        Glide.with(context)
+                            .load(resolvedUrl)
+                            .placeholder(R.drawable.ic_music_note)
+                            .error(R.drawable.ic_music_note)
+                            .into(ivCover)
+
+                        // 通知外部封面已加载，更新数据库
+                        onCoverLoaded?.invoke(recentPlay.id, resolvedUrl)
+                    } else {
+                        // 解析失败，尝试下载缓存
+                        downloadAndCacheCover(recentPlay)
+                    }
+                } catch (e: Exception) {
+                    // 解析失败，尝试下载缓存
+                    downloadAndCacheCover(recentPlay)
                 }
             }
         }

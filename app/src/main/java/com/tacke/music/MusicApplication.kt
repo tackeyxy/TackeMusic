@@ -2,13 +2,22 @@ package com.tacke.music
 
 import android.app.Application
 import android.content.Context
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.util.AppLogger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class MusicApplication : Application() {
 
     companion object {
         lateinit var context: Context
             private set
+    }
+
+    val applicationScope: CoroutineScope by lazy {
+        CoroutineScope(SupervisorJob() + Dispatchers.IO)
     }
 
     override fun onCreate() {
@@ -20,6 +29,24 @@ class MusicApplication : Application() {
 
         // 记录应用启动日志
         AppLogger.i("MusicApplication", "应用启动")
+
+        // 清理过期缓存
+        cleanExpiredCache()
+    }
+
+    /**
+     * 清理过期的歌曲详情缓存
+     */
+    private fun cleanExpiredCache() {
+        applicationScope.launch {
+            try {
+                val cachedMusicRepository = CachedMusicRepository(context)
+                cachedMusicRepository.cleanExpiredCache()
+                AppLogger.d("MusicApplication", "过期缓存清理完成")
+            } catch (e: Exception) {
+                AppLogger.e("MusicApplication", "清理过期缓存失败", e)
+            }
+        }
     }
 
     private fun initLogger() {

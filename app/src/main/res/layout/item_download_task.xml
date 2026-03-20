@@ -92,6 +92,38 @@
                     android:ellipsize="end"
                     tools:text="艺术家" />
 
+                <!-- 来源和音质标签 -->
+                <LinearLayout
+                    android:id="@+id/layoutSourceQuality"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <!-- 音源图标 -->
+                    <ImageView
+                        android:id="@+id/ivSource"
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:scaleType="fitCenter"
+                        tools:src="@drawable/ic_kuwo_logo" />
+
+                    <!-- 音质标签 -->
+                    <TextView
+                        android:id="@+id/tvQuality"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:textSize="10sp"
+                        android:textColor="@color/primary"
+                        android:background="@drawable/bg_quality_tag_light"
+                        android:paddingHorizontal="4dp"
+                        android:paddingVertical="1dp"
+                        tools:text="320K" />
+
+                </LinearLayout>
+
                 <!-- 进度信息（仅正在下载显示） -->
                 <LinearLayout
                     android:id="@+id/layoutProgress"

@@ -21,6 +21,42 @@ class FavoriteRepository(private val context: Context) {
         private const val TAG = "FavoriteRepository"
     }
 
+    private fun isLocalSong(songId: String, platform: String): Boolean {
+        return platform.equals("LOCAL", ignoreCase = true) || songId.startsWith("local_")
+    }
+
+    private fun cachePlatform(platform: String): String = platform.lowercase()
+
+    private suspend fun downloadCoverForSong(song: Song, platform: String): String? {
+        val normalizedPlatform = cachePlatform(platform)
+        val coverUrl = song.coverUrl?.trim()
+        val isOnlineSong = normalizedPlatform == "kuwo" || normalizedPlatform == "netease"
+
+        // 在线歌曲默认使用搜索列表封面：有 coverUrl 时仅缓存该 URL，不再改拉其他封面来源
+        if (isOnlineSong && !coverUrl.isNullOrEmpty() && coverUrl.startsWith("http", ignoreCase = true)) {
+            val byUrlPath = CoverImageManager.downloadAndCacheCoverByUrl(
+                context = context,
+                songId = song.id,
+                platform = normalizedPlatform,
+                coverUrl = coverUrl
+            )
+            if (!byUrlPath.isNullOrEmpty()) {
+                return byUrlPath
+            }
+            Log.w(TAG, "搜索封面缓存失败，保持原始coverUrl不覆盖: ${song.name}")
+            return null
+        }
+
+        // 仅在缺失搜索封面时兜底：按平台与歌曲信息获取
+        return CoverImageManager.downloadAndCacheCover(
+            context = context,
+            songId = song.id,
+            platform = normalizedPlatform,
+            songName = song.name,
+            artist = song.artists
+        )
+    }
+
     fun getAllFavoriteSongs(): Flow<List<FavoriteSongEntity>> {
         return favoriteSongDao.getAllFavoriteSongs()
     }
@@ -45,14 +81,14 @@ class FavoriteRepository(private val context: Context) {
 
         Log.d(TAG, "添加歌曲到我喜欢: ${song.name}")
 
+        if (isLocalSong(song.id, platform)) {
+            return
+        }
+
         // 后台异步下载封面
         GlobalScope.launch(Dispatchers.IO) {
             try {
-                val localCoverPath = CoverImageManager.downloadAndCacheCover(
-                    context,
-                    song.id,
-                    platform
-                )
+                val localCoverPath = downloadCoverForSong(song, platform)
                 if (localCoverPath != null) {
                     favoriteSongDao.updateSongCoverUrl(song.id, localCoverPath)
                     Log.d(TAG, "封面异步下载完成: ${song.name}, 路径: $localCoverPath")
@@ -77,16 +113,16 @@ class FavoriteRepository(private val context: Context) {
 
         Log.d(TAG, "批量添加 ${songs.size} 首歌曲到我喜欢")
 
+        if (songs.all { isLocalSong(it.id, platform) }) {
+            return
+        }
+
         // 后台异步批量下载封面
         GlobalScope.launch(Dispatchers.IO) {
             var successCount = 0
             songs.forEach { song ->
                 try {
-                    val localCoverPath = CoverImageManager.downloadAndCacheCover(
-                        context,
-                        song.id,
-                        platform
-                    )
+                    val localCoverPath = downloadCoverForSong(song, platform)
                     if (localCoverPath != null) {
                         favoriteSongDao.updateSongCoverUrl(song.id, localCoverPath)
                         successCount++
@@ -139,6 +175,9 @@ class FavoriteRepository(private val context: Context) {
         var updatedCount = 0
 
         songs.forEach { song ->
+            if (isLocalSong(song.id, song.platform)) {
+                return@forEach
+            }
             val existingPath = CoverImageManager.getCoverPath(context, song.id, song.platform)
 
             if (existingPath == null) {
@@ -156,5 +195,44 @@ class FavoriteRepository(private val context: Context) {
         }
 
         Log.d(TAG, "刷新喜欢歌曲封面完成，更新了 $updatedCount 首歌曲")
+    }
+
+    /**
+     * 回填本地歌曲（LOCAL）封面到“我喜欢的”历史数据
+     * @param localCoverMap key=songId(local_xxx), value=coverUrl
+     * @return 更新条数
+     */
+    suspend fun backfillLocalSongCovers(localCoverMap: Map<String, String>): Int {
+        if (localCoverMap.isEmpty()) return 0
+
+        val favorites = favoriteSongDao.getAllFavoriteSongsSync()
+        var updatedCount = 0
+
+        favorites.forEach { song ->
+            if (!isLocalSong(song.id, song.platform)) return@forEach
+
+            val cover = localCoverMap[song.id]
+                ?: localCoverMap[buildNameArtistKey(song.name, song.artists)]
+            if (!cover.isNullOrBlank() && cover != song.coverUrl) {
+                favoriteSongDao.updateSongCoverUrl(song.id, cover)
+                updatedCount++
+            }
+        }
+
+        if (updatedCount > 0) {
+            Log.d(TAG, "本地歌曲封面回填完成(我喜欢): $updatedCount")
+        }
+        return updatedCount
+    }
+
+    private fun buildNameArtistKey(name: String, artists: String): String {
+        return "name_artist:${normalizeForMatch(name)}|${normalizeForMatch(artists)}"
+    }
+
+    private fun normalizeForMatch(value: String?): String {
+        return value.orEmpty()
+            .replace(Regex("[\\(（\\[【].*?[\\)）\\]】]"), "")
+            .lowercase()
+            .replace(Regex("[\\s\\p{P}\\p{S}]"), "")
     }
 }

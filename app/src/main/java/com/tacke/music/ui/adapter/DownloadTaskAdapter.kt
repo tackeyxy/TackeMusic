@@ -1,5 +1,6 @@
 package com.tacke.music.ui.adapter
 
+import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -10,11 +11,18 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.cardview.widget.CardView
+import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.tacke.music.R
 import com.tacke.music.data.model.DownloadStatus
 import com.tacke.music.data.model.DownloadTask
+import com.tacke.music.utils.CoverImageManager
+import com.tacke.music.utils.CoverUrlResolver
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -23,13 +31,19 @@ class DownloadTaskAdapter(
     private val isHistory: Boolean,
     private val onControlClick: (DownloadTask) -> Unit,
     private val onItemClick: (DownloadTask) -> Unit,
-    private val onLongClick: (DownloadTask) -> Boolean
+    private val onLongClick: (DownloadTask) -> Boolean,
+    private val lifecycleScope: LifecycleCoroutineScope? = null
 ) : RecyclerView.Adapter<DownloadTaskAdapter.TaskViewHolder>() {
 
     private var tasks: List<DownloadTask> = emptyList()
     private var speeds: Map<String, Long> = emptyMap()
     private val selectedTasks = mutableSetOf<String>()
     private var isMultiSelectMode = false
+    private val resolvedCoverUrls = mutableMapOf<String, String>()
+
+    companion object {
+        private const val PAYLOAD_SPEED_UPDATE = "speed_update"
+    }
 
     fun submitList(newTasks: List<DownloadTask>) {
         tasks = newTasks
@@ -39,7 +53,8 @@ class DownloadTaskAdapter(
     fun updateSpeeds(newSpeeds: Map<String, Long>) {
         if (!isHistory) {
             speeds = newSpeeds
-            notifyDataSetChanged()
+            // 只更新速度显示，不刷新整个列表，避免图片闪烁
+            notifyItemRangeChanged(0, tasks.size, PAYLOAD_SPEED_UPDATE)
         }
     }
 
@@ -83,6 +98,20 @@ class DownloadTaskAdapter(
         holder.bind(tasks[position])
     }
 
+    override fun onBindViewHolder(holder: TaskViewHolder, position: Int, payloads: MutableList<Any>) {
+        if (payloads.isEmpty()) {
+            // 没有 payload，执行完整绑定
+            holder.bind(tasks[position])
+        } else {
+            // 有 payload，执行局部更新
+            payloads.forEach { payload ->
+                when (payload) {
+                    PAYLOAD_SPEED_UPDATE -> holder.updateSpeed(tasks[position], speeds)
+                }
+            }
+        }
+    }
+
     override fun getItemCount(): Int = tasks.size
 
     inner class TaskViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -99,6 +128,8 @@ class DownloadTaskAdapter(
         private val tvSize: TextView = itemView.findViewById(R.id.tvSize)
         private val tvStatus: TextView = itemView.findViewById(R.id.tvStatus)
         private val btnControl: ImageButton = itemView.findViewById(R.id.btnControl)
+        private val ivSource: ImageView? = itemView.findViewById(R.id.ivSource)
+        private val tvQuality: TextView? = itemView.findViewById(R.id.tvQuality)
 
         private val dateFormat = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
         private var currentTask: DownloadTask? = null
@@ -130,12 +161,11 @@ class DownloadTaskAdapter(
             tvSongName.text = task.songName
             tvArtist.text = task.artist
 
-            // 加载封面
-            Glide.with(itemView.context)
-                .load(task.coverUrl)
-                .placeholder(R.drawable.ic_music_note)
-                .error(R.drawable.ic_music_note)
-                .into(ivCover)
+            // 设置音源图标和音质
+            setupSourceAndQuality(task)
+
+            // 加载封面 - 处理酷我等平台的相对路径
+            loadCoverImage(task)
 
             // 多选模式处理
             if (isMultiSelectMode) {
@@ -184,11 +214,176 @@ class DownloadTaskAdapter(
             }
         }
 
+        fun updateSpeed(task: DownloadTask, speeds: Map<String, Long>) {
+            // 只更新速度和进度，不重新加载封面
+            if (!isHistory) {
+                progressBar.progress = task.progress
+                tvProgress.text = "${task.progress}%"
+
+                val speed = speeds[task.id] ?: 0
+                tvSpeed.text = if (task.isDownloading && speed > 0) {
+                    formatSpeed(speed)
+                } else {
+                    getStatusText(task.status)
+                }
+
+                // 控制按钮图标
+                val iconRes = when {
+                    task.isPaused || task.isFailed -> R.drawable.ic_play
+                    task.isDownloading -> R.drawable.ic_pause
+                    else -> R.drawable.ic_pause
+                }
+                btnControl.setImageResource(iconRes)
+            }
+        }
+
+        private fun loadCoverImage(task: DownloadTask) {
+            val context = itemView.context
+            val coverUrl = task.coverUrl
+
+            // 先显示默认图标，后台异步加载图片
+            ivCover.setImageResource(R.drawable.ic_music_note)
+
+            when {
+                coverUrl.isNullOrEmpty() -> {
+                    // 没有封面URL，后台尝试获取
+                    downloadAndCacheCover(task)
+                }
+                coverUrl.startsWith("http") -> {
+                    // 网络图片，使用 Glide 异步加载
+                    Glide.with(context)
+                        .load(coverUrl)
+                        .placeholder(R.drawable.ic_music_note)
+                        .error(R.drawable.ic_music_note)
+                        .into(ivCover)
+                }
+                coverUrl.startsWith("/") -> {
+                    // 本地图片路径（以/开头的绝对路径）
+                    try {
+                        val file = File(coverUrl)
+                        if (file.exists()) {
+                            Glide.with(context)
+                                .load(file)
+                                .placeholder(R.drawable.ic_music_note)
+                                .error(R.drawable.ic_music_note)
+                                .into(ivCover)
+                        } else {
+                            // 本地文件不存在，后台尝试重新下载
+                            downloadAndCacheCover(task)
+                        }
+                    } catch (e: Exception) {
+                        downloadAndCacheCover(task)
+                    }
+                }
+                else -> {
+                    // 相对路径（如酷我音乐的封面URL），后台解析并加载
+                    resolveAndLoadCover(task)
+                }
+            }
+        }
+
+        private fun resolveAndLoadCover(task: DownloadTask) {
+            // 首先检查是否有已解析的URL缓存
+            val cachedResolvedUrl = resolvedCoverUrls[task.songId]
+            if (cachedResolvedUrl != null) {
+                Glide.with(itemView.context)
+                    .load(cachedResolvedUrl)
+                    .placeholder(R.drawable.ic_music_note)
+                    .error(R.drawable.ic_music_note)
+                    .into(ivCover)
+                return
+            }
+
+            // 后台异步解析封面URL，不阻塞UI
+            lifecycleScope?.launch {
+                try {
+                    val context = itemView.context
+                    val resolvedUrl = withContext(Dispatchers.IO) {
+                        CoverUrlResolver.resolveCoverUrl(
+                            context,
+                            task.coverUrl,
+                            task.songId,
+                            task.platform
+                        )
+                    }
+
+                    if (resolvedUrl != null) {
+                        // 缓存解析后的URL
+                        resolvedCoverUrls[task.songId] = resolvedUrl
+
+                        // 使用解析后的URL加载封面
+                        Glide.with(context)
+                            .load(resolvedUrl)
+                            .placeholder(R.drawable.ic_music_note)
+                            .error(R.drawable.ic_music_note)
+                            .into(ivCover)
+                    } else {
+                        // 解析失败，后台尝试下载缓存
+                        downloadAndCacheCover(task)
+                    }
+                } catch (e: Exception) {
+                    // 解析失败，后台尝试下载缓存
+                    downloadAndCacheCover(task)
+                }
+            }
+        }
+
+        private fun downloadAndCacheCover(task: DownloadTask) {
+            // 后台异步下载封面，不阻塞UI
+            lifecycleScope?.launch {
+                try {
+                    val context = itemView.context
+                    val localPath = withContext(Dispatchers.IO) {
+                        CoverImageManager.downloadAndCacheCover(
+                            context,
+                            task.songId,
+                            task.platform
+                        )
+                    }
+
+                    if (localPath != null) {
+                        // 下载成功，更新UI
+                        Glide.with(context)
+                            .load(File(localPath))
+                            .placeholder(R.drawable.ic_music_note)
+                            .error(R.drawable.ic_music_note)
+                            .into(ivCover)
+                    }
+                } catch (e: Exception) {
+                    // 下载失败，保持默认图标
+                }
+            }
+        }
+
         private fun updateSelectedBackground(isSelected: Boolean) {
             if (isSelected) {
                 itemView.setBackgroundColor(itemView.context.getColor(R.color.light_blue_cyan))
             } else {
                 itemView.setBackgroundResource(android.R.color.transparent)
+            }
+        }
+
+        private fun setupSourceAndQuality(task: DownloadTask) {
+            // 设置音源图标
+            ivSource?.let { imageView ->
+                val iconRes = when (task.platform.uppercase()) {
+                    "KUWO" -> R.drawable.ic_kuwo_logo
+                    "NETEASE" -> R.drawable.ic_netease_logo
+                    else -> R.drawable.ic_music_note
+                }
+                imageView.setImageResource(iconRes)
+            }
+
+            // 设置音质标签
+            tvQuality?.let { textView ->
+                val qualityText = when (task.quality.lowercase()) {
+                    "hr" -> "HR"
+                    "cdq", "flac", "lossless" -> "FLAC"
+                    "320k", "320", "hq" -> "320K"
+                    "128k", "128", "lq" -> "128K"
+                    else -> task.quality.uppercase()
+                }
+                textView.text = qualityText
             }
         }
 

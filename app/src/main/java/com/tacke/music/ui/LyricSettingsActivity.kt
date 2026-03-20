@@ -1,107 +1,48 @@
 package com.tacke.music.ui
 
 import android.content.Context
-import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.widget.SeekBar
-import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
+import android.view.Gravity
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.GridLayout
+import android.widget.ImageButton
+import android.widget.ImageView
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import com.tacke.music.R
 import com.tacke.music.databinding.ActivityLyricSettingsBinding
+import com.tacke.music.utils.LyricStyleSettings
 
 class LyricSettingsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityLyricSettingsBinding
 
     companion object {
-        const val PREFS_NAME = "lyric_settings"
-        const val KEY_PLAYER_LYRIC_COLOR = "player_lyric_color"
-        const val KEY_FLOATING_LYRIC_COLOR = "floating_lyric_color"
-        const val KEY_FLOATING_LYRICS_ENABLED = "floating_lyrics_enabled"
-        const val KEY_FLOATING_LYRIC_SIZE = "floating_lyric_size"
+        const val PREFS_NAME = LyricStyleSettings.PREFS_NAME
+        const val DEFAULT_LYRIC_COLOR = LyricStyleSettings.DEFAULT_LYRIC_COLOR
+        val PRESET_LYRIC_COLORS = LyricStyleSettings.PRESET_FLOATING_LYRIC_COLORS
 
-        // 默认歌词颜色（青色）
-        const val DEFAULT_LYRIC_COLOR = 0xFF00CED1.toInt()
-        // 默认歌词大小（100%）
-        const val DEFAULT_LYRIC_SIZE = 100
+        fun getFloatingLyricColor(context: Context): Int = LyricStyleSettings.getFloatingLyricColor(context)
+        fun setFloatingLyricColor(context: Context, color: Int) = LyricStyleSettings.setFloatingLyricColor(context, color)
+        fun getFloatingLyricSize(context: Context): Float = LyricStyleSettings.getFloatingLyricSize(context)
+        fun setFloatingLyricSize(context: Context, size: Float) = LyricStyleSettings.setFloatingLyricSize(context, size)
 
-        // 预设歌词颜色列表
-        val PRESET_LYRIC_COLORS = listOf(
-            0xFF00CED1.toInt(), // 深青色 (默认)
-            0xFFFF4081.toInt(), // 粉红色
-            0xFF4CAF50.toInt(), // 绿色
-            0xFFFF9800.toInt(), // 橙色
-            0xFF9C27B0.toInt(), // 紫色
-            0xFF2196F3.toInt(), // 蓝色
-            0xFFFFEB3B.toInt(), // 黄色
-            0xFFF44336.toInt(), // 红色
-            0xFFFFFFFF.toInt(), // 白色
-            0xFF00BCD4.toInt(), // 青色
-            0xFFE91E63.toInt(), // 玫红
-            0xFF8BC34A.toInt()  // 浅绿
-        )
+        fun getPlayerLyricColor(context: Context): Int = LyricStyleSettings.getPlayerLyricColor(context)
+        fun setPlayerLyricColor(context: Context, color: Int) = LyricStyleSettings.setPlayerLyricColor(context, color)
+        fun getPlayerLyricSize(context: Context): Float = LyricStyleSettings.getPlayerLyricSize(context)
+        fun setPlayerLyricSize(context: Context, size: Float) = LyricStyleSettings.setPlayerLyricSize(context, size)
 
-        // 获取播放页歌词颜色（兼容旧版本）
-        fun getPlayerLyricColor(context: Context): Int {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            // 先尝试获取新的key，如果没有则尝试旧的key
-            return prefs.getInt(KEY_PLAYER_LYRIC_COLOR, 0).let {
-                if (it == 0) {
-                    // 尝试从旧设置获取
-                    val oldPrefs = context.getSharedPreferences(SettingsActivity.PREFS_NAME, Context.MODE_PRIVATE)
-                    val oldColor = oldPrefs.getInt(SettingsActivity.KEY_LYRIC_COLOR, 0)
-                    if (oldColor != 0) {
-                        // 迁移旧数据
-                        prefs.edit().putInt(KEY_PLAYER_LYRIC_COLOR, oldColor).apply()
-                        oldColor
-                    } else {
-                        DEFAULT_LYRIC_COLOR
-                    }
-                } else it
-            }
-        }
-
-        fun setPlayerLyricColor(context: Context, color: Int) {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putInt(KEY_PLAYER_LYRIC_COLOR, color).apply()
-            // 同时更新旧设置以保持兼容
-            val oldPrefs = context.getSharedPreferences(SettingsActivity.PREFS_NAME, Context.MODE_PRIVATE)
-            oldPrefs.edit().putInt(SettingsActivity.KEY_LYRIC_COLOR, color).apply()
-        }
-
-        fun getFloatingLyricColor(context: Context): Int {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            return prefs.getInt(KEY_FLOATING_LYRIC_COLOR, DEFAULT_LYRIC_COLOR)
-        }
-
-        fun setFloatingLyricColor(context: Context, color: Int) {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putInt(KEY_FLOATING_LYRIC_COLOR, color).apply()
-        }
-
-        fun isFloatingLyricsEnabled(context: Context): Boolean {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            return prefs.getBoolean(KEY_FLOATING_LYRICS_ENABLED, false)
-        }
-
-        fun setFloatingLyricsEnabled(context: Context, enabled: Boolean) {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putBoolean(KEY_FLOATING_LYRICS_ENABLED, enabled).apply()
-        }
-
-        fun getFloatingLyricSize(context: Context): Int {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            return prefs.getInt(KEY_FLOATING_LYRIC_SIZE, DEFAULT_LYRIC_SIZE)
-        }
-
-        fun setFloatingLyricSize(context: Context, size: Int) {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            prefs.edit().putInt(KEY_FLOATING_LYRIC_SIZE, size).apply()
-        }
+        fun getFullscreenLyricColor(context: Context): Int = LyricStyleSettings.getFullscreenLyricColor(context)
+        fun setFullscreenLyricColor(context: Context, color: Int) = LyricStyleSettings.setFullscreenLyricColor(context, color)
+        fun getFullscreenLyricSize(context: Context): Float = LyricStyleSettings.getFullscreenLyricSize(context)
+        fun setFullscreenLyricSize(context: Context, size: Float) = LyricStyleSettings.setFullscreenLyricSize(context, size)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -109,172 +50,226 @@ class LyricSettingsActivity : AppCompatActivity() {
         binding = ActivityLyricSettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Android 16: 适配 Edge-to-Edge 模式
         setupEdgeToEdge()
-
         setupClickListeners()
-        updateUI()
+        bindFloatingSection()
+        bindPlayerSection()
+        bindFullscreenSection()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshAllPreviews()
     }
 
     private fun setupClickListeners() {
         binding.btnBack.setOnClickListener {
             finish()
         }
-
-        // 播放页歌词颜色设置
-        binding.layoutPlayerLyricColor.setOnClickListener {
-            showColorPickerDialog(true)
-        }
-
-        // 悬浮歌词颜色设置
-        binding.layoutFloatingLyricColor.setOnClickListener {
-            showColorPickerDialog(false)
-        }
-
-        // 歌词大小滑条
-        binding.seekBarLyricSize.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                // 将 0-150 映射到 50-200
-                val sizePercent = 50 + progress
-                binding.tvLyricSizeValue.text = "$sizePercent%"
-                updatePreviewLyricSize(sizePercent)
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                // 保存设置
-                val sizePercent = 50 + (seekBar?.progress ?: 50)
-                setFloatingLyricSize(this@LyricSettingsActivity, sizePercent)
-                Toast.makeText(this@LyricSettingsActivity, "歌词大小已保存", Toast.LENGTH_SHORT).show()
-            }
-        })
     }
 
-    private fun updateUI() {
-        // 更新播放页歌词颜色预览
-        val playerColor = getPlayerLyricColor(this)
-        binding.viewPlayerLyricColorPreview.setBackgroundColor(playerColor)
+    private fun bindFloatingSection() {
+        binding.tvFloatingPreviewCurrent.text = "悬浮歌词正在播放"
+        binding.tvFloatingPreviewNext.text = "下一句歌词预览"
 
-        // 更新悬浮歌词颜色预览
-        val floatingColor = getFloatingLyricColor(this)
-        binding.viewFloatingLyricColorPreview.setBackgroundColor(floatingColor)
-        binding.tvPreviewCurrentLine.setTextColor(floatingColor)
-
-        // 更新歌词大小
-        val lyricSize = getFloatingLyricSize(this)
-        binding.seekBarLyricSize.progress = lyricSize - 50
-        binding.tvLyricSizeValue.text = "$lyricSize%"
-        updatePreviewLyricSize(lyricSize)
-    }
-
-    private fun updatePreviewLyricSize(sizePercent: Int) {
-        val scale = sizePercent / 100f
-        val currentTextSize = 16f * scale
-        val nextTextSize = 13f * scale
-
-        binding.tvPreviewCurrentLine.textSize = currentTextSize
-        binding.tvPreviewNextLine.textSize = nextTextSize
-    }
-
-    private fun showColorPickerDialog(isPlayerLyric: Boolean) {
-        val currentColor = if (isPlayerLyric) getPlayerLyricColor(this) else getFloatingLyricColor(this)
-        val dialogView = layoutInflater.inflate(R.layout.dialog_lyric_color_picker, null)
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(if (isPlayerLyric) "选择播放页歌词颜色" else "选择悬浮歌词颜色")
-            .setView(dialogView)
-            .setNegativeButton("取消", null)
-            .create()
-
-        // 获取颜色网格容器
-        val colorGrid = dialogView.findViewById<android.widget.GridLayout>(R.id.colorGrid)
-        val tvPreview = dialogView.findViewById<android.widget.TextView>(R.id.tvColorPreview)
-
-        var selectedColor = currentColor
-
-        // 更新预览文本颜色
-        tvPreview?.setTextColor(selectedColor)
-
-        // 创建颜色选择项
-        PRESET_LYRIC_COLORS.forEach { color ->
-            val colorView = android.widget.FrameLayout(this).apply {
-                layoutParams = android.widget.GridLayout.LayoutParams().apply {
-                    width = 0
-                    height = android.widget.GridLayout.LayoutParams.WRAP_CONTENT
-                    columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
-                    setMargins(8, 8, 8, 8)
-                }
-
-                // 颜色圆点
-                val circleView = android.widget.ImageView(context).apply {
-                    layoutParams = android.widget.FrameLayout.LayoutParams(56, 56).apply {
-                        gravity = android.view.Gravity.CENTER
-                    }
-                    setImageDrawable(android.graphics.drawable.GradientDrawable().apply {
-                        shape = android.graphics.drawable.GradientDrawable.OVAL
-                        setColor(color)
-                    })
-                }
-
-                // 选中标记
-                val checkView = android.widget.ImageView(context).apply {
-                    layoutParams = android.widget.FrameLayout.LayoutParams(24, 24).apply {
-                        gravity = android.view.Gravity.CENTER
-                    }
-                    setImageResource(R.drawable.ic_check)
-                    setColorFilter(android.graphics.Color.WHITE)
-                    visibility = if (color == currentColor) android.view.View.VISIBLE else android.view.View.GONE
-                }
-
-                addView(circleView)
-                addView(checkView)
-
-                setOnClickListener {
-                    selectedColor = color
-                    tvPreview?.setTextColor(selectedColor)
-
-                    // 更新所有选中标记
-                    for (i in 0 until colorGrid.childCount) {
-                        val child = colorGrid.getChildAt(i) as? android.widget.FrameLayout
-                        val check = child?.getChildAt(1) as? android.widget.ImageView
-                        check?.visibility = if (i == PRESET_LYRIC_COLORS.indexOf(color))
-                            android.view.View.VISIBLE else android.view.View.GONE
-                    }
-                }
-            }
-            colorGrid?.addView(colorView)
+        binding.btnFloatingSizeDown.setOnClickListener {
+            updateFloatingSize(getFloatingLyricSize(this) - LyricStyleSettings.LYRIC_SIZE_STEP)
+        }
+        binding.btnFloatingSizeUp.setOnClickListener {
+            updateFloatingSize(getFloatingLyricSize(this) + LyricStyleSettings.LYRIC_SIZE_STEP)
         }
 
-        // 确认按钮
-        dialogView.findViewById<android.widget.Button>(R.id.btnConfirm)?.setOnClickListener {
-            if (isPlayerLyric) {
-                setPlayerLyricColor(this, selectedColor)
-                binding.viewPlayerLyricColorPreview.setBackgroundColor(selectedColor)
-            } else {
-                setFloatingLyricColor(this, selectedColor)
-                binding.viewFloatingLyricColorPreview.setBackgroundColor(selectedColor)
-                binding.tvPreviewCurrentLine.setTextColor(selectedColor)
+        renderColorGrid(
+            grid = binding.gridFloatingColors,
+            colors = LyricStyleSettings.PRESET_FLOATING_LYRIC_COLORS,
+            selectedColor = getFloatingLyricColor(this),
+            onSelect = { color ->
+                setFloatingLyricColor(this, color)
+                refreshFloatingPreview()
             }
-            Toast.makeText(this, "歌词颜色已更新", Toast.LENGTH_SHORT).show()
-            dialog.dismiss()
-        }
-
-        dialog.show()
+        )
+        refreshFloatingPreview()
     }
 
-    /**
-     * Android 16: 设置 Edge-to-Edge 模式
-     * 处理系统栏（状态栏和导航栏）的 insets
-     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
-     */
+    private fun bindPlayerSection() {
+        binding.tvPlayerPreviewCurrent.text = "播放页当前歌词"
+        binding.tvPlayerPreviewNext.text = "播放页下一句歌词"
+
+        binding.btnPlayerSizeDown.setOnClickListener {
+            updatePlayerSize(getPlayerLyricSize(this) - LyricStyleSettings.LYRIC_SIZE_STEP)
+        }
+        binding.btnPlayerSizeUp.setOnClickListener {
+            updatePlayerSize(getPlayerLyricSize(this) + LyricStyleSettings.LYRIC_SIZE_STEP)
+        }
+
+        renderColorGrid(
+            grid = binding.gridPlayerColors,
+            colors = LyricStyleSettings.PRESET_PLAYER_LYRIC_COLORS,
+            selectedColor = getPlayerLyricColor(this),
+            onSelect = { color ->
+                setPlayerLyricColor(this, color)
+                refreshPlayerPreview()
+            }
+        )
+        refreshPlayerPreview()
+    }
+
+    private fun bindFullscreenSection() {
+        binding.tvFullscreenPreviewCurrent.text = "全屏歌词当前行"
+        binding.tvFullscreenPreviewNext.text = "下一句歌词"
+
+        binding.btnFullscreenSizeDown.setOnClickListener {
+            updateFullscreenSize(getFullscreenLyricSize(this) - LyricStyleSettings.LYRIC_SIZE_STEP)
+        }
+        binding.btnFullscreenSizeUp.setOnClickListener {
+            updateFullscreenSize(getFullscreenLyricSize(this) + LyricStyleSettings.LYRIC_SIZE_STEP)
+        }
+
+        renderColorGrid(
+            grid = binding.gridFullscreenColors,
+            colors = LyricStyleSettings.PRESET_FULLSCREEN_LYRIC_COLORS,
+            selectedColor = getFullscreenLyricColor(this),
+            onSelect = { color ->
+                setFullscreenLyricColor(this, color)
+                refreshFullscreenPreview()
+            }
+        )
+        refreshFullscreenPreview()
+    }
+
+    private fun refreshAllPreviews() {
+        refreshFloatingPreview()
+        refreshPlayerPreview()
+        refreshFullscreenPreview()
+    }
+
+    private fun refreshFloatingPreview() {
+        val color = getFloatingLyricColor(this)
+        val size = getFloatingLyricSize(this)
+        binding.tvFloatingSizeValue.text = "${size.toInt()}sp"
+        binding.tvFloatingPreviewCurrent.setTextColor(color)
+        binding.tvFloatingPreviewCurrent.textSize = size
+        binding.tvFloatingPreviewNext.textSize = (size * 0.7f).coerceAtLeast(12f)
+        binding.tvFloatingPreviewNext.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+        renderColorGrid(
+            grid = binding.gridFloatingColors,
+            colors = LyricStyleSettings.PRESET_FLOATING_LYRIC_COLORS,
+            selectedColor = color,
+            onSelect = { selected ->
+                setFloatingLyricColor(this, selected)
+                refreshFloatingPreview()
+            }
+        )
+    }
+
+    private fun refreshPlayerPreview() {
+        val color = getPlayerLyricColor(this)
+        val size = getPlayerLyricSize(this)
+        binding.tvPlayerSizeValue.text = "${size.toInt()}sp"
+        binding.tvPlayerPreviewCurrent.setTextColor(color)
+        binding.tvPlayerPreviewCurrent.textSize = size
+        binding.tvPlayerPreviewNext.textSize = (size * 0.78f).coerceAtLeast(12f)
+        binding.tvPlayerPreviewNext.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+        renderColorGrid(
+            grid = binding.gridPlayerColors,
+            colors = LyricStyleSettings.PRESET_PLAYER_LYRIC_COLORS,
+            selectedColor = color,
+            onSelect = { selected ->
+                setPlayerLyricColor(this, selected)
+                refreshPlayerPreview()
+            }
+        )
+    }
+
+    private fun refreshFullscreenPreview() {
+        val color = getFullscreenLyricColor(this)
+        val size = getFullscreenLyricSize(this)
+        binding.tvFullscreenSizeValue.text = "${size.toInt()}sp"
+        binding.tvFullscreenPreviewCurrent.setTextColor(color)
+        binding.tvFullscreenPreviewCurrent.textSize = size
+        binding.tvFullscreenPreviewNext.textSize = (size * 0.75f).coerceAtLeast(12f)
+        binding.tvFullscreenPreviewNext.setTextColor(ContextCompat.getColor(this, R.color.text_secondary))
+        binding.tvFullscreenPreviewNext.alpha = 0.55f
+        renderColorGrid(
+            grid = binding.gridFullscreenColors,
+            colors = LyricStyleSettings.PRESET_FULLSCREEN_LYRIC_COLORS,
+            selectedColor = color,
+            onSelect = { selected ->
+                setFullscreenLyricColor(this, selected)
+                refreshFullscreenPreview()
+            }
+        )
+    }
+
+    private fun updateFloatingSize(size: Float) {
+        setFloatingLyricSize(this, size)
+        refreshFloatingPreview()
+    }
+
+    private fun updatePlayerSize(size: Float) {
+        setPlayerLyricSize(this, size)
+        refreshPlayerPreview()
+    }
+
+    private fun updateFullscreenSize(size: Float) {
+        setFullscreenLyricSize(this, size)
+        refreshFullscreenPreview()
+    }
+
+    private fun renderColorGrid(
+        grid: GridLayout,
+        colors: List<Int>,
+        selectedColor: Int,
+        onSelect: (Int) -> Unit
+    ) {
+        grid.removeAllViews()
+        colors.forEach { color ->
+            grid.addView(createColorChip(color, color == selectedColor) {
+                onSelect(color)
+            })
+        }
+    }
+
+    private fun createColorChip(color: Int, selected: Boolean, onClick: () -> Unit): FrameLayout {
+        return FrameLayout(this).apply {
+            layoutParams = GridLayout.LayoutParams().apply {
+                width = 0
+                height = GridLayout.LayoutParams.WRAP_CONTENT
+                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+                setMargins(4, 4, 4, 4)
+            }
+
+            val circleView = View(context).apply {
+                layoutParams = FrameLayout.LayoutParams(56, 56).apply {
+                    gravity = Gravity.CENTER
+                }
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(color)
+                }
+            }
+
+            val checkView = ImageView(context).apply {
+                layoutParams = FrameLayout.LayoutParams(24, 24).apply {
+                    gravity = Gravity.CENTER
+                }
+                setImageResource(R.drawable.ic_check)
+                setColorFilter(Color.WHITE)
+                visibility = if (selected) View.VISIBLE else View.GONE
+            }
+
+            addView(circleView)
+            addView(checkView)
+            setOnClickListener { onClick() }
+        }
+    }
+
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 为顶部 Toolbar 添加状态栏高度 padding
             binding.toolbar.updatePadding(
                 top = insets.top
             )
-            // 为底部设置 padding
             view.updatePadding(
                 bottom = insets.bottom
             )

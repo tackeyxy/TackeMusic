@@ -3,8 +3,12 @@ package com.tacke.music.ui
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ObjectAnimator
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.ImageView
@@ -13,6 +17,7 @@ import android.widget.PopupWindow
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -30,7 +35,9 @@ import com.tacke.music.data.api.HighQualityPlaylist
 import com.tacke.music.data.api.PlaylistTag
 import com.tacke.music.data.api.RetrofitClient
 import com.tacke.music.data.model.ChartSong
+import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
@@ -41,8 +48,11 @@ import com.tacke.music.ui.adapter.SongAdapter
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
+import com.tacke.music.service.MusicPlaybackService
+import com.tacke.music.utils.PermissionHelper
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -105,6 +115,14 @@ class MainActivity : AppCompatActivity() {
     private var isLoadingPlaylists = false
     private var hasMorePlaylists = true
 
+    private companion object {
+        const val REQUEST_POST_NOTIFICATIONS = 2001
+        const val REQUEST_PHONE_STATE = 2002
+    }
+
+    private var hasPromptedNotificationSettings = false
+    private var hasPromptedNotificationChannelSettings = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -118,6 +136,9 @@ class MainActivity : AppCompatActivity() {
         favoriteRepository = FavoriteRepository(this)
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
+        requestNotificationPermissionIfNeeded()
+        ensurePlaybackNotificationAvailability()
+        requestPhoneStatePermissionIfNeeded()
         setupRecyclerView()
         setupPlaylistRecyclerView()
         setupClickListeners()
@@ -129,6 +150,67 @@ class MainActivity : AppCompatActivity() {
             loadAllChartData()
         }
         loadPlaylistTags()
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            REQUEST_POST_NOTIFICATIONS
+        )
+    }
+
+    private fun requestPhoneStatePermissionIfNeeded() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_STATE) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.READ_PHONE_STATE),
+            REQUEST_PHONE_STATE
+        )
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_POST_NOTIFICATIONS) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "通知权限已开启", Toast.LENGTH_SHORT).show()
+                ensurePlaybackNotificationAvailability()
+            } else {
+                Toast.makeText(this, "未授予通知权限，状态栏播放卡片可能无法显示", Toast.LENGTH_SHORT).show()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    !ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.POST_NOTIFICATIONS)
+                ) {
+                    showNotificationSettingsDialog(
+                        title = "需要通知权限",
+                        message = "若要显示通知栏音乐卡片，请在系统设置中允许 TackeMusic 发送通知。",
+                        intent = PermissionHelper.findFirstResolvableIntent(
+                            this,
+                            PermissionHelper.buildNotificationSettingsIntents(this)
+                        )
+                    )
+                }
+            }
+        } else if (requestCode == REQUEST_PHONE_STATE) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(this, "通话状态权限已开启", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "未授予通话状态权限，来电自动暂停将不可用", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     /**
@@ -250,6 +332,65 @@ class MainActivity : AppCompatActivity() {
             currentPlatform = savedSource
             updateSourceSelectorUI()
         }
+        ensurePlaybackNotificationAvailability()
+    }
+
+    private fun ensurePlaybackNotificationAvailability() {
+        val permissionState = PermissionHelper.getNotificationPermissionState(
+            context = this,
+            channelId = MusicPlaybackService.CHANNEL_ID
+        )
+        if (!permissionState.runtimePermissionGranted) {
+            return
+        }
+
+        if (!permissionState.appNotificationsEnabled) {
+            if (!hasPromptedNotificationSettings) {
+                hasPromptedNotificationSettings = true
+                showNotificationSettingsDialog(
+                    title = "通知已关闭",
+                    message = "当前系统已关闭 TackeMusic 的通知，通知栏音乐卡片将无法显示。",
+                    intent = PermissionHelper.findFirstResolvableIntent(
+                        this,
+                        PermissionHelper.buildNotificationSettingsIntents(this)
+                    )
+                )
+            }
+            return
+        }
+
+        hasPromptedNotificationSettings = false
+
+        if (!permissionState.channelEnabled) {
+            if (!hasPromptedNotificationChannelSettings) {
+                hasPromptedNotificationChannelSettings = true
+                showNotificationSettingsDialog(
+                    title = "播放通知频道已关闭",
+                    message = "系统已关闭“音乐播放”通知频道，通知栏音乐卡片不会显示。",
+                    intent = PermissionHelper.findFirstResolvableIntent(
+                        this,
+                        PermissionHelper.buildNotificationSettingsIntents(
+                            context = this,
+                            channelId = MusicPlaybackService.CHANNEL_ID
+                        )
+                    )
+                )
+            }
+            return
+        }
+
+        hasPromptedNotificationChannelSettings = false
+    }
+
+    private fun showNotificationSettingsDialog(title: String, message: String, intent: Intent?) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("去开启") { _, _ ->
+                intent?.let { startActivity(it) }
+            }
+            .setNegativeButton("稍后", null)
+            .show()
     }
 
     private fun updateSourceSelectorUI() {
@@ -290,6 +431,12 @@ class MainActivity : AppCompatActivity() {
                     adapter.setSelectedItems(selectedSongIds.toSet())
                     updateBatchActionBar()
                 }
+            },
+            lifecycleScope = lifecycleScope,
+            onCoverLoaded = { songId, coverPath ->
+                // 更新歌曲封面URL
+                val song = currentSongList.find { it.id == songId }
+                song?.coverUrl = coverPath
             }
         )
         binding.rvSongs.layoutManager = LinearLayoutManager(this)
@@ -349,6 +496,8 @@ class MainActivity : AppCompatActivity() {
      */
     private fun showBatchActionBar() {
         binding.batchActionBarContainer.root.visibility = View.VISIBLE
+        // 隐藏清空按钮（搜索列表、推荐页榜单列表、推荐页歌单列表不需要清空功能）
+        binding.batchActionBarContainer.btnClearAll.visibility = View.GONE
         updateBatchActionBar()
         setupBatchActionListeners()
     }
@@ -518,6 +667,7 @@ class MainActivity : AppCompatActivity() {
 
     /**
      * 首页榜单卡片歌曲点击：添加到当前播放列表并立即播放（不清空现有列表）
+     * 非下载管理页面，需要重新请求URL进行播放
      */
     private fun playChartSong(chartType: ChartType, index: Int) {
         val songs = chartSongsMap[chartType]
@@ -530,37 +680,50 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             binding.progressBar.visibility = View.VISIBLE
             try {
-                val platform = when (chartSong.source.lowercase()) {
-                    "kuwo" -> MusicRepository.Platform.KUWO
-                    "netease" -> MusicRepository.Platform.NETEASE
-                    else -> MusicRepository.Platform.KUWO
+                val platform = MusicRepository.Platform.NETEASE
+                val cachedRepository = CachedMusicRepository(this@MainActivity)
+
+                // 优先使用榜单数据中的封面，如果为空则尝试从网易云搜索获取
+                val coverUrl = if (!chartSong.cover.isNullOrEmpty()) {
+                    chartSong.cover
+                } else {
+                    withContext(Dispatchers.IO) {
+                        cachedRepository.getCoverUrlFromNetease(chartSong.name, chartSong.artist)
+                    }
                 }
 
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@MainActivity)
+
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
                 val detail = withContext(Dispatchers.IO) {
-                    repository.getSongDetail(platform, chartSong.id, "320k")
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = chartSong.id,
+                        quality = playbackQuality,
+                        songName = chartSong.name,
+                        artists = chartSong.artist,
+                        useCache = true,
+                        coverUrlFromSearch = coverUrl
+                    )
                 }
 
                 if (detail != null) {
-                    // 创建Song对象
                     val song = Song(
                         index = index,
                         id = chartSong.id,
                         name = chartSong.name,
                         artists = chartSong.artist,
-                        coverUrl = chartSong.cover
+                        coverUrl = detail.cover ?: coverUrl ?: chartSong.cover
                     )
                     val playlistSong = playlistManager.convertToPlaylistSong(song, platform)
 
-                    // 获取添加前的播放列表大小，用于设置当前播放索引
                     val currentPlaylistSize = playlistManager.currentPlaylist.value.size
 
-                    // 添加到播放列表（不清空现有列表）
                     playlistManager.addSong(playlistSong)
 
-                    // 设置为当前播放的歌曲（新添加的歌曲索引）
                     playlistManager.setCurrentIndex(currentPlaylistSize)
 
-                    // 播放歌曲
                     playbackManager.playFromPlaylist(
                         context = this@MainActivity,
                         song = playlistSong,
@@ -867,22 +1030,40 @@ class MainActivity : AppCompatActivity() {
         return (this * resources.displayMetrics.density).toInt()
     }
 
+    private var lastNavClickTime = 0L
+    private val NAV_CLICK_DEBOUNCE = 500L // 500ms 防抖
+
     private fun setupBottomNavigation() {
         binding.navHome.setOnClickListener {
-            updateNavSelection(0)
-            showHomeContent()
+            if (isNavClickValid()) {
+                updateNavSelection(0)
+                showHomeContent()
+            }
         }
 
         binding.navDiscover.setOnClickListener {
-            updateNavSelection(1)
-            // 跳转到正在播放页面 - 支持空状态进入
-            PlayerActivity.startEmpty(this)
+            if (isNavClickValid()) {
+                updateNavSelection(1)
+                // 跳转到正在播放页面 - 支持空状态进入
+                PlayerActivity.startEmpty(this)
+            }
         }
 
         binding.navProfile.setOnClickListener {
-            updateNavSelection(2)
-            startActivity(Intent(this, ProfileActivity::class.java))
+            if (isNavClickValid()) {
+                updateNavSelection(2)
+                startActivity(Intent(this, ProfileActivity::class.java))
+            }
         }
+    }
+
+    private fun isNavClickValid(): Boolean {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastNavClickTime > NAV_CLICK_DEBOUNCE) {
+            lastNavClickTime = currentTime
+            return true
+        }
+        return false
     }
 
     private fun updateNavSelection(index: Int) {
@@ -1002,30 +1183,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 添加歌曲到播放列表并播放（搜索列表使用）
+     * 添加歌曲到播放列表并播放（搜索列表使用）- 优化版本
+     * 使用快速播放模式：优先使用本地缓存，快速进入播放页，后台加载完整信息
      */
     private fun addToNowPlayingAndPlay(song: Song) {
-        binding.progressBar.visibility = View.VISIBLE
-
         lifecycleScope.launch {
             try {
-                val detail = withContext(Dispatchers.IO) {
-                    repository.getSongDetail(currentPlatform, song.id, "320k")
-                }
-                if (detail != null) {
-                    // 先添加到播放列表
-                    val playlistSong = playlistManager.convertToPlaylistSong(song, currentPlatform)
-                    playlistManager.addSong(playlistSong)
-                    // 然后播放
-                    playbackManager.playFromSearch(this@MainActivity, song, currentPlatform, detail)
-                } else {
-                    Toast.makeText(this@MainActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
-                }
+                // 使用快速播放方法，优先使用本地缓存，立即进入播放页
+                playbackManager.playFromSearchFast(this@MainActivity, song, currentPlatform)
             } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "加载失败: ${e.message}", Toast.LENGTH_SHORT).show()
-            } finally {
-                binding.progressBar.visibility = View.GONE
+                Toast.makeText(this@MainActivity, "播放失败: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    /**
+     * 添加歌曲到播放列表但不立即播放
+     * 在后台自动预加载歌词和封面
+     */
+    private fun addToPlaylistWithoutPlay(song: Song) {
+        lifecycleScope.launch {
+            playbackManager.addToPlaylistWithoutPlay(song, currentPlatform)
+            Toast.makeText(this@MainActivity, "已添加到播放列表", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -1051,23 +1230,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addToNowPlaying(song: Song) {
-        lifecycleScope.launch {
-            try {
-                val playlistSong = playlistManager.convertToPlaylistSong(song, currentPlatform)
-                playlistManager.addSong(playlistSong)
-                Toast.makeText(
-                    this@MainActivity,
-                    "已添加到正在播放列表",
-                    Toast.LENGTH_SHORT
-                ).show()
-            } catch (e: Exception) {
-                Toast.makeText(
-                    this@MainActivity,
-                    "添加失败: ${e.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
+        // 使用新的方法：添加到播放列表并在后台预加载
+        addToPlaylistWithoutPlay(song)
     }
 
     private fun showQualityDialog(song: Song) {
@@ -1129,8 +1293,19 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                // 传递 song.coverUrl 用于酷我平台的相对路径封面解析
+                val cachedRepository = CachedMusicRepository(this@MainActivity)
                 val detail = withContext(Dispatchers.IO) {
-                    repository.getSongDetail(currentPlatform, song.id, quality)
+                    cachedRepository.getSongUrlWithCache(
+                        platform = currentPlatform,
+                        songId = song.id,
+                        quality = quality,
+                        songName = song.name,
+                        artists = song.artists,
+                        useCache = true,
+                        coverUrlFromSearch = song.coverUrl
+                    )
                 }
                 if (detail != null) {
                     val downloadManager = DownloadManager.getInstance(this@MainActivity)
@@ -1161,36 +1336,45 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun batchDownloadSongs(songs: List<Song>, quality: String) {
-        lifecycleScope.launch {
-            var successCount = 0
-            var failCount = 0
+        val context = applicationContext
+        val dm = DownloadManager.getInstance(context)
+        val cachedRepository = CachedMusicRepository(context)
+        val platform = currentPlatform
 
+        // 立即显示添加下载任务提示
+        Toast.makeText(
+            this@MainActivity,
+            "已添加 ${songs.size} 首歌曲到下载队列",
+            Toast.LENGTH_SHORT
+        ).show()
+
+        // 使用 GlobalScope 确保 Activity 销毁后任务继续执行
+        GlobalScope.launch(Dispatchers.IO) {
             songs.forEach { song ->
-                try {
-                    val detail = withContext(Dispatchers.IO) {
-                        repository.getSongDetail(currentPlatform, song.id, quality)
+                launch {
+                    try {
+                        // 传递 song.coverUrl 用于酷我平台的相对路径封面解析
+                        val detail = cachedRepository.getSongUrlWithCache(
+                            platform = platform,
+                            songId = song.id,
+                            quality = quality,
+                            songName = song.name,
+                            artists = song.artists,
+                            useCache = true,
+                            coverUrlFromSearch = song.coverUrl
+                        )
+                        if (detail != null) {
+                            val task = dm.createDownloadTask(song, detail, quality, platform.name)
+                            dm.startDownload(task)
+                        }
+                    } catch (e: Exception) {
+                        // 忽略异常，继续处理下一首
                     }
-                    if (detail != null) {
-                        val downloadManager = DownloadManager.getInstance(this@MainActivity)
-                        val task = downloadManager.createDownloadTask(song, detail, quality, currentPlatform.name)
-                        downloadManager.startDownload(task)
-                        successCount++
-                    } else {
-                        failCount++
-                    }
-                } catch (e: Exception) {
-                    failCount++
                 }
             }
-
-            Toast.makeText(
-                this@MainActivity,
-                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
-                Toast.LENGTH_LONG
-            ).show()
-
-            exitMultiSelectMode()
         }
+
+        exitMultiSelectMode()
     }
 
     private fun showPlaylistSelectionDialog(songs: List<Song>) {
@@ -1300,26 +1484,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addSongsToNowPlaying(songs: List<Song>) {
+        // 立即退出多选模式，提升用户体验
+        exitMultiSelectMode()
+
         lifecycleScope.launch {
             try {
-                var addedCount = 0
-                var duplicateCount = 0
-                songs.forEach { song ->
-                    val playlistSong = playlistManager.convertToPlaylistSong(song, currentPlatform)
-                    val currentList = playlistManager.currentPlaylist.value
-                    if (currentList.none { it.id == playlistSong.id }) {
-                        playlistManager.addSong(playlistSong)
-                        addedCount++
-                    } else {
-                        duplicateCount++
-                    }
+                // 使用批量添加方法，不触发自动播放，不预获取URL
+                // 新歌曲追加到列表末尾，不影响当前播放状态
+                val result = playbackManager.addSongsToPlaylistWithoutPlay(songs, currentPlatform)
+                val addedCount = result.first
+                val duplicateCount = result.second
+
+                // 构建提示消息
+                val message = StringBuilder()
+                if (addedCount > 0) {
+                    message.append("已添加 $addedCount 首到正在播放列表")
                 }
-                val message = when {
-                    duplicateCount > 0 -> "已添加 $addedCount 首，$duplicateCount 首已存在"
-                    else -> "已添加 $addedCount 首歌曲到正在播放列表"
+                if (duplicateCount > 0) {
+                    if (message.isNotEmpty()) message.append("，")
+                    message.append("$duplicateCount 首已存在")
                 }
-                Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
-                exitMultiSelectMode()
+
+                Toast.makeText(this@MainActivity, message.toString(), Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(
                     this@MainActivity,

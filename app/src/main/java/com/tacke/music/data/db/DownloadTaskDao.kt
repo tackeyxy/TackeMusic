@@ -51,4 +51,7 @@ interface DownloadTaskDao {
 
     @Query("SELECT * FROM download_tasks WHERE id = :taskId LIMIT 1")
     suspend fun getTaskById(taskId: String): DownloadTaskEntity?
+
+    @Query("UPDATE download_tasks SET coverUrl = :coverUrl WHERE songId = :songId")
+    suspend fun updateCoverUrlBySongId(songId: String, coverUrl: String?)
 }

@@ -23,15 +23,22 @@ import com.bumptech.glide.Glide
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.db.FavoriteSongEntity
+import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
+import com.tacke.music.data.repository.ListCoverRepairManager
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityPlaylistDetailBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
+import com.tacke.music.utils.CoverImageManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class FavoriteSongsActivity : AppCompatActivity() {
@@ -42,10 +49,15 @@ class FavoriteSongsActivity : AppCompatActivity() {
     private lateinit var playlistManager: PlaylistManager
     private lateinit var playbackManager: PlaybackManager
     private lateinit var downloadManager: DownloadManager
+    private lateinit var listCoverRepairManager: ListCoverRepairManager
     private lateinit var songAdapter: FavoriteSongAdapter
     private var favoriteSongs: List<FavoriteSongEntity> = emptyList()
     private var isMultiSelectMode = false
     private val selectedSongs = mutableSetOf<String>()
+
+    private fun isLocalSong(songId: String, platform: String): Boolean {
+        return platform.equals("LOCAL", ignoreCase = true) || songId.startsWith("local_")
+    }
 
     companion object {
         fun start(context: Context) {
@@ -67,11 +79,17 @@ class FavoriteSongsActivity : AppCompatActivity() {
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
         downloadManager = DownloadManager.getInstance(this)
+        listCoverRepairManager = ListCoverRepairManager.getInstance(this)
 
         setupUI()
         setupRecyclerView()
         setupClickListeners()
         observeFavoriteSongs()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        listCoverRepairManager.repairFavoritesAsync()
     }
 
     private fun setupUI() {
@@ -166,14 +184,29 @@ class FavoriteSongsActivity : AppCompatActivity() {
             exitMultiSelectMode()
         }
 
-        // 下载按钮 - 真正的下载功能
+        // 下载按钮 - 真正的下载功能（跳过本地音乐）
         binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
             val selectedSongList = favoriteSongs.filter { selectedSongs.contains(it.id) }
             if (selectedSongList.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            showBatchDownloadQualityDialog(selectedSongList)
+
+            // 过滤掉本地音乐
+            val (localSongs, onlineSongs) = selectedSongList.partition { isLocalSong(it.id, it.platform) }
+
+            if (onlineSongs.isEmpty()) {
+                // 所有选中的都是本地音乐
+                Toast.makeText(this, "本地音乐无需下载", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            if (localSongs.isNotEmpty()) {
+                // 有本地音乐被跳过
+                Toast.makeText(this, "已跳过 ${localSongs.size} 首本地音乐，仅下载在线音乐", Toast.LENGTH_SHORT).show()
+            }
+
+            showBatchDownloadQualityDialog(onlineSongs)
         }
 
         // 移除按钮 - 从我喜欢中移除
@@ -243,6 +276,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
                             updateSelectedCount()
                         }
                     }
+
                 }
             }
         }
@@ -315,25 +349,59 @@ class FavoriteSongsActivity : AppCompatActivity() {
     private fun playSong(song: FavoriteSongEntity) {
         lifecycleScope.launch {
             try {
+                if (isLocalSong(song.id, song.platform)) {
+                    val played = playbackManager.playLocalSongById(
+                        context = this@FavoriteSongsActivity,
+                        songId = song.id,
+                        songName = song.name,
+                        songArtists = song.artists,
+                        fallbackCoverUrl = song.coverUrl
+                    )
+                    if (!played) {
+                        Toast.makeText(this@FavoriteSongsActivity, "未找到本地文件，请先重新扫描本地音乐", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
                 val platform = when (song.platform.uppercase()) {
                     "KUWO" -> MusicRepository.Platform.KUWO
                     "NETEASE" -> MusicRepository.Platform.NETEASE
                     else -> MusicRepository.Platform.KUWO
                 }
 
-                val repository = MusicRepository()
-                val detail = repository.getSongDetail(platform, song.id, "320k")
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@FavoriteSongsActivity)
+
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                val cachedRepository = CachedMusicRepository(this@FavoriteSongsActivity)
+                val detail = cachedRepository.getSongUrlWithCache(
+                    platform = platform,
+                    songId = song.id,
+                    quality = playbackQuality,
+                    songName = song.name,
+                    artists = song.artists,
+                    useCache = true,
+                    coverUrlFromSearch = song.coverUrl
+                )
 
                 if (detail != null) {
+                    // 使用获取到的封面，如果没有则尝试使用数据库中的封面
+                    val finalCoverUrl = detail.cover ?: song.coverUrl
+
                     // 添加到播放列表
                     val playlistSong = com.tacke.music.data.model.PlaylistSong(
                         id = song.id,
                         name = song.name,
                         artists = song.artists,
-                        coverUrl = song.coverUrl,
+                        coverUrl = finalCoverUrl ?: "",
                         platform = song.platform
                     )
                     playlistManager.addSong(playlistSong)
+
+                    // 如果获取到了新的封面URL，更新数据库中的记录
+                    if (detail.cover != null && detail.cover != song.coverUrl) {
+                        favoriteRepository.refreshFavoriteCovers()
+                    }
 
                     // 播放歌曲
                     playbackManager.playFromPlaylist(
@@ -360,36 +428,73 @@ class FavoriteSongsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 // 添加所有喜欢歌曲到播放列表（不清空原有列表）
-                favoriteSongs.forEach { song ->
-                    val playlistSong = com.tacke.music.data.model.PlaylistSong(
+                val playlistSongs = favoriteSongs.map { song ->
+                    com.tacke.music.data.model.PlaylistSong(
                         id = song.id,
                         name = song.name,
                         artists = song.artists,
                         coverUrl = song.coverUrl,
                         platform = song.platform
                     )
-                    playlistManager.addSong(playlistSong)
                 }
+                playbackManager.addPlaylistSongsWithoutPlay(playlistSongs)
 
                 // 播放第一首
                 val firstSong = favoriteSongs.first()
+
+                if (isLocalSong(firstSong.id, firstSong.platform)) {
+                    val played = playbackManager.playLocalSongById(
+                        context = this@FavoriteSongsActivity,
+                        songId = firstSong.id,
+                        songName = firstSong.name,
+                        songArtists = firstSong.artists,
+                        fallbackCoverUrl = firstSong.coverUrl
+                    )
+                    if (played) {
+                        Toast.makeText(this@FavoriteSongsActivity, "开始播放全部 ${favoriteSongs.size} 首歌曲", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@FavoriteSongsActivity, "未找到本地文件，请先重新扫描本地音乐", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
                 val platform = when (firstSong.platform.uppercase()) {
                     "KUWO" -> MusicRepository.Platform.KUWO
                     "NETEASE" -> MusicRepository.Platform.NETEASE
                     else -> MusicRepository.Platform.KUWO
                 }
 
-                val repository = MusicRepository()
-                val detail = repository.getSongDetail(platform, firstSong.id, "320k")
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@FavoriteSongsActivity)
+
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                val cachedRepository = CachedMusicRepository(this@FavoriteSongsActivity)
+                val detail = cachedRepository.getSongUrlWithCache(
+                    platform = platform,
+                    songId = firstSong.id,
+                    quality = playbackQuality,
+                    songName = firstSong.name,
+                    artists = firstSong.artists,
+                    useCache = true,
+                    coverUrlFromSearch = firstSong.coverUrl
+                )
 
                 if (detail != null) {
+                    // 使用获取到的封面，如果没有则尝试使用数据库中的封面
+                    val finalCoverUrl = detail.cover ?: firstSong.coverUrl
+
                     val playlistSong = com.tacke.music.data.model.PlaylistSong(
                         id = firstSong.id,
                         name = firstSong.name,
                         artists = firstSong.artists,
-                        coverUrl = firstSong.coverUrl,
+                        coverUrl = finalCoverUrl ?: "",
                         platform = firstSong.platform
                     )
+
+                    // 如果获取到了新的封面URL，更新数据库中的记录
+                    if (detail.cover != null && detail.cover != firstSong.coverUrl) {
+                        favoriteRepository.refreshFavoriteCovers()
+                    }
 
                     playbackManager.playFromPlaylist(
                         context = this@FavoriteSongsActivity,
@@ -409,26 +514,28 @@ class FavoriteSongsActivity : AppCompatActivity() {
     }
 
     private fun addSongsToNowPlaying(songs: List<FavoriteSongEntity>) {
+        // 立即退出多选模式，提升用户体验
+        exitMultiSelectMode()
+
         lifecycleScope.launch {
             try {
-                var addedCount = 0
-                var duplicateCount = 0
-                songs.forEach { song ->
-                    val playlistSong = com.tacke.music.data.model.PlaylistSong(
+                // 转换为播放列表歌曲
+                val playlistSongs = songs.map { song ->
+                    com.tacke.music.data.model.PlaylistSong(
                         id = song.id,
                         name = song.name,
                         artists = song.artists,
                         coverUrl = song.coverUrl,
                         platform = song.platform
                     )
-                    val currentList = playlistManager.currentPlaylist.value
-                    if (currentList.none { it.id == playlistSong.id }) {
-                        playlistManager.addSong(playlistSong)
-                        addedCount++
-                    } else {
-                        duplicateCount++
-                    }
                 }
+
+                // 使用批量添加方法，不触发自动播放，不预获取URL
+                // 新歌曲追加到列表末尾，不影响当前播放状态
+                val result = playbackManager.addPlaylistSongsWithoutPlay(playlistSongs)
+                val addedCount = result.first
+                val duplicateCount = result.second
+
                 val message = when {
                     duplicateCount > 0 -> "已添加 $addedCount 首，$duplicateCount 首已存在"
                     else -> "已添加 $addedCount 首歌曲到正在播放列表"
@@ -536,49 +643,58 @@ class FavoriteSongsActivity : AppCompatActivity() {
     }
 
     private fun batchDownloadSongs(songs: List<FavoriteSongEntity>, quality: String) {
-        lifecycleScope.launch {
-            var successCount = 0
-            var failCount = 0
+        val context = applicationContext
+        val cachedRepository = CachedMusicRepository(context)
+        val dm = DownloadManager.getInstance(context)
 
+        // 立即显示添加下载任务提示
+        Toast.makeText(
+            this@FavoriteSongsActivity,
+            "已添加 ${songs.size} 首歌曲到下载队列",
+            Toast.LENGTH_SHORT
+        ).show()
+
+        // 使用 GlobalScope 确保 Activity 销毁后任务继续执行
+        GlobalScope.launch(Dispatchers.IO) {
             songs.forEach { song ->
-                try {
-                    val platform = when (song.platform.uppercase()) {
-                        "KUWO" -> MusicRepository.Platform.KUWO
-                        "NETEASE" -> MusicRepository.Platform.NETEASE
-                        else -> MusicRepository.Platform.KUWO
-                    }
-                    val detail = MusicRepository().getSongDetail(platform, song.id, quality)
-                    if (detail != null) {
-                        val task = downloadManager.createDownloadTask(
-                            Song(
-                                index = 0,
-                                id = song.id,
-                                name = song.name,
-                                artists = song.artists,
-                                coverUrl = song.coverUrl
-                            ),
-                            detail,
-                            quality,
-                            song.platform
+                launch {
+                    try {
+                        val platform = when (song.platform.uppercase()) {
+                            "KUWO" -> MusicRepository.Platform.KUWO
+                            "NETEASE" -> MusicRepository.Platform.NETEASE
+                            else -> MusicRepository.Platform.KUWO
+                        }
+                        val detail = cachedRepository.getSongUrlWithCache(
+                            platform = platform,
+                            songId = song.id,
+                            quality = quality,
+                            songName = song.name,
+                            artists = song.artists,
+                            useCache = true
                         )
-                        downloadManager.startDownload(task)
-                        successCount++
-                    } else {
-                        failCount++
+                        if (detail != null) {
+                            val task = dm.createDownloadTask(
+                                Song(
+                                    index = 0,
+                                    id = song.id,
+                                    name = song.name,
+                                    artists = song.artists,
+                                    coverUrl = detail.cover ?: song.coverUrl
+                                ),
+                                detail,
+                                quality,
+                                song.platform
+                            )
+                            dm.startDownload(task)
+                        }
+                    } catch (e: Exception) {
+                        // 忽略异常，继续处理下一首
                     }
-                } catch (e: Exception) {
-                    failCount++
                 }
             }
-
-            Toast.makeText(
-                this@FavoriteSongsActivity,
-                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
-                Toast.LENGTH_LONG
-            ).show()
-
-            exitMultiSelectMode()
         }
+
+        exitMultiSelectMode()
     }
 
     override fun onBackPressed() {
@@ -631,18 +747,24 @@ class FavoriteSongsActivity : AppCompatActivity() {
             private val tvIndex: TextView = itemView.findViewById(R.id.tvIndex)
             private val coverOverlay: View = itemView.findViewById(R.id.coverOverlay)
 
+            private fun isLocalSong(song: FavoriteSongEntity): Boolean {
+                return song.platform.equals("LOCAL", ignoreCase = true) || song.id.startsWith("local_")
+            }
+
             fun bind(song: FavoriteSongEntity, position: Int) {
                 tvSongName.text = song.name
                 tvArtist.text = song.artists
                 tvIndex.text = (position + 1).toString()
 
                 // 设置音源图标
-                val iconRes = when (song.platform.uppercase()) {
-                    "KUWO" -> R.drawable.ic_kuwo_logo
-                    "NETEASE" -> R.drawable.ic_netease_logo
+                val iconRes = when {
+                    isLocalSong(song) -> R.drawable.ic_local_music
+                    song.platform.uppercase() == "KUWO" -> R.drawable.ic_kuwo_logo
+                    song.platform.uppercase() == "NETEASE" -> R.drawable.ic_netease_logo
                     else -> R.drawable.ic_music_note
                 }
                 ivSource.setImageResource(iconRes)
+                ivSource.visibility = View.VISIBLE
 
                 // 加载封面
                 loadCover(song)
@@ -652,6 +774,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
                 if (isMultiSelectMode) {
                     flCheckbox.visibility = View.VISIBLE
                     tvIndex.visibility = View.GONE
+                    ivSource.visibility = View.GONE
                     ivCheckbox.isSelected = isSelected
                     updateSelectedVisuals(isSelected)
 
@@ -661,6 +784,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
                 } else {
                     flCheckbox.visibility = View.GONE
                     tvIndex.visibility = View.VISIBLE
+                    ivSource.visibility = View.VISIBLE
                     resetVisuals()
 
                     itemView.setOnClickListener { onItemClick(song) }
@@ -696,16 +820,33 @@ class FavoriteSongsActivity : AppCompatActivity() {
 
                 when {
                     coverUrl.isNullOrEmpty() -> {
+                        // LOCAL 歌曲无封面时不走在线下载
+                        if (isLocalSong(song)) {
+                            ivCover.setImageResource(R.drawable.ic_music_note)
+                            return
+                        }
+                        // 没有封面URL，尝试从网络获取
                         ivCover.setImageResource(R.drawable.ic_music_note)
+                        downloadAndCacheCover(song)
                     }
                     coverUrl.startsWith("http") -> {
+                        // 网络图片，使用 Glide 加载
                         Glide.with(itemView.context)
                             .load(coverUrl)
                             .placeholder(R.drawable.ic_music_note)
                             .error(R.drawable.ic_music_note)
                             .into(ivCover)
                     }
-                    else -> {
+                    coverUrl.startsWith("content://") || coverUrl.startsWith("file://") -> {
+                        // 本地 URI（MediaStore/SAF/file）
+                        Glide.with(itemView.context)
+                            .load(coverUrl)
+                            .placeholder(R.drawable.ic_music_note)
+                            .error(R.drawable.ic_music_note)
+                            .into(ivCover)
+                    }
+                    coverUrl.startsWith("/") -> {
+                        // 本地图片路径（以/开头的绝对路径）
                         try {
                             val file = File(coverUrl)
                             if (file.exists()) {
@@ -715,11 +856,89 @@ class FavoriteSongsActivity : AppCompatActivity() {
                                     .error(R.drawable.ic_music_note)
                                     .into(ivCover)
                             } else {
+                                // 本地文件不存在，尝试重新下载
                                 ivCover.setImageResource(R.drawable.ic_music_note)
+                                downloadAndCacheCover(song)
                             }
                         } catch (e: Exception) {
                             ivCover.setImageResource(R.drawable.ic_music_note)
+                            downloadAndCacheCover(song)
                         }
+                    }
+                    else -> {
+                        if (isLocalSong(song)) {
+                            ivCover.setImageResource(R.drawable.ic_music_note)
+                            return
+                        }
+                        // 相对路径（如酷我音乐的封面URL），需要解析为完整URL
+                        ivCover.setImageResource(R.drawable.ic_music_note)
+                        resolveAndLoadCover(song, coverUrl)
+                    }
+                }
+            }
+
+            private fun resolveAndLoadCover(song: FavoriteSongEntity, relativeUrl: String) {
+                if (isLocalSong(song)) {
+                    return
+                }
+                lifecycleScope.launch {
+                    try {
+                        val context = itemView.context
+                        val resolvedUrl = withContext(Dispatchers.IO) {
+                            com.tacke.music.utils.CoverUrlResolver.resolveCoverUrl(
+                                context,
+                                relativeUrl,
+                                song.id,
+                                song.platform
+                            )
+                        }
+
+                        if (resolvedUrl != null) {
+                            // 使用解析后的URL加载封面
+                            Glide.with(context)
+                                .load(resolvedUrl)
+                                .placeholder(R.drawable.ic_music_note)
+                                .error(R.drawable.ic_music_note)
+                                .into(ivCover)
+                        } else {
+                            // 解析失败，尝试下载缓存
+                            downloadAndCacheCover(song)
+                        }
+                    } catch (e: Exception) {
+                        // 解析失败，尝试下载缓存
+                        downloadAndCacheCover(song)
+                    }
+                }
+            }
+
+            private fun downloadAndCacheCover(song: FavoriteSongEntity) {
+                if (isLocalSong(song)) {
+                    return
+                }
+                lifecycleScope.launch {
+                    try {
+                        val context = itemView.context
+                        val localPath = CoverImageManager.downloadAndCacheCover(
+                            context,
+                            song.id,
+                            song.platform
+                        )
+
+                        if (localPath != null) {
+                            // 下载成功，更新UI
+                            withContext(Dispatchers.Main) {
+                                Glide.with(context)
+                                    .load(File(localPath))
+                                    .placeholder(R.drawable.ic_music_note)
+                                    .error(R.drawable.ic_music_note)
+                                    .into(ivCover)
+                            }
+
+                            // 更新数据库中的封面URL
+                            favoriteRepository.refreshFavoriteCovers()
+                        }
+                    } catch (e: Exception) {
+                        // 下载失败，保持默认图标
                     }
                 }
             }
@@ -741,12 +960,17 @@ class FavoriteSongsActivity : AppCompatActivity() {
     /**
      * Android 16: 设置 Edge-to-Edge 模式
      * 处理系统栏（状态栏和导航栏）的 insets
-     * 注意：布局中已添加 fitsSystemWindows="true"，这里处理额外的 insets 需求
+     * 为状态栏占位视图设置高度，防止内容被状态栏遮挡
      */
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 只为底部设置 padding，顶部由 fitsSystemWindows 处理
+
+            // 为状态栏占位视图设置高度
+            binding.statusBarPlaceholder.layoutParams.height = insets.top
+            binding.statusBarPlaceholder.requestLayout()
+
+            // 为底部设置 padding
             view.updatePadding(
                 bottom = insets.bottom
             )

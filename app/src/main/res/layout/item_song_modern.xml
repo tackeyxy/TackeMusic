@@ -115,8 +115,8 @@
                     <!-- 音源图标 -->
                     <ImageView
                         android:id="@+id/ivSource"
-                        android:layout_width="14dp"
-                        android:layout_height="14dp"
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
                         android:layout_marginEnd="4dp"
                         android:scaleType="fitCenter"
                         tools:src="@drawable/ic_netease_logo" />

@@ -18,7 +18,14 @@ data class NeteaseSearchResult(
 data class NeteaseSongItem(
     val id: Long?,
     val name: String?,
-    val ar: List<NeteaseArtist>?
+    val ar: List<NeteaseArtist>?,
+    val al: NeteaseAlbum?
+)
+
+data class NeteaseAlbum(
+    val id: Long?,
+    val name: String?,
+    val picUrl: String?
 )
 
 data class NeteaseArtist(

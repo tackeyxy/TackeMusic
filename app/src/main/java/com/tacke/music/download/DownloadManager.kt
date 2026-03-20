@@ -10,6 +10,7 @@ import com.tacke.music.data.model.DownloadTask
 import com.tacke.music.data.model.Song
 import com.tacke.music.data.model.SongDetail
 import com.tacke.music.ui.SettingsActivity
+import com.tacke.music.util.AudioTagHelper
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import okhttp3.OkHttpClient
@@ -128,7 +129,10 @@ class DownloadManager private constructor(private val context: Context) {
 
     fun createDownloadTask(song: Song, detail: SongDetail, quality: String, platform: String = "KUWO"): DownloadTask {
         val extension = getFileExtensionFromUrl(detail.url)
-        val fileName = "${detail.info.name}-${detail.info.artist}$extension"
+        // 优先使用 song 对象中的名称和艺术家信息，如果没有则使用 detail 中的信息
+        val songName = song.name.takeIf { it.isNotBlank() } ?: detail.info.name
+        val artist = song.artists.takeIf { it.isNotBlank() } ?: detail.info.artist
+        val fileName = "${songName}-${artist}$extension"
         val sanitizedFileName = sanitizeFileName(fileName)
         val downloadDir = getDownloadDirectory()
         if (!downloadDir.exists()) {
@@ -139,13 +143,14 @@ class DownloadManager private constructor(private val context: Context) {
         return DownloadTask(
             id = System.currentTimeMillis().toString(),
             songId = song.id,
-            songName = detail.info.name,
-            artist = detail.info.artist,
+            songName = songName,
+            artist = artist,
             coverUrl = song.coverUrl ?: detail.cover,
             url = detail.url,
             fileName = sanitizedFileName,
             filePath = filePath,
-            platform = platform
+            platform = platform,
+            quality = quality
         )
     }
 
@@ -164,15 +169,8 @@ class DownloadManager private constructor(private val context: Context) {
         return if (customPath != null) {
             File(customPath)
         } else {
-            // 使用应用私有目录，避免存储权限问题
-            // Android 10+ 推荐使用应用私有目录
-            val externalDir = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC)
-            if (externalDir != null) {
-                File(externalDir, DOWNLOAD_DIR)
-            } else {
-                // 回退到内部存储
-                File(context.filesDir, DOWNLOAD_DIR)
-            }
+            // 使用与设置界面显示的默认路径一致
+            File(SettingsActivity.getDefaultDownloadPath(context))
         }
     }
 
@@ -475,6 +473,9 @@ class DownloadManager private constructor(private val context: Context) {
 
             randomAccessFile.close()
             updateTaskProgress(task.id, totalRead)
+            
+            embedAudioMetadata(task)
+            
             completeDownload(task.id)
             Log.d(TAG, "Download completed successfully: ${task.songName}")
         } finally {
@@ -523,9 +524,48 @@ class DownloadManager private constructor(private val context: Context) {
     }
 
     private fun completeDownload(taskId: String) {
+        val completeTime = System.currentTimeMillis()
+        
+        val completedTask = _downloadingTasks.value.find { it.id == taskId }
+        if (completedTask != null) {
+            _completedTasks.value = listOf(completedTask.copy(
+                status = DownloadStatus.COMPLETED,
+                completeTime = completeTime
+            )) + _completedTasks.value
+        }
+        
+        _downloadingTasks.value = _downloadingTasks.value.filter { it.id != taskId }
+        
         scope.launch {
-            val completeTime = System.currentTimeMillis()
             downloadTaskDao.completeTask(taskId, completeTime)
+        }
+    }
+
+    private suspend fun embedAudioMetadata(task: DownloadTask) {
+        try {
+            Log.d(TAG, "Embedding metadata for: ${task.songName}, file: ${task.filePath}")
+
+            val file = File(task.filePath)
+            if (!file.exists()) {
+                Log.e(TAG, "File does not exist, cannot embed metadata: ${task.filePath}")
+                return
+            }
+
+            Log.d(TAG, "File size: ${file.length()} bytes, exists: ${file.exists()}, canWrite: ${file.canWrite()}")
+
+            val metadata = AudioTagHelper.AudioMetadata(
+                title = task.songName,
+                artist = task.artist,
+                album = null  // 当前数据源没有专辑信息，后续可以添加
+            )
+            val success = AudioTagHelper.embedMetadata(task.filePath, metadata)
+            if (success) {
+                Log.d(TAG, "Successfully embedded metadata for: ${task.songName}")
+            } else {
+                Log.w(TAG, "Failed to embed metadata for: ${task.songName}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error embedding metadata: ${e.message}", e)
         }
     }
 

@@ -14,7 +14,8 @@ data class KuwoSongItem(
     @SerializedName("DC_TARGETID") val dcTargetId: String?,
     @SerializedName("ARTIST") val artist: String?,
     @SerializedName("SONGNAME") val songName: String?,
-    @SerializedName("MUSICRID") val musicRid: String?
+    @SerializedName("MUSICRID") val musicRid: String?,
+    @SerializedName("web_albumpic_short") val webAlbumPicShort: String?
 )
 
 interface KuwoApi {

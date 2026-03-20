@@ -3,19 +3,66 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:gravity="center"
-    android:paddingVertical="12dp">
+    android:orientation="vertical"
+    android:paddingVertical="10dp">
 
-    <TextView
-        android:id="@+id/tvLyricLine"
-        android:layout_width="wrap_content"
+    <View
+        android:id="@+id/vJumpDashLine"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_lyric_jump_dash_line"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="歌词内容"
-        android:textSize="16sp"
-        android:textColor="@color/white"
-        android:gravity="center"
-        android:maxLines="2"
-        android:ellipsize="end"
-        tools:text="这是一句歌词" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/tvLyricLine"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:gravity="center"
+            android:maxLines="2"
+            android:text="歌词内容"
+            android:textAlignment="center"
+            android:textColor="@color/white"
+            android:textSize="16sp"
+            tools:text="这是一句歌词" />
+
+        <LinearLayout
+            android:id="@+id/layoutJumpAction"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvJumpTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:textColor="@color/white"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                tools:text="2:17" />
+
+            <ImageButton
+                android:id="@+id/btnJumpPlay"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="@drawable/bg_button_primary"
+                android:contentDescription="跳转播放"
+                android:padding="6dp"
+                android:src="@drawable/ic_play"
+                android:tint="@color/white" />
+        </LinearLayout>
+    </LinearLayout>
 
 </LinearLayout>

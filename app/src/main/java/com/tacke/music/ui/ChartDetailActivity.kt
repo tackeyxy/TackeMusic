@@ -3,6 +3,7 @@ package com.tacke.music.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -16,6 +17,8 @@ import com.tacke.music.R
 import com.tacke.music.data.api.ChartType
 import com.tacke.music.data.api.RetrofitClient
 import com.tacke.music.data.model.ChartSong
+import com.tacke.music.data.model.PlaylistSong
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
@@ -25,6 +28,7 @@ import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.ChartSongAdapter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -113,7 +117,8 @@ class ChartDetailActivity : AppCompatActivity() {
             ChartType.ORIGINAL -> R.drawable.bg_chart_original
             ChartType.HOT -> R.drawable.bg_chart_hot
         }
-        binding.toolbar.setBackgroundResource(backgroundRes)
+        binding.toolbarBackground.setBackgroundResource(backgroundRes)
+        binding.toolbar.setBackgroundColor(android.graphics.Color.TRANSPARENT)
     }
 
     private fun setupRecyclerView() {
@@ -133,7 +138,8 @@ class ChartDetailActivity : AppCompatActivity() {
                 } else {
                     false
                 }
-            }
+            },
+            lifecycleScope = lifecycleScope
         )
         binding.rvChartSongs.layoutManager = LinearLayoutManager(this)
         binding.rvChartSongs.adapter = adapter
@@ -162,6 +168,8 @@ class ChartDetailActivity : AppCompatActivity() {
     private fun showBatchActionBar() {
         binding.batchActionBarContainer.root.visibility = View.VISIBLE
         binding.btnPlayAll.visibility = View.GONE
+        // 隐藏清空按钮（榜单列表不需要清空功能）
+        binding.batchActionBarContainer.btnClearAll.visibility = View.GONE
         updateBatchActionBar()
         setupBatchActionListeners()
     }
@@ -256,6 +264,7 @@ class ChartDetailActivity : AppCompatActivity() {
 
     /**
      * 添加歌曲到播放列表并播放（榜单列表使用）
+     * 非下载管理页面，需要重新请求URL进行播放
      */
     private fun addToNowPlayingAndPlay(song: ChartSong) {
         lifecycleScope.launch {
@@ -267,12 +276,33 @@ class ChartDetailActivity : AppCompatActivity() {
                     else -> MusicRepository.Platform.KUWO
                 }
 
-                val repository = MusicRepository()
-                val detail = withContext(Dispatchers.IO) {
-                    repository.getSongDetail(platform, song.id, "320k")
+                val cachedRepository = CachedMusicRepository(this@ChartDetailActivity)
+
+                // 如果歌曲没有封面，尝试从网易云搜索获取封面
+                var coverUrl = song.cover
+                if (coverUrl.isNullOrEmpty()) {
+                    coverUrl = withContext(Dispatchers.IO) {
+                        cachedRepository.getCoverUrlFromNetease(song.name, song.artist)
+                    }
                 }
 
-                if (detail != null) {
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@ChartDetailActivity)
+
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                val detail = withContext(Dispatchers.IO) {
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = song.id,
+                        quality = playbackQuality,
+                        songName = song.name,
+                        artists = song.artist,
+                        useCache = true,
+                        coverUrlFromSearch = coverUrl
+                    )
+                }
+
+                if (detail != null && detail.url.isNotEmpty()) {
                     // 先添加到播放列表
                     val playlistManager = PlaylistManager.getInstance(this@ChartDetailActivity)
                     val songModel = com.tacke.music.data.model.Song(
@@ -280,18 +310,28 @@ class ChartDetailActivity : AppCompatActivity() {
                         id = song.id,
                         name = song.name,
                         artists = song.artist,
-                        coverUrl = song.cover
+                        coverUrl = detail.cover ?: coverUrl ?: song.cover
                     )
                     val playlistSong = playlistManager.convertToPlaylistSong(songModel, platform)
                     playlistManager.addSong(playlistSong)
 
-                    // 然后播放
-                    playbackManager.playFromSearch(this@ChartDetailActivity, songModel, platform, detail)
+                    // 然后播放 - 使用 playFromPlaylist 确保能重新开始播放
+                    playbackManager.playFromPlaylist(this@ChartDetailActivity, playlistSong, detail.url, detail)
                 } else {
-                    Toast.makeText(this@ChartDetailActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
+                    // 检查是否是API服务问题
+                    Toast.makeText(
+                        this@ChartDetailActivity,
+                        "无法获取歌曲播放链接，音乐服务可能暂时不可用，请稍后重试",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             } catch (e: Exception) {
-                Toast.makeText(this@ChartDetailActivity, "播放失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                val errorMessage = when {
+                    e.message?.contains("403") == true -> "音乐服务暂时不可用(403)，请稍后重试"
+                    e.message?.contains("HTTP") == true -> "网络服务异常，请稍后重试"
+                    else -> "播放失败: ${e.message}"
+                }
+                Toast.makeText(this@ChartDetailActivity, errorMessage, Toast.LENGTH_LONG).show()
             } finally {
                 binding.progressBar.visibility = View.GONE
             }
@@ -385,6 +425,30 @@ class ChartDetailActivity : AppCompatActivity() {
                     platform
                 )
                 playlistManager.addSong(playlistSong)
+
+                // 关键修复：预获取刚添加歌曲的URL并缓存
+                // 这样当用户进入播放页时，歌曲的URL已经准备好了
+                val cachedRepository = CachedMusicRepository(this@ChartDetailActivity)
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@ChartDetailActivity)
+                withContext(Dispatchers.IO) {
+                    try {
+                        Log.d("ChartDetailActivity", "预获取单曲URL: ${playlistSong.name}")
+                        cachedRepository.getSongUrlWithCache(
+                            platform = platform,
+                            songId = playlistSong.id,
+                            quality = playbackQuality,
+                            songName = playlistSong.name,
+                            artists = playlistSong.artists,
+                            useCache = true,
+                            coverUrlFromSearch = playlistSong.coverUrl
+                        )
+                        Log.d("ChartDetailActivity", "预获取URL完成: ${playlistSong.name}")
+                    } catch (e: Exception) {
+                        Log.e("ChartDetailActivity", "预获取URL失败: ${playlistSong.name}, ${e.message}")
+                    }
+                }
+
                 Toast.makeText(this@ChartDetailActivity, "已添加到正在播放列表", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this@ChartDetailActivity, "添加失败: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -552,9 +616,17 @@ class ChartDetailActivity : AppCompatActivity() {
                     "netease" -> MusicRepository.Platform.NETEASE
                     else -> MusicRepository.Platform.KUWO
                 }
-                val repository = MusicRepository()
+                // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
+                val cachedRepository = CachedMusicRepository(this@ChartDetailActivity)
                 val detail = withContext(Dispatchers.IO) {
-                    repository.getSongDetail(platform, song.id, quality)
+                    cachedRepository.getSongUrlWithCache(
+                        platform = platform,
+                        songId = song.id,
+                        quality = quality,
+                        songName = song.name,
+                        artists = song.artist,
+                        useCache = true
+                    )
                 }
                 if (detail != null) {
                     val platform = when (song.source.lowercase()) {
@@ -567,7 +639,7 @@ class ChartDetailActivity : AppCompatActivity() {
                         id = song.id,
                         name = song.name,
                         artists = song.artist,
-                        coverUrl = song.cover
+                        coverUrl = detail.cover ?: song.cover
                     )
                     val downloadManager = DownloadManager.getInstance(this@ChartDetailActivity)
                     val task = downloadManager.createDownloadTask(songModel, detail, quality, platform.name)
@@ -585,49 +657,54 @@ class ChartDetailActivity : AppCompatActivity() {
     }
 
     private fun batchDownloadSongs(selectedSongs: List<ChartSong>, quality: String) {
-        lifecycleScope.launch {
-            var successCount = 0
-            var failCount = 0
+        val context = applicationContext
+        val cachedRepository = CachedMusicRepository(context)
+        val dm = DownloadManager.getInstance(context)
 
+        // 立即显示添加下载任务提示
+        Toast.makeText(
+            this@ChartDetailActivity,
+            "已添加 ${selectedSongs.size} 首歌曲到下载队列",
+            Toast.LENGTH_SHORT
+        ).show()
+
+        // 使用 GlobalScope 确保 Activity 销毁后任务继续执行
+        GlobalScope.launch(Dispatchers.IO) {
             selectedSongs.forEach { song ->
-                try {
-                    val platform = when (song.source.lowercase()) {
-                        "kuwo" -> MusicRepository.Platform.KUWO
-                        "netease" -> MusicRepository.Platform.NETEASE
-                        else -> MusicRepository.Platform.KUWO
-                    }
-                    val repository = MusicRepository()
-                    val detail = withContext(Dispatchers.IO) {
-                        repository.getSongDetail(platform, song.id, quality)
-                    }
-                    if (detail != null) {
-                        val songModel = com.tacke.music.data.model.Song(
-                            index = 0,
-                            id = song.id,
-                            name = song.name,
+                launch {
+                    try {
+                        val platform = when (song.source.lowercase()) {
+                            "kuwo" -> MusicRepository.Platform.KUWO
+                            "netease" -> MusicRepository.Platform.NETEASE
+                            else -> MusicRepository.Platform.KUWO
+                        }
+                        val detail = cachedRepository.getSongUrlWithCache(
+                            platform = platform,
+                            songId = song.id,
+                            quality = quality,
+                            songName = song.name,
                             artists = song.artist,
-                            coverUrl = song.cover
+                            useCache = true
                         )
-                        val downloadManager = DownloadManager.getInstance(this@ChartDetailActivity)
-                        val task = downloadManager.createDownloadTask(songModel, detail, quality, platform.name)
-                        downloadManager.startDownload(task)
-                        successCount++
-                    } else {
-                        failCount++
+                        if (detail != null) {
+                            val songModel = com.tacke.music.data.model.Song(
+                                index = 0,
+                                id = song.id,
+                                name = song.name,
+                                artists = song.artist,
+                                coverUrl = detail.cover ?: song.cover
+                            )
+                            val task = dm.createDownloadTask(songModel, detail, quality, platform.name)
+                            dm.startDownload(task)
+                        }
+                    } catch (e: Exception) {
+                        // 忽略异常，继续处理下一首
                     }
-                } catch (e: Exception) {
-                    failCount++
                 }
             }
-
-            Toast.makeText(
-                this@ChartDetailActivity,
-                "批量下载开始: 成功 $successCount 首, 失败 $failCount 首",
-                Toast.LENGTH_LONG
-            ).show()
-
-            exitMultiSelectMode()
         }
+
+        exitMultiSelectMode()
     }
 
     private fun addSongsToFavorites(selectedSongs: List<ChartSong>) {
@@ -675,19 +752,21 @@ class ChartDetailActivity : AppCompatActivity() {
     }
 
     private fun addSongsToNowPlaying(selectedSongs: List<ChartSong>) {
+        // 立即退出多选模式，提升用户体验
+        exitMultiSelectMode()
+
         lifecycleScope.launch {
             try {
                 val playlistManager = PlaylistManager.getInstance(this@ChartDetailActivity)
-                var addedCount = 0
-                var duplicateCount = 0
 
-                selectedSongs.forEach { song ->
+                // 转换为播放列表歌曲
+                val playlistSongs = selectedSongs.map { song ->
                     val platform = when (song.source.lowercase()) {
                         "kuwo" -> MusicRepository.Platform.KUWO
                         "netease" -> MusicRepository.Platform.NETEASE
                         else -> MusicRepository.Platform.KUWO
                     }
-                    val playlistSong = playlistManager.convertToPlaylistSong(
+                    playlistManager.convertToPlaylistSong(
                         com.tacke.music.data.model.Song(
                             index = 0,
                             id = song.id,
@@ -697,21 +776,19 @@ class ChartDetailActivity : AppCompatActivity() {
                         ),
                         platform
                     )
-                    val currentList = playlistManager.currentPlaylist.value
-                    if (currentList.none { it.id == playlistSong.id }) {
-                        playlistManager.addSong(playlistSong)
-                        addedCount++
-                    } else {
-                        duplicateCount++
-                    }
                 }
+
+                // 使用批量添加方法，不触发自动播放，不预获取URL
+                // 新歌曲追加到列表末尾，不影响当前播放状态
+                val result = playbackManager.addPlaylistSongsWithoutPlay(playlistSongs)
+                val addedCount = result.first
+                val duplicateCount = result.second
 
                 val message = when {
                     duplicateCount > 0 -> "已添加 $addedCount 首，$duplicateCount 首已存在"
                     else -> "已添加 $addedCount 首歌曲到正在播放列表"
                 }
                 Toast.makeText(this@ChartDetailActivity, message, Toast.LENGTH_SHORT).show()
-                exitMultiSelectMode()
             } catch (e: Exception) {
                 Toast.makeText(
                     this@ChartDetailActivity,
@@ -734,15 +811,19 @@ class ChartDetailActivity : AppCompatActivity() {
     /**
      * Android 16: 设置 Edge-to-Edge 模式
      * 处理系统栏（状态栏和导航栏）的 insets
-     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
+     * 为状态栏占位视图设置高度，防止内容被状态栏遮挡
      */
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 为顶部 Toolbar 添加状态栏高度 padding
-            binding.toolbar.updatePadding(
-                top = insets.top
-            )
+
+            // 为状态栏占位视图设置高度
+            binding.statusBarPlaceholder.layoutParams.height = insets.top
+            binding.statusBarPlaceholder.requestLayout()
+
+            // 为工具栏设置顶部padding，使其延伸到状态栏下方
+            binding.toolbar.setPadding(0, insets.top, 0, 0)
+
             // 为底部设置 padding
             view.updatePadding(
                 bottom = insets.bottom

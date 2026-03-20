@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/batchActionBar"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:visibility="gone"
+    app:cardCornerRadius="24dp"
+    app:cardElevation="12dp"
+    app:cardBackgroundColor="@color/surface">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="6dp">
+
+        <!-- 选中数量显示 -->
+        <LinearLayout
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvSelectedCount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0"
+                android:textSize="16sp"
+                android:textColor="@color/primary"
+                android:textStyle="bold" />
+
+        </LinearLayout>
+
+        <View
+            android:layout_width="36dp"
+            android:layout_height="1dp"
+            android:layout_gravity="center_horizontal"
+            android:background="@color/divider_light" />
+
+        <!-- 关闭按钮 -->
+        <ImageButton
+            android:id="@+id/btnCloseBatch"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="center_horizontal"
+            android:src="@drawable/ic_close"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/text_secondary"
+            android:contentDescription="关闭" />
+
+        <View
+            android:layout_width="36dp"
+            android:layout_height="1dp"
+            android:layout_gravity="center_horizontal"
+            android:background="@color/divider_light" />
+
+        <!-- 全选 -->
+        <ImageButton
+            android:id="@+id/btnSelectAll"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="center_horizontal"
+            android:src="@drawable/ic_select_all"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/primary"
+            android:contentDescription="全选" />
+
+        <!-- 下载 -->
+        <ImageButton
+            android:id="@+id/btnBatchDownload"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="center_horizontal"
+            android:src="@drawable/ic_download"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/primary"
+            android:contentDescription="下载" />
+
+        <!-- 移除所选 -->
+        <ImageButton
+            android:id="@+id/btnBatchRemove"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="center_horizontal"
+            android:src="@drawable/ic_remove"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/error"
+            android:visibility="gone"
+            android:contentDescription="移除" />
+
+        <!-- 添加到喜欢 -->
+        <ImageButton
+            android:id="@+id/btnAddToFavorite"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="center_horizontal"
+            android:src="@drawable/ic_heart"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/primary"
+            android:contentDescription="喜欢" />
+
+        <!-- 添加到歌单 -->
+        <ImageButton
+            android:id="@+id/btnAddToPlaylist"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="center_horizontal"
+            android:src="@drawable/ic_playlist_add"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/primary"
+            android:contentDescription="添加到歌单" />
+
+        <!-- 加入播放 -->
+        <ImageButton
+            android:id="@+id/btnAddToNowPlaying"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="center_horizontal"
+            android:src="@drawable/ic_playlist_play"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/primary"
+            android:contentDescription="加入播放" />
+
+        <!-- 清空列表 -->
+        <ImageButton
+            android:id="@+id/btnClearAll"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_gravity="center_horizontal"
+            android:src="@drawable/ic_delete"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/error"
+            android:contentDescription="清空" />
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

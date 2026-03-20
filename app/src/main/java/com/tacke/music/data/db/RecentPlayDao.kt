@@ -27,4 +27,7 @@ interface RecentPlayDao {
 
     @Query("SELECT COUNT(*) FROM recent_plays")
     suspend fun getCount(): Int
+
+    @Query("UPDATE recent_plays SET coverUrl = :coverUrl WHERE id = :songId")
+    suspend fun updateCoverUrl(songId: String, coverUrl: String?)
 }

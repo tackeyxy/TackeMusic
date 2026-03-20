@@ -15,6 +15,16 @@
         android:padding="12dp"
         android:background="?attr/selectableItemBackground">
 
+        <!-- 右侧：音源图标 - 靠最右侧 -->
+        <ImageView
+            android:id="@+id/ivSource"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:scaleType="fitCenter"
+            tools:src="@drawable/ic_netease_logo" />
+
         <!-- 左侧：歌曲封面 + 信息 整体靠左 -->
         <LinearLayout
             android:id="@+id/llLeftContent"
@@ -22,7 +32,7 @@
             android:layout_height="wrap_content"
             android:layout_alignParentStart="true"
             android:layout_centerVertical="true"
-            android:layout_toStartOf="@id/llRightArea"
+            android:layout_toStartOf="@id/ivSource"
             android:layout_marginEnd="8dp"
             android:orientation="horizontal"
             android:gravity="center_vertical">
@@ -102,16 +112,6 @@
             </LinearLayout>
 
         </LinearLayout>
-
-        <!-- 右侧：音源图标 - 靠最右侧 -->
-        <ImageView
-            android:id="@+id/ivSource"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_alignParentEnd="true"
-            android:layout_centerVertical="true"
-            android:scaleType="fitCenter"
-            tools:src="@drawable/ic_netease_logo" />
 
     </RelativeLayout>
 

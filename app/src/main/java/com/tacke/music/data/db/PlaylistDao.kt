@@ -29,6 +29,9 @@ interface PlaylistDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlaylist(playlist: PlaylistEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPlaylists(playlists: List<PlaylistEntity>)
+
     @Update
     suspend fun updatePlaylist(playlist: PlaylistEntity)
 
@@ -43,6 +46,9 @@ interface PlaylistDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertPlaylistSongCrossRef(crossRef: PlaylistSongCrossRef)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPlaylistSongCrossRefs(crossRefs: List<PlaylistSongCrossRef>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPlaylistSongEntity(song: PlaylistSongEntity)
@@ -64,6 +70,12 @@ interface PlaylistDao {
 
     @Query("DELETE FROM playlist_song_cross_ref WHERE playlistId = :playlistId")
     suspend fun removeAllSongsFromPlaylist(playlistId: String)
+
+    @Query("DELETE FROM playlist_song_cross_ref")
+    suspend fun clearAllPlaylistSongCrossRefs()
+
+    @Query("DELETE FROM playlists")
+    suspend fun deleteAllPlaylists()
 
     @Query("SELECT EXISTS(SELECT 1 FROM playlist_song_cross_ref WHERE playlistId = :playlistId AND songId = :songId)")
     suspend fun isSongInPlaylist(playlistId: String, songId: String): Boolean
@@ -218,6 +230,13 @@ interface PlaylistDao {
 
     @Query("SELECT coverUrl FROM playlists WHERE id = :playlistId LIMIT 1")
     suspend fun getPlaylistCover(playlistId: String): String?
+
+    @Query("""
+        SELECT * FROM playlist_song_cross_ref
+        WHERE playlistId = :playlistId
+        ORDER BY orderIndex ASC
+    """)
+    suspend fun getPlaylistSongCrossRefs(playlistId: String): List<PlaylistSongCrossRef>
 
     @Query("UPDATE playlist_song_entities SET coverUrl = :coverUrl WHERE id = :songId")
     suspend fun updateSongCoverUrlBySongId(songId: String, coverUrl: String?)

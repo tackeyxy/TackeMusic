@@ -5,13 +5,16 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.cardview.widget.CardView
+import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.recyclerview.widget.RecyclerView
 import com.tacke.music.R
 import com.tacke.music.data.model.ChartSong
 
 class ChartSongAdapter(
     private val onItemClick: (ChartSong, Int) -> Unit,
-    private val onLongClick: ((ChartSong) -> Boolean)? = null
+    private val onLongClick: ((ChartSong) -> Boolean)? = null,
+    private val lifecycleScope: LifecycleCoroutineScope? = null
 ) : RecyclerView.Adapter<ChartSongAdapter.ViewHolder>() {
 
     private var songs: List<ChartSong> = emptyList()

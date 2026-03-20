@@ -13,16 +13,18 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
         tools:ignore="ScopedStorage" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- Android 16: 前台服务权限要求更严格 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <!-- Android 16: 添加前台服务数据同步权限（如需要） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 悬浮窗权限 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- APK下载和安装权限 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- 读取系统日志权限（Android 4.1+ 需要此权限来捕获日志） -->
     <uses-permission android:name="android.permission.READ_LOGS"
         tools:ignore="ProtectedPermissions" />
@@ -41,7 +43,8 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
-            android:screenOrientation="portrait">
+            android:screenOrientation="portrait"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -58,7 +61,9 @@
         <activity
             android:name=".ui.ProfileActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.TackeMusic"
+            android:launchMode="singleTop" />
 
         <activity
             android:name=".ui.LyricsActivity"
@@ -70,6 +75,12 @@
             android:name=".ui.SettingsActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".ui.BackupRestoreActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="备份与恢复" />
 
         <activity
             android:name=".ui.LyricSettingsActivity"
@@ -113,6 +124,12 @@
             android:screenOrientation="portrait" />
 
         <activity
+            android:name=".ui.LocalMusicActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.TackeMusic" />
+
+        <activity
             android:name=".ui.LogViewerActivity"
             android:exported="false"
             android:screenOrientation="portrait"
@@ -139,12 +156,12 @@
             android:foregroundServiceType="mediaPlayback"
             android:permission="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
+        <!-- 悬浮歌词服务 -->
         <service
             android:name=".service.FloatingLyricsService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback"
-            android:permission="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- FileProvider for APK installation -->
         <provider

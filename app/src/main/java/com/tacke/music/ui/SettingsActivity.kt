@@ -18,6 +18,7 @@ import com.tacke.music.R
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.databinding.ActivitySettingsBinding
 import com.tacke.music.databinding.DialogDownloadPathBinding
+import kotlinx.coroutines.launch
 import java.io.File
 
 class SettingsActivity : AppCompatActivity() {
@@ -30,14 +31,33 @@ class SettingsActivity : AppCompatActivity() {
         const val KEY_DOWNLOAD_PATH = "download_path"
         const val KEY_LYRIC_COLOR = "lyric_color"
         const val KEY_CONCURRENT_DOWNLOADS = "concurrent_downloads"
+        const val KEY_PLAYBACK_QUALITY = "playback_quality"
+        const val KEY_CACHE_EXPIRY_DAYS = "cache_expiry_days"
 
         // 默认歌词颜色（青色）
         const val DEFAULT_LYRIC_COLOR = 0xFF00CED1.toInt()
+
+        // 默认缓存过期时间（7天）
+        const val DEFAULT_CACHE_EXPIRY_DAYS = 7
+        const val MIN_CACHE_EXPIRY_DAYS = 1
+        const val MAX_CACHE_EXPIRY_DAYS = 30
 
         // 默认同时下载个数
         const val DEFAULT_CONCURRENT_DOWNLOADS = 3
         const val MIN_CONCURRENT_DOWNLOADS = 1
         const val MAX_CONCURRENT_DOWNLOADS = 5
+
+        // 默认试听音质（在线播放音质）
+        const val DEFAULT_PLAYBACK_QUALITY = "320k"
+
+        // 试听音质选项
+        val PLAYBACK_QUALITY_OPTIONS = listOf(
+            "flac24bit" to "HR (24bit FLAC)",
+            "flac" to "CDA (FLAC)",
+            "320k" to "HQ (320K)",
+            "192k" to "MQ (192K)",
+            "128k" to "LQ (128K)"
+        )
 
         // 预设歌词颜色列表
         val PRESET_LYRIC_COLORS = listOf(
@@ -102,6 +122,41 @@ class SettingsActivity : AppCompatActivity() {
             prefs.edit().putInt(KEY_CONCURRENT_DOWNLOADS, validCount).apply()
         }
 
+        fun getPlaybackQuality(context: Context): String {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getString(KEY_PLAYBACK_QUALITY, DEFAULT_PLAYBACK_QUALITY) ?: DEFAULT_PLAYBACK_QUALITY
+        }
+
+        fun setPlaybackQuality(context: Context, quality: String) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putString(KEY_PLAYBACK_QUALITY, quality).apply()
+        }
+
+        // 兼容旧代码的别名方法
+        fun getDefaultDownloadQuality(context: Context): String = getPlaybackQuality(context)
+        fun setDefaultDownloadQuality(context: Context, quality: String) = setPlaybackQuality(context, quality)
+
+        // 缓存过期时间选项（只保留1日、7日、15日、30日）
+        val CACHE_EXPIRY_OPTIONS = listOf(1, 7, 15, 30)
+
+        fun getCacheExpiryDays(context: Context): Int {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val savedDays = prefs.getInt(KEY_CACHE_EXPIRY_DAYS, DEFAULT_CACHE_EXPIRY_DAYS)
+            // 如果保存的值不在有效选项中，返回最接近的选项值
+            return if (CACHE_EXPIRY_OPTIONS.contains(savedDays)) {
+                savedDays
+            } else {
+                // 找到最接近的选项值
+                CACHE_EXPIRY_OPTIONS.minByOrNull { kotlin.math.abs(it - savedDays) } ?: DEFAULT_CACHE_EXPIRY_DAYS
+            }
+        }
+
+        fun setCacheExpiryDays(context: Context, days: Int) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val validDays = days.coerceIn(MIN_CACHE_EXPIRY_DAYS, MAX_CACHE_EXPIRY_DAYS)
+            prefs.edit().putInt(KEY_CACHE_EXPIRY_DAYS, validDays).apply()
+        }
+
         fun getDefaultDownloadPath(context: Context): String {
             return File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -153,8 +208,9 @@ class SettingsActivity : AppCompatActivity() {
         setupClickListeners()
         updateDefaultSourceText()
         updateDownloadPathText()
-        updateLyricColorPreview()
         updateConcurrentDownloadsText()
+        updatePlaybackQualityText()
+        updateCacheExpiryText()
         updateCurrentVersionText()
     }
 
@@ -191,8 +247,92 @@ class SettingsActivity : AppCompatActivity() {
             showConcurrentDownloadsDialog()
         }
 
+        binding.layoutPlaybackQuality.setOnClickListener {
+            showPlaybackQualityDialog()
+        }
+
+        binding.layoutCacheExpiry.setOnClickListener {
+            showCacheExpiryDialog()
+        }
+
+        binding.layoutBackupRestore.setOnClickListener {
+            startActivity(Intent(this, BackupRestoreActivity::class.java))
+        }
+
         binding.layoutCheckUpdate.setOnClickListener {
             startActivity(Intent(this, UpdateCheckActivity::class.java))
+        }
+    }
+
+    private fun updatePlaybackQualityText() {
+        val currentQuality = getPlaybackQuality(this)
+        val qualityLabel = PLAYBACK_QUALITY_OPTIONS.find { it.first == currentQuality }?.second ?: "HQ (320K)"
+        binding.tvPlaybackQualityValue.text = qualityLabel
+    }
+
+    private fun updateCacheExpiryText() {
+        val currentDays = getCacheExpiryDays(this)
+        binding.tvCacheExpiryValue.text = "$currentDays 天"
+    }
+
+    private fun showCacheExpiryDialog() {
+        val currentDays = getCacheExpiryDays(this)
+        val options = CACHE_EXPIRY_OPTIONS.map { "$it 天" }.toTypedArray()
+        val currentIndex = CACHE_EXPIRY_OPTIONS.indexOf(currentDays).coerceAtLeast(0)
+
+        // 创建自定义对话框视图
+        val dialogView = layoutInflater.inflate(R.layout.dialog_cache_expiry, null)
+
+        // 立即清除按钮
+        val btnClearNow = dialogView.findViewById<android.widget.Button>(R.id.btnClearNow)
+        btnClearNow?.setOnClickListener {
+            clearImageCache()
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("选择缓存过期时间")
+            .setView(dialogView)
+            .setSingleChoiceItems(options, currentIndex) { dialog, which ->
+                val selectedDays = CACHE_EXPIRY_OPTIONS[which]
+                setCacheExpiryDays(this, selectedDays)
+                updateCacheExpiryText()
+
+                Toast.makeText(this, "缓存过期时间已设置为: $selectedDays 天", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /**
+     * 清除图片缓存（只清除缓存在本地的图片，不影响数据库中的数据）
+     */
+    private fun clearImageCache() {
+        lifecycleScope.launch {
+            try {
+                val success = com.tacke.music.utils.CoverImageManager.clearAllCache(this@SettingsActivity)
+                if (success) {
+                    val cacheSize = com.tacke.music.utils.CoverImageManager.getCacheSize(this@SettingsActivity)
+                    val sizeText = formatCacheSize(cacheSize)
+                    Toast.makeText(this@SettingsActivity, "图片缓存已清除，当前缓存大小: $sizeText", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@SettingsActivity, "清除缓存失败", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@SettingsActivity, "清除缓存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /**
+     * 格式化缓存大小显示
+     */
+    private fun formatCacheSize(sizeBytes: Long): String {
+        return when {
+            sizeBytes >= 1024 * 1024 * 1024 -> String.format("%.2f GB", sizeBytes / (1024.0 * 1024.0 * 1024.0))
+            sizeBytes >= 1024 * 1024 -> String.format("%.2f MB", sizeBytes / (1024.0 * 1024.0))
+            sizeBytes >= 1024 -> String.format("%.2f KB", sizeBytes / 1024.0)
+            else -> "$sizeBytes B"
         }
     }
 
@@ -226,9 +366,23 @@ class SettingsActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun updateLyricColorPreview() {
-        val currentColor = getLyricColor(this)
-        binding.viewLyricColorPreview.setBackgroundColor(currentColor)
+    private fun showPlaybackQualityDialog() {
+        val currentQuality = getPlaybackQuality(this)
+        val options = PLAYBACK_QUALITY_OPTIONS.map { it.second }.toTypedArray()
+        val currentIndex = PLAYBACK_QUALITY_OPTIONS.indexOfFirst { it.first == currentQuality }.coerceAtLeast(0)
+
+        AlertDialog.Builder(this)
+            .setTitle("选择试听音质")
+            .setSingleChoiceItems(options, currentIndex) { dialog, which ->
+                val selectedQuality = PLAYBACK_QUALITY_OPTIONS[which].first
+                setPlaybackQuality(this, selectedQuality)
+                updatePlaybackQualityText()
+
+                Toast.makeText(this, "试听音质已设置为: ${PLAYBACK_QUALITY_OPTIONS[which].second}", Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun showLyricColorPickerDialog() {
@@ -302,7 +456,6 @@ class SettingsActivity : AppCompatActivity() {
         // 确认按钮
         dialogView.findViewById<android.widget.Button>(R.id.btnConfirm)?.setOnClickListener {
             setLyricColor(this, selectedColor)
-            updateLyricColorPreview()
             Toast.makeText(this, "歌词颜色已更新", Toast.LENGTH_SHORT).show()
             dialog.dismiss()
         }
@@ -406,15 +559,16 @@ class SettingsActivity : AppCompatActivity() {
     /**
      * Android 16: 设置 Edge-to-Edge 模式
      * 处理系统栏（状态栏和导航栏）的 insets
-     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
+     * 为状态栏占位视图设置高度，防止内容被状态栏遮挡
      */
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 为顶部 Toolbar 添加状态栏高度 padding
-            binding.toolbar.updatePadding(
-                top = insets.top
-            )
+
+            // 为状态栏占位视图设置高度
+            binding.statusBarPlaceholder.layoutParams.height = insets.top
+            binding.statusBarPlaceholder.requestLayout()
+
             // 为底部设置 padding
             view.updatePadding(
                 bottom = insets.bottom

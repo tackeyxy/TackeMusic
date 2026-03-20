@@ -5,16 +5,24 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@color/background"
-    android:fitsSystemWindows="true">
+    android:fitsSystemWindows="false">
+
+    <!-- 状态栏占位 -->
+    <View
+        android:id="@+id/statusBarPlaceholder"
+        android:layout_width="match_parent"
+        android:layout_height="0dp" />
 
     <!-- 顶部标题栏 -->
     <LinearLayout
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="16dp">
+        android:paddingHorizontal="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
 
         <ImageButton
             android:id="@+id/btnBack"
@@ -116,12 +124,6 @@
                 android:textSize="15sp"
                 android:textColor="@color/text_primary" />
 
-            <View
-                android:id="@+id/viewLyricColorPreview"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:background="@drawable/bg_color_circle" />
-
             <ImageView
                 android:layout_width="20dp"
                 android:layout_height="20dp"
@@ -166,6 +168,133 @@
                 android:text="3"
                 android:textSize="14sp"
                 android:textColor="@color/text_secondary" />
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_chevron_right"
+                android:tint="@color/text_hint" />
+
+        </LinearLayout>
+
+        <!-- 试听音质设置 -->
+        <LinearLayout
+            android:id="@+id/layoutPlaybackQuality"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_card_rounded"
+            android:paddingHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_quality"
+                android:tint="@color/primary" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:text="试听音质"
+                android:textSize="15sp"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                android:id="@+id/tvPlaybackQualityValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="HQ (320K)"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary" />
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_chevron_right"
+                android:tint="@color/text_hint" />
+
+        </LinearLayout>
+
+        <!-- 缓存过期时间设置 -->
+        <LinearLayout
+            android:id="@+id/layoutCacheExpiry"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_card_rounded"
+            android:paddingHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_timer"
+                android:tint="@color/primary" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:text="缓存过期时间"
+                android:textSize="15sp"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                android:id="@+id/tvCacheExpiryValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="7 天"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary" />
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_chevron_right"
+                android:tint="@color/text_hint" />
+
+        </LinearLayout>
+
+        <!-- 备份与恢复 -->
+        <LinearLayout
+            android:id="@+id/layoutBackupRestore"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_card_rounded"
+            android:paddingHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_download"
+                android:tint="@color/primary" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:text="备份与恢复"
+                android:textSize="15sp"
+                android:textColor="@color/text_primary" />
 
             <ImageView
                 android:layout_width="20dp"

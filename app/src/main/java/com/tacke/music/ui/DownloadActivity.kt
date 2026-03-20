@@ -2,6 +2,7 @@ package com.tacke.music.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -17,14 +18,21 @@ import com.google.android.material.tabs.TabLayout
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
 import com.tacke.music.data.model.DownloadTask
+import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
+import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.FavoriteRepository
+import com.tacke.music.data.repository.ListCoverRepairManager
+import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityDownloadBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
+import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.DownloadTaskAdapter
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class DownloadActivity : AppCompatActivity() {
 
@@ -33,6 +41,7 @@ class DownloadActivity : AppCompatActivity() {
     private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var playlistRepository: PlaylistRepository
     private lateinit var playbackManager: PlaybackManager
+    private lateinit var listCoverRepairManager: ListCoverRepairManager
     private lateinit var downloadingAdapter: DownloadTaskAdapter
     private lateinit var historyAdapter: DownloadTaskAdapter
     private var isMultiSelectMode = false
@@ -49,12 +58,19 @@ class DownloadActivity : AppCompatActivity() {
         favoriteRepository = FavoriteRepository(this)
         playlistRepository = PlaylistRepository(this)
         playbackManager = PlaybackManager.getInstance(this)
+        listCoverRepairManager = ListCoverRepairManager.getInstance(this)
 
         setupToolbar()
         setupTabLayout()
         setupRecyclerViews()
         setupBatchActions()
         observeDownloadData()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        listCoverRepairManager.repairDownloadingListAsync()
+        listCoverRepairManager.repairDownloadHistoryAsync()
     }
 
     private fun setupToolbar() {
@@ -113,7 +129,8 @@ class DownloadActivity : AppCompatActivity() {
                 } else {
                     false
                 }
-            }
+            },
+            lifecycleScope = lifecycleScope
         )
 
         // 下载历史适配器
@@ -139,7 +156,8 @@ class DownloadActivity : AppCompatActivity() {
                 } else {
                     false
                 }
-            }
+            },
+            lifecycleScope = lifecycleScope
         )
 
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
@@ -232,6 +250,66 @@ class DownloadActivity : AppCompatActivity() {
         binding.batchActionBarContainer.btnClearAll.setOnClickListener {
             showClearAllConfirmDialog()
         }
+
+        // 移除所选按钮 - 仅移除选中项，不删除文件
+        binding.batchActionBarContainer.btnBatchRemove.setOnClickListener {
+            showBatchRemoveDialog()
+        }
+    }
+
+    private fun showBatchRemoveDialog() {
+        val isDownloadingTab = binding.tabLayout.selectedTabPosition == 0
+        val selectedTasks = if (isDownloadingTab) {
+            downloadingAdapter.getSelectedTasks()
+        } else {
+            historyAdapter.getSelectedTasks()
+        }
+
+        if (selectedTasks.isEmpty()) {
+            Toast.makeText(this, "请先选择要移除的项目", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 正在下载页面：直接移除，不删除文件
+        if (isDownloadingTab) {
+            val title = "移除下载任务"
+            val message = "确定要移除选中的 ${selectedTasks.size} 个下载任务吗？\n（不会删除已下载的文件）"
+
+            MaterialAlertDialogBuilder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton("移除") { _, _ ->
+                    downloadManager.deleteDownloads(selectedTasks, deleteFile = false)
+                    Toast.makeText(this, "已移除 ${selectedTasks.size} 个任务", Toast.LENGTH_SHORT).show()
+                    exitMultiSelectMode()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+            return
+        }
+
+        // 下载历史页面：显示选项让用户选择操作方式
+        val options = arrayOf("仅清除记录", "同时删除文件")
+        var selectedOption = 0
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("移除下载记录 (${selectedTasks.size} 项)")
+            .setSingleChoiceItems(options, selectedOption) { _, which ->
+                selectedOption = which
+            }
+            .setPositiveButton("确定") { _, _ ->
+                val deleteFile = selectedOption == 1
+                downloadManager.deleteDownloads(selectedTasks, deleteFile)
+                val message = if (deleteFile) {
+                    "已删除 ${selectedTasks.size} 个记录及文件"
+                } else {
+                    "已清除 ${selectedTasks.size} 个记录"
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                exitMultiSelectMode()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun showClearAllConfirmDialog() {
@@ -389,12 +467,14 @@ class DownloadActivity : AppCompatActivity() {
         // 根据当前标签页设置适配器
         if (binding.tabLayout.selectedTabPosition == 0) {
             downloadingAdapter.setMultiSelectMode(true)
-            // 正在下载页面显示下载按钮（用于删除任务）
-            binding.batchActionBarContainer.btnBatchDownload.visibility = View.VISIBLE
+            // 正在下载页面：隐藏下载按钮，显示移除按钮
+            binding.batchActionBarContainer.btnBatchDownload.visibility = View.GONE
+            binding.batchActionBarContainer.btnBatchRemove.visibility = View.VISIBLE
         } else {
             historyAdapter.setMultiSelectMode(true)
-            // 下载历史页面隐藏下载按钮（已下载的文件不需要再下载）
+            // 下载历史页面：隐藏下载按钮，显示移除按钮
             binding.batchActionBarContainer.btnBatchDownload.visibility = View.GONE
+            binding.batchActionBarContainer.btnBatchRemove.visibility = View.VISIBLE
         }
 
         updateSelectedCount(0)
@@ -408,8 +488,9 @@ class DownloadActivity : AppCompatActivity() {
         downloadingAdapter.setMultiSelectMode(false)
         historyAdapter.setMultiSelectMode(false)
 
-        // 恢复下载按钮的可见性
+        // 恢复按钮的默认可见性
         binding.batchActionBarContainer.btnBatchDownload.visibility = View.VISIBLE
+        binding.batchActionBarContainer.btnBatchRemove.visibility = View.GONE
     }
 
     private fun updateSelectedCount(count: Int) {
@@ -488,6 +569,9 @@ class DownloadActivity : AppCompatActivity() {
 
             if (hasLocalFile) {
                 // 本地文件存在，使用带平台信息的播放方法
+                // 优先使用任务保存的音质
+                val quality = task.quality.takeIf { it.isNotBlank() }
+                    ?: SettingsActivity.getPlaybackQuality(this@DownloadActivity)
                 playbackManager.playFromDownloadWithPlatform(
                     context = this@DownloadActivity,
                     songId = task.songId,
@@ -495,27 +579,43 @@ class DownloadActivity : AppCompatActivity() {
                     artist = task.artist,
                     coverUrl = task.coverUrl,
                     playUrl = task.filePath,
-                    platform = task.platform
+                    platform = task.platform,
+                    quality = quality
                 )
             } else {
                 // 本地文件不存在，使用平台信息获取在线歌曲
                 val platform = playbackManager.getValidPlatform(task.platform)
 
-                // 获取歌曲详情（用于歌词和封面）
+                // 使用带缓存的Repository获取歌曲详情（用于歌词和封面）
+                // 优先使用任务保存的音质，如果没有则使用用户设置的听音质
+                val quality = task.quality.takeIf { it.isNotBlank() }
+                    ?: SettingsActivity.getPlaybackQuality(this@DownloadActivity)
+                val cachedRepository = CachedMusicRepository(this@DownloadActivity)
                 val detail = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    com.tacke.music.data.repository.MusicRepository().getSongDetail(platform, task.songId, "320k")
+                    cachedRepository.getSongDetail(
+                        platform = platform,
+                        songId = task.songId,
+                        quality = quality,
+                        songName = task.songName,
+                        artists = task.artist,
+                        coverUrlFromSearch = task.coverUrl
+                    )
                 }
 
                 if (detail != null) {
+                    // 优先使用任务保存的音质
+                    val quality = task.quality.takeIf { it.isNotBlank() }
+                        ?: SettingsActivity.getPlaybackQuality(this@DownloadActivity)
                     playbackManager.playFromDownload(
                         context = this@DownloadActivity,
                         songId = task.songId,
                         songName = task.songName,
                         artist = task.artist,
-                        coverUrl = task.coverUrl,
+                        coverUrl = detail.cover ?: task.coverUrl,
                         playUrl = detail.url,
                         platform = platform,
-                        songDetail = detail
+                        songDetail = detail,
+                        quality = quality
                     )
                 } else {
                     Toast.makeText(this@DownloadActivity, "获取歌曲信息失败，可能音源不可用", Toast.LENGTH_SHORT).show()
@@ -530,6 +630,7 @@ class DownloadActivity : AppCompatActivity() {
         lifecycleScope.launch {
             var addedCount = 0
             var duplicateCount = 0
+            val addedSongs = mutableListOf<Pair<PlaylistSong, MusicRepository.Platform>>()
 
             tasks.forEach { task ->
                 // 使用任务中保存的平台信息
@@ -546,9 +647,36 @@ class DownloadActivity : AppCompatActivity() {
                 val currentList = playlistManager.currentPlaylist.value
                 if (currentList.none { it.id == playlistSong.id }) {
                     playlistManager.addSong(playlistSong)
+                    addedSongs.add(Pair(playlistSong, validPlatform))
                     addedCount++
                 } else {
                     duplicateCount++
+                }
+            }
+
+            // 关键修复：预获取第一首新增歌曲的URL并缓存
+            // 这样当用户进入播放页时，第一首歌的URL已经准备好了
+            if (addedSongs.isNotEmpty()) {
+                val (firstSong, firstPlatform) = addedSongs.first()
+                val cachedRepository = CachedMusicRepository(this@DownloadActivity)
+                // 获取用户设置的试听音质
+                val playbackQuality = SettingsActivity.getPlaybackQuality(this@DownloadActivity)
+                withContext(Dispatchers.IO) {
+                    try {
+                        Log.d("DownloadActivity", "预获取第一首歌曲URL: ${firstSong.name}")
+                        cachedRepository.getSongUrlWithCache(
+                            platform = firstPlatform,
+                            songId = firstSong.id,
+                            quality = playbackQuality,
+                            songName = firstSong.name,
+                            artists = firstSong.artists,
+                            useCache = true,
+                            coverUrlFromSearch = firstSong.coverUrl
+                        )
+                        Log.d("DownloadActivity", "预获取URL完成: ${firstSong.name}")
+                    } catch (e: Exception) {
+                        Log.e("DownloadActivity", "预获取URL失败: ${firstSong.name}, ${e.message}")
+                    }
                 }
             }
 
@@ -628,15 +756,16 @@ class DownloadActivity : AppCompatActivity() {
     /**
      * Android 16: 设置 Edge-to-Edge 模式
      * 处理系统栏（状态栏和导航栏）的 insets
-     * 为顶部 Toolbar 添加状态栏高度 padding，防止内容被状态栏遮挡
+     * 为状态栏占位视图设置高度，防止内容被状态栏遮挡
      */
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            // 为顶部 Toolbar 添加状态栏高度 padding
-            binding.toolbar.updatePadding(
-                top = insets.top
-            )
+
+            // 为状态栏占位视图设置高度
+            binding.statusBarPlaceholder.layoutParams.height = insets.top
+            binding.statusBarPlaceholder.requestLayout()
+
             // 为底部设置 padding
             view.updatePadding(
                 bottom = insets.bottom
