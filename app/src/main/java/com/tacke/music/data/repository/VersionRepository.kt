@@ -1,6 +1,7 @@
 package com.tacke.music.data.repository
 
 import android.content.Context
+import com.tacke.music.BuildConfig
 import com.tacke.music.data.model.VersionInfo
 import com.tacke.music.ui.NewVersionActivity
 import com.tacke.music.util.AppLogger
@@ -59,9 +60,13 @@ class VersionRepository(private val context: Context) {
     /**
      * 检查版本更新
      * @param currentVersionCode 当前APP版本号
+     * @param currentVersionName 当前APP版本名
      * @return 如果有新版本返回VersionInfo，否则返回null
      */
-    suspend fun checkForUpdate(currentVersionCode: Int): Result<VersionInfo?> = withContext(Dispatchers.IO) {
+    suspend fun checkForUpdate(
+        currentVersionCode: Int,
+        currentVersionName: String = BuildConfig.VERSION_NAME
+    ): Result<VersionInfo?> = withContext(Dispatchers.IO) {
         try {
             AppLogger.d(TAG, "Checking for update, current version: $currentVersionCode")
 
@@ -83,6 +88,14 @@ class VersionRepository(private val context: Context) {
             AppLogger.d(TAG, "Version response length: ${responseBody.length}")
 
             val versionResponse = json.decodeFromString<com.tacke.music.data.model.VersionResponse>(responseBody)
+            AppLogger.d(
+                TAG,
+                "Parsed version response: status=${versionResponse.status}, " +
+                    "remoteVersionCode=${versionResponse.data.versionCode}, " +
+                    "remoteVersionName=${versionResponse.data.versionName}, " +
+                    "ignoredVersionCode=${getIgnoredVersionCode()}, " +
+                    "versionUrl=$versionUrl"
+            )
 
             if (versionResponse.status != 200) {
                 return@withContext Result.failure(Exception("API error: ${versionResponse.status}"))
@@ -91,13 +104,28 @@ class VersionRepository(private val context: Context) {
             val latestVersion = versionResponse.data
 
             // 检查是否有新版本
-            if (latestVersion.versionCode > currentVersionCode) {
-                // 检查是否被忽略
-                val ignoredVersionCode = getIgnoredVersionCode()
-                if (latestVersion.versionCode <= ignoredVersionCode) {
-                    AppLogger.d(TAG, "Version ${latestVersion.versionCode} was ignored")
-                    return@withContext Result.success(null)
+            val versionCodeUpdated = latestVersion.versionCode > currentVersionCode
+            val versionNameUpdated = latestVersion.versionCode == currentVersionCode &&
+                compareVersionNames(latestVersion.versionName, currentVersionName) > 0
+
+            if (versionCodeUpdated || versionNameUpdated) {
+                if (!versionCodeUpdated && versionNameUpdated) {
+                    AppLogger.w(
+                        TAG,
+                        "Version code unchanged but version name is newer: " +
+                            "remote=${latestVersion.versionName}, current=$currentVersionName"
+                    )
                 }
+
+                // 仅对 versionCode 真正变大的版本应用忽略逻辑，避免 versionName 升级被旧忽略值误伤
+                if (versionCodeUpdated) {
+                    val ignoredVersionCode = getIgnoredVersionCode()
+                    if (latestVersion.versionCode <= ignoredVersionCode) {
+                        AppLogger.d(TAG, "Version ${latestVersion.versionCode} was ignored")
+                        return@withContext Result.success(null)
+                    }
+                }
+
                 return@withContext Result.success(latestVersion)
             }
 
@@ -131,5 +159,28 @@ class VersionRepository(private val context: Context) {
     fun clearIgnoredVersion() {
         prefs.edit().remove(KEY_IGNORED_VERSION_CODE).apply()
         AppLogger.d(TAG, "Cleared ignored version")
+    }
+
+    /**
+     * 比较版本名大小，支持 1.0.15 这类点分版本号。
+     */
+    private fun compareVersionNames(remote: String, current: String): Int {
+        val remoteParts = normalizeVersionName(remote).split('.')
+        val currentParts = normalizeVersionName(current).split('.')
+        val maxLength = maxOf(remoteParts.size, currentParts.size)
+
+        for (index in 0 until maxLength) {
+            val remotePart = remoteParts.getOrNull(index)?.toIntOrNull() ?: 0
+            val currentPart = currentParts.getOrNull(index)?.toIntOrNull() ?: 0
+            if (remotePart != currentPart) {
+                return remotePart - currentPart
+            }
+        }
+
+        return 0
+    }
+
+    private fun normalizeVersionName(versionName: String): String {
+        return versionName.trim().removePrefix("v").removePrefix("V")
     }
 }

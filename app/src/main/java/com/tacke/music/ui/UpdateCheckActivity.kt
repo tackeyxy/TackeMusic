@@ -314,6 +314,7 @@ class UpdateCheckActivity : AppCompatActivity() {
                 val selectedChannel = channelValues[which]
                 if (selectedChannel != currentChannel) {
                     setUpdateChannel(this, selectedChannel)
+                    versionRepository.clearIgnoredVersion()
                     displayCurrentVersion()
                     Toast.makeText(this, "已切换到${channels[which]}", Toast.LENGTH_SHORT).show()
                     // 重新检查更新
