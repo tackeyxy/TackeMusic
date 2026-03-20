@@ -68,6 +68,7 @@ import com.tacke.music.util.ImmersiveStatusBarHelper
 import com.tacke.music.utils.CoverUrlResolver
 import com.tacke.music.utils.CoverImageManager
 import com.tacke.music.utils.LyricStyleSettings
+import com.tacke.music.utils.PermissionHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -120,6 +121,7 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var playlistRepository: PlaylistRepository
     private var isFromEmptyState = false
     private var favoriteSidebarRefreshToken = 0
+    private var waitingOverlayPermissionResult = false
 
     private fun isCurrentSongLocal(): Boolean {
         if (songId.startsWith("local_")) return true
@@ -1328,6 +1330,9 @@ class PlayerActivity : AppCompatActivity() {
         LocalBroadcastManager.getInstance(this).registerReceiver(playbackControlReceiver, controlFilter)
 
         // 从后台恢复时，同步当前播放的歌曲信息
+        if (waitingOverlayPermissionResult) {
+            handleOverlayPermissionResult()
+        }
         syncCurrentPlaybackState()
         refreshSidebarActionButtons()
     }
@@ -2102,7 +2107,7 @@ class PlayerActivity : AppCompatActivity() {
             Toast.makeText(this, "悬浮歌词已关闭", Toast.LENGTH_SHORT).show()
         } else {
             // 检查悬浮窗权限
-            if (Settings.canDrawOverlays(this)) {
+            if (PermissionHelper.hasOverlayPermission(this)) {
                 // 开启悬浮歌词
                 startFloatingLyricsService()
                 refreshSidebarActionButtons(true)
@@ -2118,11 +2123,16 @@ class PlayerActivity : AppCompatActivity() {
             .setTitle("需要悬浮窗权限")
             .setMessage("为了显示悬浮歌词，需要授予悬浮窗权限。")
             .setPositiveButton("去设置") { _, _ ->
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName")
+                val intent = PermissionHelper.findFirstResolvableIntent(
+                    this,
+                    PermissionHelper.buildOverlayPermissionIntents(this)
                 )
-                overlayPermissionLauncher.launch(intent)
+                if (intent != null) {
+                    waitingOverlayPermissionResult = true
+                    overlayPermissionLauncher.launch(intent)
+                } else {
+                    Toast.makeText(this, "当前设备无法打开悬浮窗设置页", Toast.LENGTH_SHORT).show()
+                }
             }
             .setNegativeButton("取消", null)
             .show()
@@ -2131,7 +2141,12 @@ class PlayerActivity : AppCompatActivity() {
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { _ ->
-        if (Settings.canDrawOverlays(this)) {
+        handleOverlayPermissionResult()
+    }
+
+    private fun handleOverlayPermissionResult() {
+        waitingOverlayPermissionResult = false
+        if (PermissionHelper.hasOverlayPermission(this)) {
             startFloatingLyricsService()
             refreshSidebarActionButtons(true)
         } else {

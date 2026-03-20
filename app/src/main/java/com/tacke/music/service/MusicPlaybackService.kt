@@ -26,6 +26,7 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.view.View
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.media3.common.C
@@ -46,6 +47,7 @@ import com.tacke.music.data.repository.LocalMusicInfoRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.PlayerActivity
+import com.tacke.music.utils.PermissionHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -60,6 +62,8 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class MusicPlaybackService : Service() {
+
+    private val notificationLogTag = "MusicNotification"
 
     private var exoPlayer: ExoPlayer? = null
     private lateinit var mediaSession: MediaSessionCompat
@@ -98,6 +102,7 @@ class MusicPlaybackService : Service() {
         const val ACTION_NEXT = "com.tacke.music.ACTION_NEXT"
         const val ACTION_PREVIOUS = "com.tacke.music.ACTION_PREVIOUS"
         const val ACTION_TOGGLE_FLOATING_LYRICS = "com.tacke.music.ACTION_TOGGLE_FLOATING_LYRICS"
+        const val ACTION_REQUEST_OVERLAY_PERMISSION = "com.tacke.music.ACTION_REQUEST_OVERLAY_PERMISSION"
         const val ACTION_TOGGLE_PLAY_MODE = "com.tacke.music.ACTION_TOGGLE_PLAY_MODE"
         const val ACTION_PLAY_MODE_CHANGED = "com.tacke.music.ACTION_PLAY_MODE_CHANGED"
         const val ACTION_STOP = "com.tacke.music.ACTION_STOP"
@@ -121,7 +126,9 @@ class MusicPlaybackService : Service() {
         playlistManager = PlaylistManager.getInstance(this)
         playbackPreferences = PlaybackPreferences.getInstance(this)
         currentQuality = playbackPreferences.currentQuality
+        logNotificationAvailability("onCreate:beforeCreateChannel")
         createNotificationChannel()
+        logNotificationAvailability("onCreate:afterCreateChannel")
         initializePlayer()
         initializeMediaSession()
         registerBroadcastReceiver()
@@ -585,6 +592,7 @@ class MusicPlaybackService : Service() {
             addAction(ACTION_NEXT)
             addAction(ACTION_PREVIOUS)
             addAction(ACTION_TOGGLE_FLOATING_LYRICS)
+            addAction(ACTION_REQUEST_OVERLAY_PERMISSION)
             addAction(ACTION_TOGGLE_PLAY_MODE)
             addAction(ACTION_STOP)
         }
@@ -600,6 +608,7 @@ class MusicPlaybackService : Service() {
             addAction(ACTION_NEXT)
             addAction(ACTION_PREVIOUS)
             addAction(ACTION_TOGGLE_FLOATING_LYRICS)
+            addAction(ACTION_REQUEST_OVERLAY_PERMISSION)
             addAction(ACTION_TOGGLE_PLAY_MODE)
             addAction(PlayerActivity.ACTION_SEEK_TO)
         }
@@ -694,6 +703,9 @@ class MusicPlaybackService : Service() {
                 ACTION_TOGGLE_FLOATING_LYRICS -> {
                     toggleFloatingLyricsFromNotification()
                 }
+                ACTION_REQUEST_OVERLAY_PERMISSION -> {
+                    openOverlayPermissionSettings()
+                }
                 ACTION_TOGGLE_PLAY_MODE -> {
                     togglePlayModeFromNotification()
                 }
@@ -722,6 +734,9 @@ class MusicPlaybackService : Service() {
                 }
                 ACTION_TOGGLE_FLOATING_LYRICS -> {
                     toggleFloatingLyricsFromNotification()
+                }
+                ACTION_REQUEST_OVERLAY_PERMISSION -> {
+                    openOverlayPermissionSettings()
                 }
                 ACTION_TOGGLE_PLAY_MODE -> {
                     togglePlayModeFromNotification()
@@ -754,7 +769,14 @@ class MusicPlaybackService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, createNotification())
+        logNotificationAvailability("onStartCommand:beforeStartForeground")
+        try {
+            startForeground(NOTIFICATION_ID, createNotification())
+            Log.d(notificationLogTag, "startForeground success, notificationId=$NOTIFICATION_ID")
+        } catch (e: Exception) {
+            Log.e(notificationLogTag, "startForeground failed: ${e.javaClass.simpleName}: ${e.message}", e)
+            throw e
+        }
         if (exoPlayer?.isPlaying == true) {
             startNotificationProgressUpdates()
         }
@@ -773,6 +795,12 @@ class MusicPlaybackService : Service() {
             }
             val notificationManager = getSystemService(NotificationManager::class.java)
             notificationManager.createNotificationChannel(channel)
+            val actualChannel = notificationManager.getNotificationChannel(CHANNEL_ID)
+            Log.d(
+                notificationLogTag,
+                "createNotificationChannel done, channelId=$CHANNEL_ID, importance=${actualChannel?.importance}, " +
+                    "name=${actualChannel?.name}, canBypassDnd=${actualChannel?.canBypassDnd()}"
+            )
         }
     }
 
@@ -840,6 +868,11 @@ class MusicPlaybackService : Service() {
             .setSmallIcon(R.drawable.ic_play)
             .setLargeIcon(coverBitmap)
             .setContentIntent(pendingIntent)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setSilent(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setOngoing(isPlaying)
             .setOnlyAlertOnce(true)
             .setProgress(maxProgress, progress, false)
@@ -943,18 +976,11 @@ class MusicPlaybackService : Service() {
                 Intent(ACTION_PREVIOUS).setPackage(packageName),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            val toggleLyricsIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                !Settings.canDrawOverlays(this@MusicPlaybackService)
-            ) {
-                PendingIntent.getActivity(
+            val toggleLyricsIntent = if (!PermissionHelper.hasOverlayPermission(this@MusicPlaybackService)) {
+                PendingIntent.getBroadcast(
                     this@MusicPlaybackService,
                     104,
-                    Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:$packageName")
-                    ).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    },
+                    Intent(ACTION_REQUEST_OVERLAY_PERMISSION).setPackage(packageName),
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
             } else {
@@ -985,12 +1011,58 @@ class MusicPlaybackService : Service() {
             .setContentTitle("音乐播放器")
             .setContentText("准备中...")
             .setSmallIcon(R.drawable.ic_play)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setSilent(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }
 
     private fun updateNotification() {
+        logNotificationAvailability("updateNotification")
         val notificationManager = getSystemService(NotificationManager::class.java)
-        notificationManager.notify(NOTIFICATION_ID, createNotification())
+        try {
+            notificationManager.notify(NOTIFICATION_ID, createNotification())
+            Log.d(notificationLogTag, "notify success, notificationId=$NOTIFICATION_ID")
+        } catch (e: Exception) {
+            Log.e(notificationLogTag, "notify failed: ${e.javaClass.simpleName}: ${e.message}", e)
+        }
+    }
+
+    private fun logNotificationAvailability(stage: String) {
+        val runtimePermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+        val notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
+        val channelImportance = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getSystemService(NotificationManager::class.java)
+                ?.getNotificationChannel(CHANNEL_ID)
+                ?.importance
+        } else {
+            null
+        }
+        val channelBlocked = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            channelImportance == NotificationManager.IMPORTANCE_NONE
+        } else {
+            false
+        }
+        Log.d(
+            notificationLogTag,
+            "stage=$stage, sdk=${Build.VERSION.SDK_INT}, runtimePermissionGranted=$runtimePermissionGranted, " +
+                "notificationsEnabled=$notificationsEnabled, channelId=$CHANNEL_ID, channelImportance=$channelImportance, " +
+                "channelBlocked=$channelBlocked"
+        )
+        if (!runtimePermissionGranted || !notificationsEnabled || channelBlocked) {
+            Log.w(
+                notificationLogTag,
+                "notification unavailable at $stage: runtimePermissionGranted=$runtimePermissionGranted, " +
+                    "notificationsEnabled=$notificationsEnabled, channelBlocked=$channelBlocked"
+            )
+        }
     }
 
     private fun startNotificationProgressUpdates() {
@@ -1190,15 +1262,9 @@ class MusicPlaybackService : Service() {
             return
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+        if (!PermissionHelper.hasOverlayPermission(this)) {
             Toast.makeText(this, "请先授予悬浮窗权限以启用悬浮歌词", Toast.LENGTH_SHORT).show()
-            val settingsIntent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            ).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(settingsIntent)
+            openOverlayPermissionSettings()
             return
         }
 
@@ -1223,6 +1289,22 @@ class MusicPlaybackService : Service() {
             broadcastFloatingLyricsPlaybackState()
         }
         updateNotification()
+    }
+
+    private fun openOverlayPermissionSettings() {
+        val settingsIntent = PermissionHelper.findFirstResolvableIntent(
+            this,
+            PermissionHelper.buildOverlayPermissionIntents(this)
+        )?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (settingsIntent != null) {
+            startActivity(settingsIntent)
+            Log.d(notificationLogTag, "openOverlayPermissionSettings success")
+        } else {
+            Log.w(notificationLogTag, "openOverlayPermissionSettings failed: no resolvable intent")
+            Toast.makeText(this, "当前设备无法打开悬浮窗设置页", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun togglePlayModeFromNotification() {

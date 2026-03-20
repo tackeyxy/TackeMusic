@@ -20,8 +20,21 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        release {
+            storeFile file("release.jks")
+            storePassword "tackemusic123"
+            keyAlias "tacke"
+            keyPassword "tackemusic123"
+            // 启用 V1 和 V2 签名
+            v1SigningEnabled true
+            v2SigningEnabled true
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
@@ -39,6 +52,29 @@ android {
     buildFeatures {
         viewBinding true
         buildConfig true
+    }
+}
+
+// 自动生成签名文件的任务
+tasks.register('createReleaseKeystore') {
+    doLast {
+        def keystoreFile = file("release.jks")
+        if (!keystoreFile.exists()) {
+            println "Generating release keystore..."
+            exec {
+                executable "keytool"
+                args "-genkey", "-v", "-keystore", "release.jks", "-alias", "tacke", "-keyalg", "RSA", "-keysize", "2048", "-validity", "36500", "-dname", "CN=Tacke, OU=Tacke, O=Tacke, L=SZ, S=GD, C=CN", "-storepass", "tackemusic123", "-keypass", "tackemusic123"
+            }
+        } else {
+            println "Keystore already exists."
+        }
+    }
+}
+
+// 确保在打包 release 之前先尝试生成签名文件
+tasks.whenTaskAdded { task ->
+    if (task.name == 'validateSigningRelease' || task.name == 'packageRelease') {
+        task.dependsOn 'createReleaseKeystore'
     }
 }
 
@@ -66,21 +102,17 @@ dependencies {
     implementation 'androidx.media3:media3-exoplayer:1.5.1'
     implementation 'androidx.media3:media3-ui:1.5.1'
 
-    // Media session support for background playback notification
     implementation 'androidx.media:media:1.7.0'
 
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0'
 
-    // Room
     implementation 'androidx.room:room-runtime:2.6.1'
     implementation 'androidx.room:room-ktx:2.6.1'
     ksp 'androidx.room:room-compiler:2.6.1'
 
-    // Kotlin Serialization
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3'
 
-    // Audio metadata editing
     implementation 'com.mpatric:mp3agic:0.9.1'
     implementation 'org:jaudiotagger:2.0.3'
 

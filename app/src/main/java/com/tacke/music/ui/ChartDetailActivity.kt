@@ -117,7 +117,8 @@ class ChartDetailActivity : AppCompatActivity() {
             ChartType.ORIGINAL -> R.drawable.bg_chart_original
             ChartType.HOT -> R.drawable.bg_chart_hot
         }
-        binding.toolbar.setBackgroundResource(backgroundRes)
+        binding.toolbarBackground.setBackgroundResource(backgroundRes)
+        binding.toolbar.setBackgroundColor(android.graphics.Color.TRANSPARENT)
     }
 
     private fun setupRecyclerView() {

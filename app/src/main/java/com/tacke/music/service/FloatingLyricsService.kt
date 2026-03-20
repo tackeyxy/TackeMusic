@@ -38,6 +38,7 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.tacke.music.R
 import com.tacke.music.data.preferences.PlaybackPreferences
 import com.tacke.music.ui.PlayerActivity
+import com.tacke.music.utils.PermissionHelper
 import com.tacke.music.utils.LyricStyleSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -142,6 +143,13 @@ class FloatingLyricsService : Service() {
         
         when (intent?.action) {
             ACTION_SHOW -> {
+                if (!PermissionHelper.hasOverlayPermission(this)) {
+                    Log.w(TAG, "ACTION_SHOW ignored: overlay permission not granted")
+                    isRunning = false
+                    broadcastRunningState(false)
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
                 // 先保存传入的歌曲信息
                 val songId = intent.getStringExtra(EXTRA_SONG_ID) ?: ""
                 val songName = intent.getStringExtra(EXTRA_SONG_NAME) ?: ""

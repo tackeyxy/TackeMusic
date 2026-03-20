@@ -48,6 +48,8 @@ import com.tacke.music.ui.adapter.SongAdapter
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
+import com.tacke.music.service.MusicPlaybackService
+import com.tacke.music.utils.PermissionHelper
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -118,6 +120,9 @@ class MainActivity : AppCompatActivity() {
         const val REQUEST_PHONE_STATE = 2002
     }
 
+    private var hasPromptedNotificationSettings = false
+    private var hasPromptedNotificationChannelSettings = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -132,6 +137,7 @@ class MainActivity : AppCompatActivity() {
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
         requestNotificationPermissionIfNeeded()
+        ensurePlaybackNotificationAvailability()
         requestPhoneStatePermissionIfNeeded()
         setupRecyclerView()
         setupPlaylistRecyclerView()
@@ -182,8 +188,21 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == REQUEST_POST_NOTIFICATIONS) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
                 Toast.makeText(this, "通知权限已开启", Toast.LENGTH_SHORT).show()
+                ensurePlaybackNotificationAvailability()
             } else {
                 Toast.makeText(this, "未授予通知权限，状态栏播放卡片可能无法显示", Toast.LENGTH_SHORT).show()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    !ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.POST_NOTIFICATIONS)
+                ) {
+                    showNotificationSettingsDialog(
+                        title = "需要通知权限",
+                        message = "若要显示通知栏音乐卡片，请在系统设置中允许 TackeMusic 发送通知。",
+                        intent = PermissionHelper.findFirstResolvableIntent(
+                            this,
+                            PermissionHelper.buildNotificationSettingsIntents(this)
+                        )
+                    )
+                }
             }
         } else if (requestCode == REQUEST_PHONE_STATE) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
@@ -313,6 +332,65 @@ class MainActivity : AppCompatActivity() {
             currentPlatform = savedSource
             updateSourceSelectorUI()
         }
+        ensurePlaybackNotificationAvailability()
+    }
+
+    private fun ensurePlaybackNotificationAvailability() {
+        val permissionState = PermissionHelper.getNotificationPermissionState(
+            context = this,
+            channelId = MusicPlaybackService.CHANNEL_ID
+        )
+        if (!permissionState.runtimePermissionGranted) {
+            return
+        }
+
+        if (!permissionState.appNotificationsEnabled) {
+            if (!hasPromptedNotificationSettings) {
+                hasPromptedNotificationSettings = true
+                showNotificationSettingsDialog(
+                    title = "通知已关闭",
+                    message = "当前系统已关闭 TackeMusic 的通知，通知栏音乐卡片将无法显示。",
+                    intent = PermissionHelper.findFirstResolvableIntent(
+                        this,
+                        PermissionHelper.buildNotificationSettingsIntents(this)
+                    )
+                )
+            }
+            return
+        }
+
+        hasPromptedNotificationSettings = false
+
+        if (!permissionState.channelEnabled) {
+            if (!hasPromptedNotificationChannelSettings) {
+                hasPromptedNotificationChannelSettings = true
+                showNotificationSettingsDialog(
+                    title = "播放通知频道已关闭",
+                    message = "系统已关闭“音乐播放”通知频道，通知栏音乐卡片不会显示。",
+                    intent = PermissionHelper.findFirstResolvableIntent(
+                        this,
+                        PermissionHelper.buildNotificationSettingsIntents(
+                            context = this,
+                            channelId = MusicPlaybackService.CHANNEL_ID
+                        )
+                    )
+                )
+            }
+            return
+        }
+
+        hasPromptedNotificationChannelSettings = false
+    }
+
+    private fun showNotificationSettingsDialog(title: String, message: String, intent: Intent?) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("去开启") { _, _ ->
+                intent?.let { startActivity(it) }
+            }
+            .setNegativeButton("稍后", null)
+            .show()
     }
 
     private fun updateSourceSelectorUI() {
