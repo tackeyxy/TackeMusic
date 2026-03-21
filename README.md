@@ -9,25 +9,28 @@
 - 🎧 **在线播放**：流畅的音乐在线播放体验，支持后台播放
 - 🎨 **现代化UI**：简洁美观的Material Design界面，支持沉浸式状态栏
 - 🖼️ **专辑背景**：播放页面背景使用歌曲专辑封面
+- 📱 **Edge-to-Edge**：完美适配Android 16边缘到边缘显示
 
 ### 播放功能
 - 📝 **歌词显示**：支持同步歌词显示，实时高亮当前播放行
 - 🎤 **悬浮歌词**：支持桌面悬浮歌词，可拖拽、调整颜色和字体大小
-- 🔄 **播放模式**：支持顺序播放、随机播放、单曲循环
+- 🔄 **播放模式**：支持顺序播放、随机播放、列表循环、单曲循环
 - ⏭️ **手势操作**：支持滑动切换歌曲
 - 🎬 **专辑动画**：播放时专辑封面旋转动画
+- 📞 **来电暂停**：支持来电自动暂停播放，挂断后自动继续
 
 ### 音乐管理
-- 📥 **多种音质下载**：支持128k、320k、FLAC、FLAC 24bit等多种音质
+- 📥 **多种音质下载**：支持128k、192k、320k、FLAC、FLAC 24bit等多种音质
 - 💾 **下载管理**：支持下载队列管理、暂停/恢复下载、批量下载
 - ❤️ **收藏功能**：支持"我喜欢的"歌曲收藏管理
 - 📋 **歌单功能**：支持创建、编辑、删除自定义歌单
 - 🕐 **播放历史**：自动记录最近播放的歌曲
 - 📊 **音乐榜单**：支持飙升榜、新歌榜、原创榜、热歌榜等
+- 📂 **本地音乐**：支持扫描并播放本地音乐文件
 
 ### 搜索与发现
-- 🔍 **智能搜索**：支持双平台音乐搜索
-- 🏷️ **推荐歌单**：首页展示推荐歌单和音乐榜单
+- 🔍 **智能搜索**：支持双平台音乐搜索，分页加载更多
+- 🏷️ **推荐歌单**：首页展示推荐歌单和音乐榜单，支持分类浏览
 - 🎵 **歌单详情**：支持查看歌单详情并播放全部歌曲
 
 ### 设置与个性化
@@ -36,6 +39,12 @@
 - 📂 **下载路径**：支持自定义下载文件存储位置
 - 💾 **缓存管理**：支持设置缓存过期时间，自动清理过期缓存
 - 🔢 **并发下载**：支持设置同时下载任务数量（1-5个）
+- 🔄 **数据备份**：支持备份/恢复本地数据
+
+### 多选批量操作
+- ✔️ **多选模式**：支持长按进入多选模式
+- 📥 **批量下载**：一次性选择多首歌曲下载
+- ➕ **批量添加**：支持批量添加到歌单、我喜欢、正在播放
 
 ## 项目结构
 
@@ -46,30 +55,43 @@ TackeMusic/
 │   │   └── main/
 │   │       ├── java/com/tacke/music/
 │   │       │   ├── data/
-│   │       │   │   ├── api/              # API接口定义（酷我/网易云）
+│   │       │   │   ├── api/              # API接口定义（酷我/网易云/GdStudio等）
 │   │       │   │   ├── model/            # 数据模型
 │   │       │   │   ├── repository/       # 数据仓库
-│   │       │   │   └── db/               # Room数据库
+│   │       │   │   ├── db/              # Room数据库
+│   │       │   │   └── preferences/     # 播放偏好设置
 │   │       │   ├── ui/
-│   │       │   │   ├── MainActivity.kt           # 主页面（搜索/推荐）
-│   │       │   │   ├── PlayerActivity.kt         # 播放页面
-│   │       │   │   ├── LyricsActivity.kt         # 歌词页面
-│   │       │   │   ├── ChartDetailActivity.kt    # 榜单详情
-│   │       │   │   ├── PlaylistActivity.kt       # 歌单列表
-│   │       │   │   ├── FavoriteSongsActivity.kt  # 我喜欢的
-│   │       │   │   ├── RecentPlayActivity.kt     # 最近播放
-│   │       │   │   ├── DownloadActivity.kt       # 下载管理
-│   │       │   │   ├── SettingsActivity.kt       # 设置页面
-│   │       │   │   └── adapter/          # RecyclerView适配器
+│   │       │   │   ├── MainActivity.kt           # 主页面（搜索/推荐/榜单）
+│   │       │   │   ├── PlayerActivity.kt        # 播放页面
+│   │       │   │   ├── LyricsActivity.kt        # 歌词页面
+│   │       │   │   ├── LyricSettingsActivity.kt # 歌词样式设置
+│   │       │   │   ├── ChartDetailActivity.kt   # 榜单详情
+│   │       │   │   ├── PlaylistActivity.kt      # 我的歌单列表
+│   │       │   │   ├── PlaylistDetailActivity.kt# 歌单详情
+│   │       │   │   ├── FavoriteSongsActivity.kt # 我喜欢的
+│   │       │   │   ├── RecentPlayActivity.kt    # 最近播放
+│   │       │   │   ├── LocalMusicActivity.kt   # 本地音乐
+│   │       │   │   ├── DownloadActivity.kt     # 下载管理
+│   │       │   │   ├── SettingsActivity.kt     # 设置页面
+│   │       │   │   ├── ProfileActivity.kt      # 个人中心
+│   │       │   │   ├── BackupRestoreActivity.kt # 备份恢复
+│   │       │   │   ├── LogViewerActivity.kt    # 日志查看
+│   │       │   │   ├── UpdateCheckActivity.kt  # 更新检测
+│   │       │   │   ├── NewVersionActivity.kt   # 新版本介绍
+│   │       │   │   └── adapter/               # RecyclerView适配器
 │   │       │   ├── service/
-│   │       │   │   ├── MusicPlaybackService.kt   # 后台播放服务
-│   │       │   │   └── FloatingLyricsService.kt  # 悬浮歌词服务
-│   │       │   └── utils/                # 工具类
-│   │       └── res/                      # 资源文件
-│   └── build.gradle                      # app模块配置
-├── build.gradle                          # 项目级配置
-├── settings.gradle                       # 项目设置
-└── gradle.properties                     # Gradle属性
+│   │       │   │   ├── MusicPlaybackService.kt    # 后台播放服务
+│   │       │   │   └── FloatingLyricsService.kt   # 悬浮歌词服务
+│   │       │   ├── playback/               # 播放管理
+│   │       │   ├── playlist/               # 播放列表管理
+│   │       │   ├── download/                # 下载管理
+│   │       │   ├── update/                  # 版本更新
+│   │       │   └── utils/                   # 工具类
+│   │       └── res/                         # 资源文件
+│   └── build.gradle                         # app模块配置
+├── build.gradle                              # 项目级配置
+├── settings.gradle                           # 项目设置
+└── gradle.properties                        # Gradle属性
 ```
 
 ## 技术栈
@@ -110,6 +132,7 @@ TackeMusic/
 1. 在搜索框输入关键词
 2. 选择音乐平台（酷我/网易云）
 3. 点击搜索按钮
+4. 支持上拉加载更多结果
 
 #### 播放音乐
 1. 点击搜索结果中的歌曲
@@ -118,9 +141,14 @@ TackeMusic/
 4. 点击歌词按钮查看同步歌词
 5. 开启悬浮歌词功能
 
+#### 多选批量操作
+1. 长按任意歌曲进入多选模式
+2. 点击选择要操作的歌曲
+3. 使用底部批量操作栏进行下载、添加到歌单等操作
+
 #### 下载音乐
 1. 在歌曲列表点击更多按钮或在播放页面点击下载按钮
-2. 选择音质（128k/320k/FLAC/FLAC 24bit）
+2. 选择音质（128k/192k/320k/FLAC/FLAC 24bit）
 3. 开始下载，可在下载管理页面查看进度
 
 #### 管理歌单
@@ -133,13 +161,25 @@ TackeMusic/
 2. 查看榜单歌曲列表
 3. 播放全部或选择单首歌曲播放
 
+#### 本地音乐
+1. 进入"本地音乐"页面
+2. 扫描设备上的音乐文件
+3. 选择并播放本地音乐
+
+#### 数据备份
+1. 进入设置页面
+2. 点击"备份与恢复"
+3. 可将本地数据备份或从备份恢复
+
 ## 版本信息
 
-- **当前版本**：v1.0.12 (Build 13)
-- **更新日期**：2026-03-16
+- **当前版本**：v1.0.1 (Build 1)
+- **更新日期**：2026-03-20
 - **更新内容**：
-  1. 重构推荐页UI设计
-  2. 优化低DPI设备显示
+  1. 终极优化通知栏卡片UI设计
+  2. 新增全屏歌词长按歌词跳转播放进度
+  3. 优化播放页按钮显示
+  4. 新增备份/恢复本地数据
 
 ## 注意事项
 
