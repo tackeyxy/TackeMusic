@@ -45,38 +45,63 @@
             app:layout_constraintBottom_toBottomOf="parent" />
 
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="12dp"
             android:orientation="vertical"
             android:gravity="center"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.5"
+            app:layout_constraintStart_toEndOf="@id/btnBack"
+            app:layout_constraintEnd_toStartOf="@id/btnTitleBalance"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintBottom_toBottomOf="parent">
 
             <TextView
                 android:id="@+id/tvSongName"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="歌曲名称"
+                android:gravity="center"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:textColor="@color/white"
                 android:maxLines="1"
-                android:ellipsize="end" />
+                android:singleLine="true"
+                android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:scrollHorizontally="true"
+                android:focusable="false"
+                android:focusableInTouchMode="false" />
 
             <TextView
                 android:id="@+id/tvArtist"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="歌手"
+                android:gravity="center"
                 android:textSize="12sp"
                 android:textColor="@color/white"
                 android:alpha="0.8"
                 android:maxLines="1"
-                android:ellipsize="end" />
+                android:singleLine="true"
+                android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:scrollHorizontally="true"
+                android:focusable="false"
+                android:focusableInTouchMode="false" />
 
         </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/btnTitleBalance"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:visibility="invisible"
+            android:importantForAccessibility="no"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

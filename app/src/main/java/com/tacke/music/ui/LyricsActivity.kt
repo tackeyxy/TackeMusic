@@ -110,6 +110,7 @@ class LyricsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityLyricsBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        enableToolbarMarquee()
 
         // 设置沉浸式状态栏 - 透明状态栏，背景延伸到状态栏
         ImmersiveStatusBarHelper.setup(
@@ -126,6 +127,11 @@ class LyricsActivity : AppCompatActivity() {
         setupGestureDetector()
         setupPlaybackReceiver()
         loadSongInfo()
+    }
+
+    private fun enableToolbarMarquee() {
+        binding.tvSongName.isSelected = true
+        binding.tvArtist.isSelected = true
     }
 
     private fun setupPlaybackReceiver() {

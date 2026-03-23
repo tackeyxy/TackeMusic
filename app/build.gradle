@@ -1,9 +1,15 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.kapt'
     id 'org.jetbrains.kotlin.plugin.parcelize'
-    id 'com.google.devtools.ksp'
     id 'org.jetbrains.kotlin.plugin.serialization'
+}
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -14,18 +20,21 @@ android {
         applicationId "com.tacke.music"
         minSdk 24
         targetSdk 36
-        versionCode 1
-        versionName "1.0.1"
+        versionCode 2
+        versionName "1.0.2"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
         release {
-            storeFile file("release.jks")
-            storePassword "tackemusic123"
-            keyAlias "tacke"
-            keyPassword "tackemusic123"
+            def storeFilePath = keystoreProperties.getProperty("storeFile")
+            if (storeFilePath != null && !storeFilePath.trim().isEmpty()) {
+                storeFile rootProject.file(storeFilePath)
+            }
+            storePassword keystoreProperties.getProperty("storePassword")
+            keyAlias keystoreProperties.getProperty("keyAlias")
+            keyPassword keystoreProperties.getProperty("keyPassword")
             // 启用 V1 和 V2 签名
             v1SigningEnabled true
             v2SigningEnabled true
@@ -52,29 +61,6 @@ android {
     buildFeatures {
         viewBinding true
         buildConfig true
-    }
-}
-
-// 自动生成签名文件的任务
-tasks.register('createReleaseKeystore') {
-    doLast {
-        def keystoreFile = file("release.jks")
-        if (!keystoreFile.exists()) {
-            println "Generating release keystore..."
-            exec {
-                executable "keytool"
-                args "-genkey", "-v", "-keystore", "release.jks", "-alias", "tacke", "-keyalg", "RSA", "-keysize", "2048", "-validity", "36500", "-dname", "CN=Tacke, OU=Tacke, O=Tacke, L=SZ, S=GD, C=CN", "-storepass", "tackemusic123", "-keypass", "tackemusic123"
-            }
-        } else {
-            println "Keystore already exists."
-        }
-    }
-}
-
-// 确保在打包 release 之前先尝试生成签名文件
-tasks.whenTaskAdded { task ->
-    if (task.name == 'validateSigningRelease' || task.name == 'packageRelease') {
-        task.dependsOn 'createReleaseKeystore'
     }
 }
 
@@ -107,9 +93,9 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0'
 
-    implementation 'androidx.room:room-runtime:2.6.1'
-    implementation 'androidx.room:room-ktx:2.6.1'
-    ksp 'androidx.room:room-compiler:2.6.1'
+    implementation 'androidx.room:room-runtime:2.8.4'
+    implementation 'androidx.room:room-ktx:2.8.4'
+    kapt 'androidx.room:room-compiler:2.8.4'
 
     implementation 'org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3'
 

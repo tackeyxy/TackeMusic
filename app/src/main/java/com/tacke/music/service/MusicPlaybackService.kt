@@ -18,6 +18,7 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.provider.Settings
 import android.telephony.PhoneStateListener
 import android.telephony.TelephonyManager
@@ -47,6 +48,7 @@ import com.tacke.music.data.repository.LocalMusicInfoRepository
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.PlayerActivity
+import com.tacke.music.utils.CoverUrlResolver
 import com.tacke.music.utils.PermissionHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -79,6 +81,8 @@ class MusicPlaybackService : Service() {
     private var telephonyManager: TelephonyManager? = null
     private var lastCallState: Int = TelephonyManager.CALL_STATE_IDLE
     private var manualPlayOverrideDuringCall = false
+    private var notificationMarqueeSourceKey: String? = null
+    private var notificationMarqueeStartMs: Long = 0L
     private val phoneStateListener = object : PhoneStateListener() {
         override fun onCallStateChanged(state: Int, phoneNumber: String?) {
             handleCallStateChanged(state)
@@ -261,7 +265,20 @@ class MusicPlaybackService : Service() {
             localMusicInfoRepository.getCachedInfoByPath(localMusic.path)
         }
         val playUrl = localMusic.contentUri ?: localMusic.path
-        val cover = cachedInfo?.coverUrl ?: persistedDetail?.cover ?: localMusic.coverUri ?: playlistSong.coverUrl
+        val rawCover = cachedInfo?.coverUrl ?: persistedDetail?.cover ?: localMusic.coverUri ?: playlistSong.coverUrl
+        val cover = if (!rawCover.isNullOrBlank() && CoverUrlResolver.isRelativePath(rawCover)) {
+            val sourcePlatform = cachedInfo?.source?.takeIf { it.isNotBlank() } ?: "KUWO"
+            CoverUrlResolver.resolveCoverUrl(
+                context = this@MusicPlaybackService,
+                coverUrl = rawCover,
+                songId = playlistSong.id,
+                platform = sourcePlatform,
+                songName = playlistSong.name,
+                artist = playlistSong.artists
+            ) ?: rawCover
+        } else {
+            rawCover
+        }
         val lyrics = cachedInfo?.lyrics ?: persistedDetail?.lyrics
         return SongDetail(
             url = playUrl,
@@ -289,7 +306,20 @@ class MusicPlaybackService : Service() {
             localMusicInfoRepository.getLocalMusicInfo(localMusic)
         } ?: return null
 
-        val cover = localInfo.coverUrl ?: fallbackCover ?: localMusic.coverUri ?: playlistSong.coverUrl
+        val rawCover = localInfo.coverUrl ?: fallbackCover ?: localMusic.coverUri ?: playlistSong.coverUrl
+        val cover = if (!rawCover.isNullOrBlank() && CoverUrlResolver.isRelativePath(rawCover)) {
+            val sourcePlatform = localInfo.source?.takeIf { it.isNotBlank() } ?: "KUWO"
+            CoverUrlResolver.resolveCoverUrl(
+                context = this@MusicPlaybackService,
+                coverUrl = rawCover,
+                songId = playlistSong.id,
+                platform = sourcePlatform,
+                songName = playlistSong.name,
+                artist = playlistSong.artists
+            ) ?: rawCover
+        } else {
+            rawCover
+        }
         val lyrics = localInfo.lyrics ?: playbackPreferences.getSongDetail(playlistSong.id)?.lyrics
         if (cover.isNullOrBlank() && lyrics.isNullOrBlank()) return null
 
@@ -810,6 +840,7 @@ class MusicPlaybackService : Service() {
         val isPlaying = player.isPlaying
         val songName = player.currentMediaItem?.mediaMetadata?.title?.toString() ?: "未知歌曲"
         val artist = player.currentMediaItem?.mediaMetadata?.artist?.toString() ?: "未知艺术家"
+        val (displaySongName, displayArtist) = resolveNotificationMarqueeTexts(songName, artist)
         val duration = player.duration.takeIf { it > 0 && it != C.TIME_UNSET } ?: 0L
         val position = player.currentPosition.coerceAtLeast(0L)
         val currentTime = formatTime(position)
@@ -836,8 +867,8 @@ class MusicPlaybackService : Service() {
 
         val compactView = createNotificationRemoteViews(
             layoutId = R.layout.notification_music_playback_compact,
-            songName = songName,
-            artist = artist,
+            songName = displaySongName,
+            artist = displayArtist,
             currentTime = currentTime,
             totalTime = totalTime,
             coverBitmap = coverBitmap,
@@ -849,8 +880,8 @@ class MusicPlaybackService : Service() {
         )
         val expandedView = createNotificationRemoteViews(
             layoutId = R.layout.notification_music_playback_expanded,
-            songName = songName,
-            artist = artist,
+            songName = displaySongName,
+            artist = displayArtist,
             currentTime = currentTime,
             totalTime = totalTime,
             coverBitmap = coverBitmap,
@@ -880,6 +911,32 @@ class MusicPlaybackService : Service() {
             .setCustomBigContentView(expandedView)
             .setCustomHeadsUpContentView(compactView)
             .build()
+    }
+
+    private fun resolveNotificationMarqueeTexts(songName: String, artist: String): Pair<String, String> {
+        val sourceKey = "$songName|$artist"
+        val now = SystemClock.elapsedRealtime()
+        if (notificationMarqueeSourceKey != sourceKey) {
+            notificationMarqueeSourceKey = sourceKey
+            notificationMarqueeStartMs = now
+        }
+
+        val step = ((now - notificationMarqueeStartMs) / 250L).toInt().coerceAtLeast(0)
+        val titleWindowSize = 19
+        val artistWindowSize = 22
+
+        return buildNotificationMarqueeText(songName, titleWindowSize, step) to
+            buildNotificationMarqueeText(artist, artistWindowSize, step)
+    }
+
+    private fun buildNotificationMarqueeText(source: String, windowSize: Int, step: Int): String {
+        val text = source.trim()
+        if (text.isEmpty() || text.length <= windowSize) return text
+        val spacer = "   ·   "
+        val loop = text + spacer
+        val doubled = loop + loop
+        val start = step % loop.length
+        return doubled.substring(start, start + windowSize)
     }
 
     private fun createNotificationRemoteViews(
@@ -930,10 +987,7 @@ class MusicPlaybackService : Service() {
             setImageViewResource(R.id.notificationPlayMode, resolvePlayModeIconRes())
             val lyricsToggleOn = FloatingLyricsService.isRunning
             val activeColor = Color.parseColor("#FFE53935")
-            val inactiveColor = resolveNotificationLyricsInactiveColor(
-                coverBitmap = coverBitmap,
-                uiStyle = uiStyle
-            )
+            val inactiveColor = resolveNotificationLyricsInactiveColor(uiStyle = uiStyle)
             setTextViewText(R.id.notificationLyricsToggle, "词")
             setTextColor(R.id.notificationLyricsToggle, if (lyricsToggleOn) activeColor else inactiveColor)
             setInt(R.id.notificationLyricsToggle, "setBackgroundResource", uiStyle.controlBackgroundRes)
@@ -977,7 +1031,7 @@ class MusicPlaybackService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val toggleLyricsIntent = if (!PermissionHelper.hasOverlayPermission(this@MusicPlaybackService)) {
-                PendingIntent.getBroadcast(
+                createOverlayPermissionPendingIntent() ?: PendingIntent.getBroadcast(
                     this@MusicPlaybackService,
                     104,
                     Intent(ACTION_REQUEST_OVERLAY_PERMISSION).setPackage(packageName),
@@ -1071,7 +1125,7 @@ class MusicPlaybackService : Service() {
             while (isActive) {
                 updateNotification()
                 broadcastFloatingLyricsPlaybackState()
-                delay(1000L)
+                delay(250L)
             }
         }
     }
@@ -1183,63 +1237,8 @@ class MusicPlaybackService : Service() {
         return Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))
     }
 
-    private fun resolveNotificationLyricsInactiveColor(
-        coverBitmap: Bitmap?,
-        uiStyle: NotificationUiStyle
-    ): Int {
-        val sampled = sampleNotificationCoverColor(coverBitmap)
-        if (sampled == null) {
-            return if (uiStyle.useDarkProgressStyle) {
-                Color.parseColor("#FF111827")
-            } else {
-                Color.WHITE
-            }
-        }
-        return if (isColorDark(sampled)) Color.WHITE else Color.parseColor("#FF111827")
-    }
-
-    private fun sampleNotificationCoverColor(bitmap: Bitmap?): Int? {
-        val bmp = bitmap ?: return null
-        if (bmp.width <= 0 || bmp.height <= 0) return null
-
-        val startX = (bmp.width * 0.62f).toInt().coerceIn(0, bmp.width - 1)
-        val endX = (bmp.width * 0.96f).toInt().coerceIn(startX, bmp.width - 1)
-        val startY = (bmp.height * 0.40f).toInt().coerceIn(0, bmp.height - 1)
-        val endY = (bmp.height * 0.82f).toInt().coerceIn(startY, bmp.height - 1)
-        val stepX = ((endX - startX) / 4).coerceAtLeast(1)
-        val stepY = ((endY - startY) / 4).coerceAtLeast(1)
-
-        var r = 0L
-        var g = 0L
-        var b = 0L
-        var count = 0
-
-        var y = startY
-        while (y <= endY) {
-            var x = startX
-            while (x <= endX) {
-                val c = bmp.getPixel(x, y)
-                r += Color.red(c)
-                g += Color.green(c)
-                b += Color.blue(c)
-                count++
-                x += stepX
-            }
-            y += stepY
-        }
-
-        if (count <= 0) return null
-        return Color.rgb(
-            (r / count).toInt().coerceIn(0, 255),
-            (g / count).toInt().coerceIn(0, 255),
-            (b / count).toInt().coerceIn(0, 255)
-        )
-    }
-
-    private fun isColorDark(color: Int): Boolean {
-        val luminance =
-            (0.299 * Color.red(color) + 0.587 * Color.green(color) + 0.114 * Color.blue(color)) / 255.0
-        return luminance < 0.55
+    private fun resolveNotificationLyricsInactiveColor(uiStyle: NotificationUiStyle): Int {
+        return uiStyle.iconTintColor
     }
 
     private fun resolvePlayModeIconRes(): Int {
@@ -1305,6 +1304,22 @@ class MusicPlaybackService : Service() {
             Log.w(notificationLogTag, "openOverlayPermissionSettings failed: no resolvable intent")
             Toast.makeText(this, "当前设备无法打开悬浮窗设置页", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun createOverlayPermissionPendingIntent(): PendingIntent? {
+        val settingsIntent = PermissionHelper.findFirstResolvableIntent(
+            this,
+            PermissionHelper.buildOverlayPermissionIntents(this)
+        )?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        } ?: return null
+
+        return PendingIntent.getActivity(
+            this,
+            106,
+            settingsIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     private fun togglePlayModeFromNotification() {
