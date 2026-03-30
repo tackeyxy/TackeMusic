@@ -1,10 +1,15 @@
 package com.tacke.music.data.db
 
 import androidx.room.Entity
+import androidx.room.Index
 
 @Entity(
     tableName = "playlist_song_cross_ref",
-    primaryKeys = ["playlistId", "songId"]
+    primaryKeys = ["playlistId", "songId"],
+    indices = [
+        Index(value = ["songId"]),
+        Index(value = ["playlistId"])
+    ]
 )
 data class PlaylistSongCrossRef(
     val playlistId: String,

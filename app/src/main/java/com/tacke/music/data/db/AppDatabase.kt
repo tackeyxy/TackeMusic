@@ -45,9 +45,9 @@ abstract class AppDatabase : RoomDatabase() {
         // 从版本10迁移到版本11：删除customCoverPath列
         // 由于SQLite不支持直接删除列，需要创建新表并迁移数据
         private val MIGRATION_10_11 = object : Migration(10, 11) {
-            override fun migrate(database: SupportSQLiteDatabase) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 // 创建新表（不包含customCoverPath列）
-                database.execSQL("""
+                db.execSQL("""
                     CREATE TABLE playlists_new (
                         id TEXT PRIMARY KEY NOT NULL,
                         name TEXT NOT NULL,
@@ -60,32 +60,32 @@ abstract class AppDatabase : RoomDatabase() {
                 """)
 
                 // 从旧表迁移数据
-                database.execSQL("""
+                db.execSQL("""
                     INSERT INTO playlists_new (id, name, description, coverUrl, createTime, updateTime, songCount)
                     SELECT id, name, description, coverUrl, createTime, updateTime, songCount FROM playlists
                 """)
 
                 // 删除旧表
-                database.execSQL("DROP TABLE playlists")
+                db.execSQL("DROP TABLE playlists")
 
                 // 重命名新表
-                database.execSQL("ALTER TABLE playlists_new RENAME TO playlists")
+                db.execSQL("ALTER TABLE playlists_new RENAME TO playlists")
             }
         }
 
         // 从版本11迁移到版本12：添加iconColor列
         private val MIGRATION_11_12 = object : Migration(11, 12) {
-            override fun migrate(database: SupportSQLiteDatabase) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 // 添加iconColor列
-                database.execSQL("ALTER TABLE playlists ADD COLUMN iconColor TEXT")
+                db.execSQL("ALTER TABLE playlists ADD COLUMN iconColor TEXT")
             }
         }
 
         // 从版本12迁移到版本13：添加favorite_songs表
         private val MIGRATION_12_13 = object : Migration(12, 13) {
-            override fun migrate(database: SupportSQLiteDatabase) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 // 创建favorite_songs表
-                database.execSQL("""
+                db.execSQL("""
                     CREATE TABLE IF NOT EXISTS favorite_songs (
                         id TEXT PRIMARY KEY NOT NULL,
                         name TEXT NOT NULL,
@@ -100,9 +100,9 @@ abstract class AppDatabase : RoomDatabase() {
 
         // 从版本13迁移到版本14：添加song_details表
         private val MIGRATION_13_14 = object : Migration(13, 14) {
-            override fun migrate(database: SupportSQLiteDatabase) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 // 创建song_details表
-                database.execSQL("""
+                db.execSQL("""
                     CREATE TABLE IF NOT EXISTS song_details (
                         id TEXT PRIMARY KEY NOT NULL,
                         name TEXT NOT NULL,
@@ -120,18 +120,18 @@ abstract class AppDatabase : RoomDatabase() {
 
         // 从版本14迁移到版本15：为download_tasks表添加quality字段
         private val MIGRATION_14_15 = object : Migration(14, 15) {
-            override fun migrate(database: SupportSQLiteDatabase) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 // 为download_tasks表添加quality字段
-                database.execSQL("ALTER TABLE download_tasks ADD COLUMN quality TEXT NOT NULL DEFAULT '320k'")
+                db.execSQL("ALTER TABLE download_tasks ADD COLUMN quality TEXT NOT NULL DEFAULT '320k'")
             }
         }
 
         // 从版本15迁移到版本16：添加local_music_info表
         private val MIGRATION_15_16 = object : Migration(15, 16) {
-            override fun migrate(database: SupportSQLiteDatabase) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 // 创建local_music_info表
                 // 注意：不使用DEFAULT值，让Room自己处理默认值
-                database.execSQL("""
+                db.execSQL("""
                     CREATE TABLE IF NOT EXISTS local_music_info (
                         id INTEGER PRIMARY KEY NOT NULL,
                         title TEXT NOT NULL,
@@ -147,15 +147,15 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """)
                 // 创建索引
-                database.execSQL("CREATE INDEX IF NOT EXISTS index_local_music_info_path ON local_music_info(path)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_local_music_info_path ON local_music_info(path)")
             }
         }
 
         // 从版本16迁移到版本17：修改local_music_info表，添加自增ID和唯一索引
         private val MIGRATION_16_17 = object : Migration(16, 17) {
-            override fun migrate(database: SupportSQLiteDatabase) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 // 1. 创建新表（使用自增ID和path唯一索引）
-                database.execSQL("""
+                db.execSQL("""
                     CREATE TABLE local_music_info_new (
                         id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
                         title TEXT NOT NULL,
@@ -172,10 +172,10 @@ abstract class AppDatabase : RoomDatabase() {
                 """)
 
                 // 2. 创建唯一索引
-                database.execSQL("CREATE UNIQUE INDEX index_local_music_info_path ON local_music_info_new(path)")
+                db.execSQL("CREATE UNIQUE INDEX index_local_music_info_path ON local_music_info_new(path)")
 
                 // 3. 迁移数据（跳过重复的path，保留最新的一条）
-                database.execSQL("""
+                db.execSQL("""
                     INSERT INTO local_music_info_new (title, artist, album, path, picId, lyricId, source, coverUrl, lyrics, updatedAt)
                     SELECT title, artist, album, path, picId, lyricId, source, coverUrl, lyrics, updatedAt
                     FROM local_music_info
@@ -184,10 +184,10 @@ abstract class AppDatabase : RoomDatabase() {
                 """)
 
                 // 4. 删除旧表
-                database.execSQL("DROP TABLE local_music_info")
+                db.execSQL("DROP TABLE local_music_info")
 
                 // 5. 重命名新表
-                database.execSQL("ALTER TABLE local_music_info_new RENAME TO local_music_info")
+                db.execSQL("ALTER TABLE local_music_info_new RENAME TO local_music_info")
             }
         }
 
