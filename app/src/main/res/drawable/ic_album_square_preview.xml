@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- 正方形背景 -->
+    <path
+        android:fillColor="#3A3A3A"
+        android:pathData="M4,4h40v40h-40z"/>
+    <!-- 内部装饰线 -->
+    <path
+        android:fillColor="#5A5A5A"
+        android:pathData="M10,10h28v28h-28z"/>
+    <!-- 中心装饰 -->
+    <path
+        android:fillColor="#3A3A3A"
+        android:pathData="M18,18h12v12h-12z"/>
+    <!-- 角落装饰 -->
+    <path
+        android:fillColor="#00CED1"
+        android:pathData="M4,4h8v2h-8z"/>
+    <path
+        android:fillColor="#00CED1"
+        android:pathData="M4,4h2v8h-2z"/>
+    <path
+        android:fillColor="#00CED1"
+        android:pathData="M36,4h8v2h-8z"/>
+    <path
+        android:fillColor="#00CED1"
+        android:pathData="M42,4h2v8h-2z"/>
+    <path
+        android:fillColor="#00CED1"
+        android:pathData="M4,42h8v2h-8z"/>
+    <path
+        android:fillColor="#00CED1"
+        android:pathData="M4,36h2v8h-2z"/>
+    <path
+        android:fillColor="#00CED1"
+        android:pathData="M36,42h8v2h-8z"/>
+    <path
+        android:fillColor="#00CED1"
+        android:pathData="M42,36h2v8h-2z"/>
+</vector>

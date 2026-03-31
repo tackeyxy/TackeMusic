@@ -89,6 +89,12 @@
             android:label="歌词设置" />
 
         <activity
+            android:name=".ui.PlayerCoverSettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:label="播放页封面样式" />
+
+        <activity
             android:name=".ui.DownloadActivity"
             android:exported="false"
             android:screenOrientation="portrait" />

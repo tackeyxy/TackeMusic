@@ -212,10 +212,26 @@ class SettingsActivity : AppCompatActivity() {
         updatePlaybackQualityText()
         updateCacheExpiryText()
         updateCurrentVersionText()
+        updatePlayerCoverText()
     }
 
     private fun updateCurrentVersionText() {
         binding.tvCurrentVersion.text = "v${BuildConfig.VERSION_NAME}"
+    }
+
+    private fun updatePlayerCoverText() {
+        val currentStyle = PlayerCoverSettingsActivity.getCoverStyle(this)
+        val styleText = when (currentStyle) {
+            PlayerCoverSettingsActivity.COVER_STYLE_ROTATING_CIRCLE -> "旋转圆形"
+            PlayerCoverSettingsActivity.COVER_STYLE_STATIC_SQUARE -> "静态正方形"
+            else -> "旋转圆形"
+        }
+        binding.tvPlayerCoverValue.text = styleText
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updatePlayerCoverText()
     }
 
     private fun setupClickListeners() {
@@ -237,6 +253,10 @@ class SettingsActivity : AppCompatActivity() {
 
         binding.layoutLyricColor.setOnClickListener {
             startActivity(Intent(this, LyricSettingsActivity::class.java))
+        }
+
+        binding.layoutPlayerCover.setOnClickListener {
+            startActivity(Intent(this, PlayerCoverSettingsActivity::class.java))
         }
 
         binding.layoutLogViewer.setOnClickListener {

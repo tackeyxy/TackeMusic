@@ -352,6 +352,7 @@ class PlayerActivity : AppCompatActivity() {
         parseIntent()
         setupClickListeners()
         setupAlbumRotation()
+        applyCoverStyle() // 应用封面样式设置
         setupGestureDetector()
         setupSeekReceiver()
         setupPlaybackControlReceiver()
@@ -1354,6 +1355,9 @@ class PlayerActivity : AppCompatActivity() {
         }
         syncCurrentPlaybackState()
         refreshSidebarActionButtons()
+
+        // 每次返回页面时应用最新的封面样式设置
+        applyCoverStyle()
     }
 
     /**
@@ -1619,11 +1623,57 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun startAlbumRotation() {
-        albumRotationAnimator?.start()
+        // 只有旋转圆形样式才启动旋转动画
+        if (PlayerCoverSettingsActivity.getCoverStyle(this) == PlayerCoverSettingsActivity.COVER_STYLE_ROTATING_CIRCLE) {
+            albumRotationAnimator?.start()
+        }
     }
 
     private fun stopAlbumRotation() {
         albumRotationAnimator?.pause()
+    }
+
+    /**
+     * 应用封面样式设置
+     */
+    private fun applyCoverStyle() {
+        val coverStyle = PlayerCoverSettingsActivity.getCoverStyle(this)
+
+        when (coverStyle) {
+            PlayerCoverSettingsActivity.COVER_STYLE_ROTATING_CIRCLE -> {
+                // 圆形样式 - 设置大圆角
+                applyCircularCoverStyle()
+            }
+            PlayerCoverSettingsActivity.COVER_STYLE_STATIC_SQUARE -> {
+                // 正方形样式 - 设置小圆角
+                applySquareCoverStyle()
+            }
+        }
+    }
+
+    /**
+     * 应用圆形封面样式
+     */
+    private fun applyCircularCoverStyle() {
+        // 设置CardView为圆形 - 使用post确保视图已测量
+        binding.albumCardView.post {
+            val size = minOf(binding.albumCardView.width, binding.albumCardView.height)
+            binding.albumCardView.radius = size / 2f // 使用实际尺寸的一半作为圆角半径
+        }
+        // 重置旋转角度
+        binding.albumContainer.rotation = 0f
+    }
+
+    /**
+     * 应用正方形封面样式
+     */
+    private fun applySquareCoverStyle() {
+        // 停止旋转动画
+        stopAlbumRotation()
+        // 设置CardView为小圆角（正方形）
+        binding.albumCardView.radius = 16f // 小圆角，形成正方形
+        // 重置旋转角度
+        binding.albumContainer.rotation = 0f
     }
 
     private fun setupClickListeners() {
