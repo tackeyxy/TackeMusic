@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- 批量操作栏 - 双列网格布局，适配横竖屏各种尺寸 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/batchActionBar"
     android:layout_width="wrap_content"
@@ -7,19 +8,43 @@
     android:background="@drawable/bg_dialog_rounded"
     android:elevation="16dp"
     android:visibility="gone"
-    android:padding="8dp">
+    android:padding="6dp">
 
-    <!-- 选中数量显示 -->
-    <TextView
-        android:id="@+id/tvSelectedCount"
+    <!-- 顶部：选中数量和关闭按钮 -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="0"
-        android:textSize="14sp"
-        android:textColor="@color/primary"
-        android:textStyle="bold"
-        android:gravity="center"
-        android:paddingVertical="4dp" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- 选中数量显示 -->
+        <TextView
+            android:id="@+id/tvSelectedCount"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:text="0"
+            android:textSize="13sp"
+            android:textColor="@color/primary"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:background="@drawable/bg_nav_item_normal" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <!-- 关闭按钮 -->
+        <ImageButton
+            android:id="@+id/btnCloseBatch"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_close"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/text_secondary"
+            android:contentDescription="关闭" />
+
+    </LinearLayout>
 
     <!-- 分割线 -->
     <View
@@ -29,213 +54,209 @@
         android:alpha="0.3"
         android:layout_marginVertical="4dp" />
 
-    <!-- 关闭按钮 -->
-    <ImageButton
-        android:id="@+id/btnCloseBatch"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_gravity="center_horizontal"
-        android:src="@drawable/ic_close"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:tint="@color/text_secondary"
-        android:contentDescription="关闭" />
-
-    <!-- 分割线 -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/divider_color"
-        android:alpha="0.3"
-        android:layout_marginVertical="4dp" />
-
-    <!-- 全选 -->
-    <LinearLayout
-        android:id="@+id/btnSelectAll"
+    <!-- 操作按钮区域 - 双列网格布局 -->
+    <GridLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:padding="8dp"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true">
+        android:columnCount="2"
+        android:rowCount="4"
+        android:alignmentMode="alignMargins"
+        android:useDefaultMargins="false">
 
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@drawable/ic_select_all"
-            android:tint="@color/primary" />
-
-        <TextView
+        <!-- 第一行 -->
+        <!-- 全选 -->
+        <LinearLayout
+            android:id="@+id/btnSelectAll"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="全选"
-            android:textSize="10sp"
-            android:textColor="@color/text_primary" />
-    </LinearLayout>
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="5dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
 
-    <!-- 下载 -->
-    <LinearLayout
-        android:id="@+id/btnBatchDownload"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:padding="8dp"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_select_all"
+                android:tint="@color/primary" />
 
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@drawable/ic_download"
-            android:tint="@color/primary" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="全选"
+                android:textSize="9sp"
+                android:textColor="@color/text_primary" />
+        </LinearLayout>
 
-        <TextView
+        <!-- 下载 -->
+        <LinearLayout
+            android:id="@+id/btnBatchDownload"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="下载"
-            android:textSize="10sp"
-            android:textColor="@color/text_primary" />
-    </LinearLayout>
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="5dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
 
-    <!-- 移除所选 -->
-    <LinearLayout
-        android:id="@+id/btnBatchRemove"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:padding="8dp"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true"
-        android:visibility="gone">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_download"
+                android:tint="@color/primary" />
 
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@drawable/ic_remove"
-            android:tint="@color/error" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="下载"
+                android:textSize="9sp"
+                android:textColor="@color/text_primary" />
+        </LinearLayout>
 
-        <TextView
+        <!-- 第二行 -->
+        <!-- 移除所选 -->
+        <LinearLayout
+            android:id="@+id/btnBatchRemove"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="移除"
-            android:textSize="10sp"
-            android:textColor="@color/error" />
-    </LinearLayout>
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="5dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:visibility="gone">
 
-    <!-- 添加到喜欢 -->
-    <LinearLayout
-        android:id="@+id/btnAddToFavorite"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:padding="8dp"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_remove"
+                android:tint="@color/error" />
 
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@drawable/ic_heart"
-            android:tint="@color/primary" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="移除"
+                android:textSize="9sp"
+                android:textColor="@color/error" />
+        </LinearLayout>
 
-        <TextView
+        <!-- 添加到喜欢 -->
+        <LinearLayout
+            android:id="@+id/btnAddToFavorite"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="喜欢"
-            android:textSize="10sp"
-            android:textColor="@color/text_primary" />
-    </LinearLayout>
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="5dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
 
-    <!-- 添加到歌单 -->
-    <LinearLayout
-        android:id="@+id/btnAddToPlaylist"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:padding="8dp"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_heart"
+                android:tint="@color/primary" />
 
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@drawable/ic_playlist_add"
-            android:tint="@color/primary" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="喜欢"
+                android:textSize="9sp"
+                android:textColor="@color/text_primary" />
+        </LinearLayout>
 
-        <TextView
+        <!-- 第三行 -->
+        <!-- 添加到歌单 -->
+        <LinearLayout
+            android:id="@+id/btnAddToPlaylist"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="歌单"
-            android:textSize="10sp"
-            android:textColor="@color/text_primary" />
-    </LinearLayout>
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="5dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
 
-    <!-- 加入播放 -->
-    <LinearLayout
-        android:id="@+id/btnAddToNowPlaying"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:padding="8dp"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_playlist_add"
+                android:tint="@color/primary" />
 
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@drawable/ic_playlist_play"
-            android:tint="@color/primary" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="歌单"
+                android:textSize="9sp"
+                android:textColor="@color/text_primary" />
+        </LinearLayout>
 
-        <TextView
+        <!-- 加入播放 -->
+        <LinearLayout
+            android:id="@+id/btnAddToNowPlaying"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="播放"
-            android:textSize="10sp"
-            android:textColor="@color/text_primary" />
-    </LinearLayout>
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="5dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
 
-    <!-- 清空列表 -->
-    <LinearLayout
-        android:id="@+id/btnClearAll"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:padding="8dp"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true">
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_playlist_play"
+                android:tint="@color/primary" />
 
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:src="@drawable/ic_delete"
-            android:tint="@color/error" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="播放"
+                android:textSize="9sp"
+                android:textColor="@color/text_primary" />
+        </LinearLayout>
 
-        <TextView
+        <!-- 第四行 -->
+        <!-- 清空列表 -->
+        <LinearLayout
+            android:id="@+id/btnClearAll"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="清空"
-            android:textSize="10sp"
-            android:textColor="@color/error" />
-    </LinearLayout>
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="5dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_delete"
+                android:tint="@color/error" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="清空"
+                android:textSize="9sp"
+                android:textColor="@color/error" />
+        </LinearLayout>
+
+    </GridLayout>
 
 </LinearLayout>

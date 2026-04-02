@@ -157,14 +157,17 @@
 
         </LinearLayout>
 
-        <!-- 批量操作栏 - 右侧居中 -->
-        <include
+        <!-- 批量操作栏容器 -->
+        <FrameLayout
             android:id="@+id/batchActionBarContainer"
-            layout="@layout/layout_batch_action_bar"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical|end"
-            android:layout_marginEnd="8dp" />
+            android:layout_marginEnd="8dp">
+
+            <include layout="@layout/layout_batch_action_bar" />
+
+        </FrameLayout>
 
     </FrameLayout>
 

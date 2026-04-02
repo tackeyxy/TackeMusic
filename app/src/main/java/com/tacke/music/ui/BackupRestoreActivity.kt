@@ -139,8 +139,8 @@ class BackupRestoreActivity : AppCompatActivity() {
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            binding.statusBarPlaceholder.layoutParams.height = insets.top
-            binding.statusBarPlaceholder.requestLayout()
+            binding.statusBarPlaceholder?.layoutParams?.height = insets.top
+            binding.statusBarPlaceholder?.requestLayout()
             view.updatePadding(bottom = insets.bottom)
             windowInsets
         }

@@ -1,5 +1,6 @@
 package com.tacke.music.ui.adapter
 
+import android.content.res.Configuration
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -28,9 +29,12 @@ class SongAdapter(
 
     private var songs: List<Song> = emptyList()
     private var isMultiSelectMode = false
-    
+
     // 选择状态由外部管理，解决跨页选择丢失问题
     private var selectedItems: Set<String> = emptySet()
+
+    // 当前屏幕方向
+    private var isLandscape = false
 
     fun submitList(newSongs: List<Song>) {
         songs = newSongs
@@ -73,8 +77,10 @@ class SongAdapter(
     inner class SongViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
-        private val ivSource: ImageView = itemView.findViewById(R.id.ivSource)
-        private val flIndex: View = itemView.findViewById(R.id.flIndex)
+        private val ivSource: ImageView? = itemView.findViewById(R.id.ivSource)
+        // 横屏紧凑布局使用 flCheckbox，竖屏使用 flIndex
+        private val flIndex: View? = itemView.findViewById(R.id.flIndex)
+        private val flCheckbox: View? = itemView.findViewById(R.id.flCheckbox)
         private val ivCheckbox: ImageView = itemView.findViewById(R.id.ivCheckbox)
         private val ivCover: ImageView? = itemView.findViewById(R.id.ivCover)
 
@@ -89,8 +95,10 @@ class SongAdapter(
             ivCover?.let { loadCover(song, it) }
 
             if (isMultiSelectMode) {
-                flIndex.visibility = View.VISIBLE
-                ivSource.visibility = View.GONE
+                // 显示复选框区域
+                flIndex?.visibility = View.VISIBLE
+                flCheckbox?.visibility = View.VISIBLE
+                ivSource?.visibility = View.GONE
 
                 val isSelected = selectedItems.contains(song.id)
                 ivCheckbox.isSelected = isSelected
@@ -101,8 +109,10 @@ class SongAdapter(
                     onSelectionChange?.invoke(song.id, newSelectedState)
                 }
             } else {
-                flIndex.visibility = View.GONE
-                ivSource.visibility = View.VISIBLE
+                // 隐藏复选框区域
+                flIndex?.visibility = View.GONE
+                flCheckbox?.visibility = View.GONE
+                ivSource?.visibility = View.VISIBLE
 
                 itemView.setOnClickListener { onItemClick(song) }
             }
@@ -123,7 +133,7 @@ class SongAdapter(
                 song.platform.uppercase() == "NETEASE" -> R.drawable.ic_netease_logo
                 else -> R.drawable.ic_music_note
             }
-            ivSource.setImageResource(logoResId)
+            ivSource?.setImageResource(logoResId)
         }
 
         private fun loadCover(song: Song, ivCover: ImageView) {
@@ -309,9 +319,25 @@ class SongAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SongViewHolder {
+        // 根据屏幕方向选择布局
+        val layoutRes = if (isLandscape) {
+            R.layout.item_song_compact
+        } else {
+            R.layout.item_song_selectable
+        }
         val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_song_selectable, parent, false)
+            .inflate(layoutRes, parent, false)
         return SongViewHolder(view)
+    }
+
+    /**
+     * 设置屏幕方向，用于选择正确的布局
+     */
+    fun setLandscape(landscape: Boolean) {
+        if (isLandscape != landscape) {
+            isLandscape = landscape
+            notifyDataSetChanged()
+        }
     }
 
     override fun onBindViewHolder(holder: SongViewHolder, position: Int) {

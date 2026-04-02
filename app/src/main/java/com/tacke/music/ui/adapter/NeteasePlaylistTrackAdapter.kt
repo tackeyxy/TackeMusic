@@ -80,15 +80,21 @@ class NeteasePlaylistTrackAdapter(
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
         private val flIndex: View = itemView.findViewById(R.id.flIndex)
         private val ivCheckbox: ImageView = itemView.findViewById(R.id.ivCheckbox)
+        private val ivSource: ImageView = itemView.findViewById(R.id.ivSource)
 
         fun bind(track: PlaylistTrack, position: Int) {
             tvNumber.text = position.toString()
             tvSongName.text = track.name
             tvArtist.text = track.ar?.joinToString(",") { it.name } ?: "未知艺人"
 
+            // 设置音源图标为网易云音乐
+            ivSource.setImageResource(R.drawable.ic_netease_logo)
+            ivSource.visibility = View.VISIBLE
+
             if (isMultiSelectMode) {
                 flIndex.visibility = View.VISIBLE
                 tvNumber.visibility = View.GONE
+                ivSource.visibility = View.GONE
                 val isSelected = selectedItems.contains(track.id)
                 ivCheckbox.isSelected = isSelected
 
@@ -105,6 +111,7 @@ class NeteasePlaylistTrackAdapter(
             } else {
                 flIndex.visibility = View.GONE
                 tvNumber.visibility = View.VISIBLE
+                ivSource.visibility = View.VISIBLE
 
                 itemView.setOnClickListener {
                     onItemClick(track)

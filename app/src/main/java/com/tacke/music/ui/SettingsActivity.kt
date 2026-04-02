@@ -586,8 +586,8 @@ class SettingsActivity : AppCompatActivity() {
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
 
             // 为状态栏占位视图设置高度
-            binding.statusBarPlaceholder.layoutParams.height = insets.top
-            binding.statusBarPlaceholder.requestLayout()
+            binding.statusBarPlaceholder?.layoutParams?.height = insets.top
+            binding.statusBarPlaceholder?.requestLayout()
 
             // 为底部设置 padding
             view.updatePadding(

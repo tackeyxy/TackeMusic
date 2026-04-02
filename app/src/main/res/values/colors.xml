@@ -42,6 +42,8 @@
     <color name="light_cyan">#FFE0F7FA</color>
     <color name="light_blue_cyan">#FFB2EBF2</color>
 
-    <!-- 选中状态背景色 - 更柔和的蓝色 -->
-    <color name="selected_background">#FFE3F2FD</color>
+    <!-- 选中状态背景色 - 清爽的主色透明叠加 -->
+    <color name="selected_background">#1A2B7CD3</color>
+    <!-- 导航栏背板背景色 - 与主背景协调 -->
+    <color name="nav_surface">#FFF8F6F2</color>
 </resources>

@@ -149,12 +149,12 @@ class FavoriteSongsActivity : AppCompatActivity() {
 
     private fun setupBatchActionListeners() {
         // 关闭按钮
-        binding.batchActionBarContainer.btnCloseBatch?.setOnClickListener {
+        findViewById<View>(R.id.btnCloseBatch)?.setOnClickListener {
             exitMultiSelectMode()
         }
 
         // 全选按钮
-        binding.batchActionBarContainer.btnSelectAll.setOnClickListener {
+        findViewById<View>(R.id.btnSelectAll)?.setOnClickListener {
             if (selectedSongs.size == songAdapter.itemCount) {
                 selectedSongs.clear()
             } else {
@@ -166,7 +166,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
         }
 
         // 添加到歌单按钮
-        binding.batchActionBarContainer.btnAddToPlaylist.setOnClickListener {
+        findViewById<View>(R.id.btnAddToPlaylist)?.setOnClickListener {
             val selectedSongList = favoriteSongs.filter { selectedSongs.contains(it.id) }
             if (selectedSongList.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -176,7 +176,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
         }
 
         // 添加到播放按钮
-        binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
+        findViewById<View>(R.id.btnAddToNowPlaying)?.setOnClickListener {
             val selectedSongList = favoriteSongs.filter { selectedSongs.contains(it.id) }
             if (selectedSongList.isNotEmpty()) {
                 addSongsToNowPlaying(selectedSongList)
@@ -185,7 +185,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
         }
 
         // 下载按钮 - 真正的下载功能（跳过本地音乐）
-        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
+        findViewById<View>(R.id.btnBatchDownload)?.setOnClickListener {
             val selectedSongList = favoriteSongs.filter { selectedSongs.contains(it.id) }
             if (selectedSongList.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -210,12 +210,12 @@ class FavoriteSongsActivity : AppCompatActivity() {
         }
 
         // 移除按钮 - 从我喜欢中移除
-        binding.batchActionBarContainer.btnBatchRemove.setOnClickListener {
+        findViewById<View>(R.id.btnBatchRemove)?.setOnClickListener {
             showDeleteConfirm()
         }
 
         // 清空列表按钮
-        binding.batchActionBarContainer.btnClearAll.setOnClickListener {
+        findViewById<View>(R.id.btnClearAll)?.setOnClickListener {
             showClearAllConfirmDialog()
         }
     }
@@ -284,26 +284,26 @@ class FavoriteSongsActivity : AppCompatActivity() {
 
     private fun enterMultiSelectMode() {
         isMultiSelectMode = true
-        binding.batchActionBarContainer.root.visibility = View.VISIBLE
+        findViewById<View>(R.id.batchActionBar)?.visibility = View.VISIBLE
         binding.btnPlayAll.visibility = View.GONE
         songAdapter.setMultiSelectMode(true)
         selectedSongs.clear()
         updateSelectedCount()
         // 隐藏"喜欢"按钮（已经在喜欢列表中）
-        binding.batchActionBarContainer.btnAddToFavorite.visibility = View.GONE
+        findViewById<View>(R.id.btnAddToFavorite)?.visibility = View.GONE
         // 显示"移除"按钮
-        binding.batchActionBarContainer.btnBatchRemove.visibility = View.VISIBLE
+        findViewById<View>(R.id.btnBatchRemove)?.visibility = View.VISIBLE
         setupBatchActionListeners()
     }
 
     private fun exitMultiSelectMode() {
         isMultiSelectMode = false
-        binding.batchActionBarContainer.root.visibility = View.GONE
+        findViewById<View>(R.id.batchActionBar)?.visibility = View.GONE
         binding.btnPlayAll.visibility = View.VISIBLE
         songAdapter.setMultiSelectMode(false)
         selectedSongs.clear()
         // 隐藏"移除"按钮
-        binding.batchActionBarContainer.btnBatchRemove.visibility = View.GONE
+        findViewById<View>(R.id.btnBatchRemove)?.visibility = View.GONE
     }
 
     private fun toggleSelection(songId: String) {
@@ -317,7 +317,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
     }
 
     private fun updateSelectedCount() {
-        binding.batchActionBarContainer.tvSelectedCount.text = selectedSongs.size.toString()
+        findViewById<TextView>(R.id.tvSelectedCount)?.text = selectedSongs.size.toString()
     }
 
     private fun showDeleteConfirm() {
@@ -967,8 +967,8 @@ class FavoriteSongsActivity : AppCompatActivity() {
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
 
             // 为状态栏占位视图设置高度
-            binding.statusBarPlaceholder.layoutParams.height = insets.top
-            binding.statusBarPlaceholder.requestLayout()
+            binding.statusBarPlaceholder?.layoutParams?.height = insets.top
+            binding.statusBarPlaceholder?.requestLayout()
 
             // 为底部设置 padding
             view.updatePadding(

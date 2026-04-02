@@ -14,7 +14,9 @@ import androidx.core.view.updatePadding
 import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import jp.wasabeef.glide.transformations.BlurTransformation
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.tacke.music.R
@@ -53,6 +55,11 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
     private var playlistId: Long = 0
     private var playlistName: String = ""
     private var playlistCover: String = ""
+    private var playlistDescription: String = ""
+    private var playlistCreatorName: String = ""
+    private var playlistCreatorAvatar: String = ""
+    private var playlistTrackCount: Int = 0
+    private var playlistPlayCount: Long = 0
     private var isMultiSelectMode = false
 
     // 分页加载相关
@@ -69,6 +76,18 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                 putExtra("playlist_cover", playlistCover)
             }
             context.startActivity(intent)
+        }
+
+        /**
+         * 格式化播放数量
+         */
+        fun formatPlayCount(count: Long): String {
+            return when {
+                count >= 100_000_000 -> "${count / 100_000_000}亿"
+                count >= 10_000 -> "${count / 10_000}万"
+                count >= 1_000 -> "${count / 1_000}千"
+                else -> count.toString()
+            }
         }
     }
 
@@ -112,8 +131,29 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
         }
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // 屏幕旋转时重新设置视图
+        // 由于使用了不同的布局文件，需要重新初始化视图
+        binding = ActivityNeteasePlaylistDetailBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        setupEdgeToEdge()
+        setupUI()
+        // 重新设置RecyclerView，但使用现有的adapter
+        binding.recyclerView.layoutManager = LinearLayoutManager(this)
+        binding.recyclerView.adapter = trackAdapter
+        setupClickListeners()
+        setupBatchActionListeners()
+        setupScrollListener()
+        setupAppBarBehavior()
+        // 恢复多选模式状态
+        if (isMultiSelectMode) {
+            showBatchActionBar()
+        }
+    }
+
     private fun setupUI() {
-        binding.tvTitle.text = playlistName
+        binding.tvTitle?.text = playlistName
         binding.tvPlaylistName.text = playlistName
 
         // 加载封面
@@ -122,6 +162,42 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             .placeholder(com.tacke.music.R.drawable.ic_album_default)
             .error(com.tacke.music.R.drawable.ic_album_default)
             .into(binding.ivPlaylistCover)
+
+        // 加载模糊背景
+        binding.ivBlurBackground?.let {
+            Glide.with(this)
+                .load(playlistCover)
+                .placeholder(com.tacke.music.R.drawable.ic_album_default)
+                .error(com.tacke.music.R.drawable.ic_album_default)
+                .transform(BlurTransformation(25, 3))
+                .into(it)
+        }
+
+        // 更新其他歌单信息
+        updatePlaylistUI()
+    }
+
+    private fun updatePlaylistUI() {
+        // 更新歌曲数量
+        binding.tvSongCount?.text = "$playlistTrackCount 首歌曲"
+        binding.tvTrackCount?.text = "$playlistTrackCount 首"
+
+        // 更新播放量
+        binding.tvPlayCount?.text = formatPlayCount(playlistPlayCount)
+
+        // 更新简介
+        binding.tvDescription?.text = playlistDescription
+
+        // 更新创建者信息
+        binding.tvCreatorName?.text = playlistCreatorName
+        binding.ivCreatorAvatar?.let {
+            Glide.with(this)
+                .load(playlistCreatorAvatar)
+                .placeholder(com.tacke.music.R.drawable.ic_album_default)
+                .error(com.tacke.music.R.drawable.ic_album_default)
+                .circleCrop()
+                .into(it)
+        }
     }
 
     private fun setupRecyclerView() {
@@ -149,8 +225,16 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
-        // Toolbar 导航按钮点击事件
-        binding.toolbar.setNavigationOnClickListener {
+        // Toolbar 导航按钮点击事件 - 竖屏布局
+        (binding.toolbar as? androidx.appcompat.widget.Toolbar)?.setNavigationOnClickListener {
+            if (isMultiSelectMode) {
+                exitMultiSelectMode()
+            } else {
+                finish()
+            }
+        }
+        // 横屏布局返回按钮
+        findViewById<View>(R.id.btnBack)?.setOnClickListener {
             if (isMultiSelectMode) {
                 exitMultiSelectMode()
             } else {
@@ -163,22 +247,59 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                 playAllTracks()
             }
         }
+
+        // 收藏按钮
+        binding.btnCollect.setOnClickListener {
+            Toast.makeText(this, "收藏功能开发中", Toast.LENGTH_SHORT).show()
+        }
+
+        // 分享按钮
+        binding.btnShare.setOnClickListener {
+            sharePlaylist()
+        }
+    }
+
+    private fun sharePlaylist() {
+        val shareText = "分享歌单：$playlistName\nhttps://music.163.com/playlist?id=$playlistId"
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, shareText)
+        }
+        startActivity(Intent.createChooser(intent, "分享歌单"))
     }
 
     private fun setupBatchActionListeners() {
-        // 关闭按钮
-        binding.batchActionBarContainer.btnCloseBatch?.setOnClickListener {
+        // 关闭按钮 - 竖屏
+        binding.batchActionBarContainer?.btnCloseBatch?.setOnClickListener {
+            exitMultiSelectMode()
+        }
+        // 关闭按钮 - 横屏
+        findViewById<View>(R.id.btnCloseBatch)?.setOnClickListener {
             exitMultiSelectMode()
         }
 
-        // 全选按钮
-        binding.batchActionBarContainer.btnSelectAll.setOnClickListener {
+        // 全选按钮 - 竖屏
+        binding.batchActionBarContainer?.btnSelectAll?.setOnClickListener {
+            trackAdapter.selectAll()
+            updateBatchActionBar()
+        }
+        // 全选按钮 - 横屏
+        findViewById<View>(R.id.btnSelectAll)?.setOnClickListener {
             trackAdapter.selectAll()
             updateBatchActionBar()
         }
 
-        // 下载按钮
-        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
+        // 下载按钮 - 竖屏
+        binding.batchActionBarContainer?.btnBatchDownload?.setOnClickListener {
+            val selectedTracks = trackAdapter.getSelectedTracks()
+            if (selectedTracks.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showBatchDownloadQualityDialog(selectedTracks)
+        }
+        // 下载按钮 - 横屏
+        findViewById<View>(R.id.btnBatchDownload)?.setOnClickListener {
             val selectedTracks = trackAdapter.getSelectedTracks()
             if (selectedTracks.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -187,8 +308,17 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             showBatchDownloadQualityDialog(selectedTracks)
         }
 
-        // 添加到喜欢按钮
-        binding.batchActionBarContainer.btnAddToFavorite.setOnClickListener {
+        // 添加到喜欢按钮 - 竖屏
+        binding.batchActionBarContainer?.btnAddToFavorite?.setOnClickListener {
+            val selectedTracks = trackAdapter.getSelectedTracks()
+            if (selectedTracks.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            addTracksToFavorites(selectedTracks)
+        }
+        // 添加到喜欢按钮 - 横屏
+        findViewById<View>(R.id.btnAddToFavorite)?.setOnClickListener {
             val selectedTracks = trackAdapter.getSelectedTracks()
             if (selectedTracks.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -197,8 +327,17 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             addTracksToFavorites(selectedTracks)
         }
 
-        // 添加到歌单按钮
-        binding.batchActionBarContainer.btnAddToPlaylist.setOnClickListener {
+        // 添加到歌单按钮 - 竖屏
+        binding.batchActionBarContainer?.btnAddToPlaylist?.setOnClickListener {
+            val selectedTracks = trackAdapter.getSelectedTracks()
+            if (selectedTracks.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showBatchPlaylistSelectionDialog(selectedTracks)
+        }
+        // 添加到歌单按钮 - 横屏
+        findViewById<View>(R.id.btnAddToPlaylist)?.setOnClickListener {
             val selectedTracks = trackAdapter.getSelectedTracks()
             if (selectedTracks.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -207,8 +346,17 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             showBatchPlaylistSelectionDialog(selectedTracks)
         }
 
-        // 加入播放按钮
-        binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
+        // 加入播放按钮 - 竖屏
+        binding.batchActionBarContainer?.btnAddToNowPlaying?.setOnClickListener {
+            val selectedTracks = trackAdapter.getSelectedTracks()
+            if (selectedTracks.isEmpty()) {
+                Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            addTracksToNowPlaying(selectedTracks)
+        }
+        // 加入播放按钮 - 横屏
+        findViewById<View>(R.id.btnAddToNowPlaying)?.setOnClickListener {
             val selectedTracks = trackAdapter.getSelectedTracks()
             if (selectedTracks.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -219,8 +367,8 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
     }
 
     private fun setupAppBarBehavior() {
-        // 监听AppBar折叠状态，动态改变标题栏颜色
-        binding.appBarLayout.addOnOffsetChangedListener(AppBarLayout.OnOffsetChangedListener { appBarLayout, verticalOffset ->
+        // 监听AppBar折叠状态，动态改变标题栏颜色（仅竖屏布局有AppBarLayout）
+        (binding.appBarLayout as? AppBarLayout)?.addOnOffsetChangedListener(AppBarLayout.OnOffsetChangedListener { appBarLayout, verticalOffset ->
             val totalScrollRange = appBarLayout.totalScrollRange
             val progress = abs(verticalOffset).toFloat() / totalScrollRange
 
@@ -228,13 +376,13 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             when {
                 progress < 0.5f -> {
                     // 展开状态 - 白色文字
-                    binding.tvTitle.setTextColor(Color.WHITE)
-                    binding.toolbar.navigationIcon?.setTint(Color.WHITE)
+                    binding.tvTitle?.setTextColor(Color.WHITE)
+                    (binding.toolbar as? androidx.appcompat.widget.Toolbar)?.navigationIcon?.setTint(Color.WHITE)
                 }
                 else -> {
                     // 折叠状态 - 深色文字
-                    binding.tvTitle.setTextColor(getColor(R.color.text_primary))
-                    binding.toolbar.navigationIcon?.setTint(getColor(R.color.text_primary))
+                    binding.tvTitle?.setTextColor(getColor(R.color.text_primary))
+                    (binding.toolbar as? androidx.appcompat.widget.Toolbar)?.navigationIcon?.setTint(getColor(R.color.text_primary))
                 }
             }
         })
@@ -253,24 +401,35 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
     }
 
     private fun showBatchActionBar() {
-        binding.batchActionBarContainer.root.visibility = View.VISIBLE
+        // 竖屏布局中的批量操作栏
+        binding.batchActionBarContainer?.root?.visibility = View.VISIBLE
+        // 横屏布局中的批量操作栏
+        val batchActionBarContainerLand = findViewById<View>(R.id.batchActionBarContainerLand)
+        batchActionBarContainerLand?.visibility = View.VISIBLE
         // 隐藏清空按钮（歌单列表不需要清空功能）
-        binding.batchActionBarContainer.btnClearAll?.visibility = View.GONE
+        binding.batchActionBarContainer?.btnClearAll?.visibility = View.GONE
+        findViewById<View>(R.id.btnClearAll)?.visibility = View.GONE
         updateBatchActionBar()
         setupBatchActionListeners()
     }
 
     private fun hideBatchActionBar() {
-        binding.batchActionBarContainer.root.visibility = View.GONE
+        // 竖屏布局中的批量操作栏
+        binding.batchActionBarContainer?.root?.visibility = View.GONE
+        // 横屏布局中的批量操作栏
+        val batchActionBarContainerLand = findViewById<View>(R.id.batchActionBarContainerLand)
+        batchActionBarContainerLand?.visibility = View.GONE
     }
 
     private fun updateBatchActionBar() {
         val selectedCount = trackAdapter.getSelectedTracks().size
-        binding.batchActionBarContainer.tvSelectedCount.text = selectedCount.toString()
+        binding.batchActionBarContainer?.tvSelectedCount?.text = selectedCount.toString()
+        findViewById<android.widget.TextView>(R.id.tvSelectedCount)?.text = selectedCount.toString()
     }
 
     private fun setupScrollListener() {
-        binding.nestedScrollView.setOnScrollChangeListener(
+        // 竖屏布局使用 NestedScrollView
+        binding.nestedScrollView?.setOnScrollChangeListener(
             NestedScrollView.OnScrollChangeListener { v, scrollX, scrollY, oldScrollX, oldScrollY ->
                 // 检查是否滚动到底部
                 val child = v.getChildAt(0)
@@ -283,11 +442,29 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                 }
             }
         )
+
+        // 横屏布局使用 RecyclerView 的滚动监听
+        binding.recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(recyclerView, dx, dy)
+                
+                val layoutManager = recyclerView.layoutManager as? LinearLayoutManager
+                if (layoutManager != null) {
+                    val lastVisibleItem = layoutManager.findLastVisibleItemPosition()
+                    val totalItemCount = layoutManager.itemCount
+                    
+                    // 当最后一个可见项是倒数第5个或更后时触发加载更多
+                    if (lastVisibleItem >= totalItemCount - 5 && !isLoadingMore && loadedTrackCount < allTrackIds.size) {
+                        loadMoreTracks()
+                    }
+                }
+            }
+        })
     }
 
     private fun loadPlaylistDetail() {
         lifecycleScope.launch {
-            binding.progressBar.visibility = View.VISIBLE
+            binding.progressBar?.visibility = View.VISIBLE
             try {
                 val response = withContext(Dispatchers.IO) {
                     RetrofitClient.playlistApi.getPlaylistDetail(playlistId)
@@ -297,12 +474,14 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                     val playlist = response.playlist
                     playlistName = playlist.name
                     playlistCover = playlist.coverImgUrl ?: ""
+                    playlistDescription = playlist.description ?: "暂无简介"
+                    playlistCreatorName = playlist.creator?.nickname ?: "未知用户"
+                    playlistCreatorAvatar = playlist.creator?.avatarUrl ?: ""
+                    playlistTrackCount = playlist.trackCount
+                    playlistPlayCount = playlist.playCount
 
-                    binding.tvPlaylistName.text = playlistName
-                    binding.tvSongCount.text = "${playlist.trackCount} 首歌曲"
-                    binding.tvDescription.text = playlist.description ?: "暂无简介"
-                    binding.tvTrackCount.text = "${playlist.trackCount} 首"
-                    binding.tvTrackCountInButton.text = "${playlist.trackCount} 首"
+                    // 更新UI
+                    updatePlaylistUI()
 
                     // 重新加载封面
                     Glide.with(this@NeteasePlaylistDetailActivity)
@@ -310,6 +489,16 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                         .placeholder(com.tacke.music.R.drawable.ic_album_default)
                         .error(com.tacke.music.R.drawable.ic_album_default)
                         .into(binding.ivPlaylistCover)
+
+                    // 重新加载模糊背景
+                    binding.ivBlurBackground?.let {
+                        Glide.with(this@NeteasePlaylistDetailActivity)
+                            .load(playlistCover)
+                            .placeholder(com.tacke.music.R.drawable.ic_album_default)
+                            .error(com.tacke.music.R.drawable.ic_album_default)
+                            .transform(BlurTransformation(25, 3))
+                            .into(it)
+                    }
 
                     // 获取所有trackIds
                     allTrackIds = playlist.trackIds?.map { it.id } ?: emptyList()
@@ -334,7 +523,7 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Toast.makeText(this@NeteasePlaylistDetailActivity, "加载失败: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
-                binding.progressBar.visibility = View.GONE
+                binding.progressBar?.visibility = View.GONE
             }
         }
     }
@@ -343,7 +532,7 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
         if (isLoadingMore || loadedTrackCount >= allTrackIds.size) return
 
         isLoadingMore = true
-        binding.progressBarLoadMore.visibility = View.VISIBLE
+        binding.progressBarLoadMore?.visibility = View.VISIBLE
 
         lifecycleScope.launch {
             try {
@@ -368,13 +557,13 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
                 // 加载失败，不中断流程
             } finally {
                 isLoadingMore = false
-                binding.progressBarLoadMore.visibility = View.GONE
+                binding.progressBarLoadMore?.visibility = View.GONE
             }
         }
     }
 
     private fun updateEmptyState(isEmpty: Boolean) {
-        binding.emptyView.visibility = if (isEmpty) View.VISIBLE else View.GONE
+        binding.emptyView?.visibility = if (isEmpty) View.VISIBLE else View.GONE
         binding.recyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
     }
 
@@ -887,11 +1076,11 @@ class NeteasePlaylistDetailActivity : AppCompatActivity() {
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
 
             // 为状态栏占位视图设置高度
-            binding.statusBarPlaceholder.layoutParams.height = insets.top
-            binding.statusBarPlaceholder.requestLayout()
+            binding.statusBarPlaceholder?.layoutParams?.height = insets.top
+            binding.statusBarPlaceholder?.requestLayout()
 
-            // 为AppBar设置顶部padding，使其延伸到状态栏下方
-            binding.appBarLayout.setPadding(0, insets.top, 0, 0)
+            // 为AppBar设置顶部padding，使其延伸到状态栏下方（竖屏布局）
+            binding.appBarLayout?.setPadding(0, insets.top, 0, 0)
 
             // 为底部设置 padding
             view.updatePadding(

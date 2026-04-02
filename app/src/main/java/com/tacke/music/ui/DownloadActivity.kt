@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -30,6 +31,7 @@ import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.adapter.DownloadTaskAdapter
+import com.tacke.music.util.NavigationHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,6 +66,7 @@ class DownloadActivity : AppCompatActivity() {
         setupTabLayout()
         setupRecyclerViews()
         setupBatchActions()
+        setupSideNavigation()
         observeDownloadData()
     }
 
@@ -172,12 +175,12 @@ class DownloadActivity : AppCompatActivity() {
 
     private fun setupBatchActionListeners() {
         // 关闭按钮
-        binding.batchActionBarContainer.btnCloseBatch?.setOnClickListener {
+        findViewById<View>(R.id.btnCloseBatch)?.setOnClickListener {
             exitMultiSelectMode()
         }
 
         // 全选按钮
-        binding.batchActionBarContainer.btnSelectAll.setOnClickListener {
+        findViewById<View>(R.id.btnSelectAll)?.setOnClickListener {
             if (binding.tabLayout.selectedTabPosition == 0) {
                 downloadingAdapter.selectAll()
                 updateSelectedCount(downloadingAdapter.getSelectedTasks().size)
@@ -188,7 +191,7 @@ class DownloadActivity : AppCompatActivity() {
         }
 
         // 删除按钮 - 两个标签页都使用删除功能
-        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
+        findViewById<View>(R.id.btnBatchDownload)?.setOnClickListener {
             showBatchDeleteDialog { deleteFile ->
                 if (binding.tabLayout.selectedTabPosition == 0) {
                     val selectedTasks = downloadingAdapter.getSelectedTasks()
@@ -208,7 +211,7 @@ class DownloadActivity : AppCompatActivity() {
         }
 
         // 添加到喜欢按钮 - 仅在下载历史标签页有效
-        binding.batchActionBarContainer.btnAddToFavorite.setOnClickListener {
+        findViewById<View>(R.id.btnAddToFavorite)?.setOnClickListener {
             if (binding.tabLayout.selectedTabPosition == 1) {
                 val selectedTasks = historyAdapter.getSelectedTasks()
                 if (selectedTasks.isNotEmpty()) {
@@ -221,7 +224,7 @@ class DownloadActivity : AppCompatActivity() {
         }
 
         // 添加到播放按钮 - 仅在下载历史标签页有效
-        binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
+        findViewById<View>(R.id.btnAddToNowPlaying)?.setOnClickListener {
             if (binding.tabLayout.selectedTabPosition == 1) {
                 val selectedTasks = historyAdapter.getSelectedTasks()
                 if (selectedTasks.isNotEmpty()) {
@@ -234,7 +237,7 @@ class DownloadActivity : AppCompatActivity() {
         }
 
         // 添加到歌单按钮 - 仅在下载历史标签页有效
-        binding.batchActionBarContainer.btnAddToPlaylist.setOnClickListener {
+        findViewById<View>(R.id.btnAddToPlaylist)?.setOnClickListener {
             if (binding.tabLayout.selectedTabPosition == 1) {
                 val selectedTasks = historyAdapter.getSelectedTasks()
                 if (selectedTasks.isNotEmpty()) {
@@ -247,12 +250,12 @@ class DownloadActivity : AppCompatActivity() {
         }
 
         // 清空列表按钮
-        binding.batchActionBarContainer.btnClearAll.setOnClickListener {
+        findViewById<View>(R.id.btnClearAll)?.setOnClickListener {
             showClearAllConfirmDialog()
         }
 
         // 移除所选按钮 - 仅移除选中项，不删除文件
-        binding.batchActionBarContainer.btnBatchRemove.setOnClickListener {
+        findViewById<View>(R.id.btnBatchRemove)?.setOnClickListener {
             showBatchRemoveDialog()
         }
     }
@@ -462,19 +465,19 @@ class DownloadActivity : AppCompatActivity() {
 
     private fun enterMultiSelectMode() {
         isMultiSelectMode = true
-        binding.batchActionBarContainer.root.visibility = View.VISIBLE
+        findViewById<View>(R.id.batchActionBar)?.visibility = View.VISIBLE
 
         // 根据当前标签页设置适配器
         if (binding.tabLayout.selectedTabPosition == 0) {
             downloadingAdapter.setMultiSelectMode(true)
             // 正在下载页面：隐藏下载按钮，显示移除按钮
-            binding.batchActionBarContainer.btnBatchDownload.visibility = View.GONE
-            binding.batchActionBarContainer.btnBatchRemove.visibility = View.VISIBLE
+            findViewById<View>(R.id.btnBatchDownload)?.visibility = View.GONE
+            findViewById<View>(R.id.btnBatchRemove)?.visibility = View.VISIBLE
         } else {
             historyAdapter.setMultiSelectMode(true)
             // 下载历史页面：隐藏下载按钮，显示移除按钮
-            binding.batchActionBarContainer.btnBatchDownload.visibility = View.GONE
-            binding.batchActionBarContainer.btnBatchRemove.visibility = View.VISIBLE
+            findViewById<View>(R.id.btnBatchDownload)?.visibility = View.GONE
+            findViewById<View>(R.id.btnBatchRemove)?.visibility = View.VISIBLE
         }
 
         updateSelectedCount(0)
@@ -483,18 +486,18 @@ class DownloadActivity : AppCompatActivity() {
 
     private fun exitMultiSelectMode() {
         isMultiSelectMode = false
-        binding.batchActionBarContainer.root.visibility = View.GONE
+        findViewById<View>(R.id.batchActionBar)?.visibility = View.GONE
 
         downloadingAdapter.setMultiSelectMode(false)
         historyAdapter.setMultiSelectMode(false)
 
         // 恢复按钮的默认可见性
-        binding.batchActionBarContainer.btnBatchDownload.visibility = View.VISIBLE
-        binding.batchActionBarContainer.btnBatchRemove.visibility = View.GONE
+        findViewById<View>(R.id.btnBatchDownload)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.btnBatchRemove)?.visibility = View.GONE
     }
 
     private fun updateSelectedCount(count: Int) {
-        binding.batchActionBarContainer.tvSelectedCount.text = count.toString()
+        findViewById<TextView>(R.id.tvSelectedCount)?.text = count.toString()
     }
 
     private fun observeDownloadData() {
@@ -762,15 +765,50 @@ class DownloadActivity : AppCompatActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
 
-            // 为状态栏占位视图设置高度
-            binding.statusBarPlaceholder.layoutParams.height = insets.top
-            binding.statusBarPlaceholder.requestLayout()
+            // 判断当前屏幕方向
+            val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+            if (isLandscape) {
+                // 横屏模式：状态栏在左侧，为侧边导航栏设置顶部 padding
+                val sideNav = binding.root.findViewById<android.view.View>(R.id.sideNavContainer)
+                sideNav?.findViewById<android.view.View>(R.id.sideNav)?.let { navView ->
+                    navView.setPadding(navView.paddingLeft, insets.top, navView.paddingRight, navView.paddingBottom)
+                }
+            } else {
+                // 竖屏模式：状态栏在顶部，为状态栏占位视图设置高度
+                binding.statusBarPlaceholder?.layoutParams?.height = insets.top
+                binding.statusBarPlaceholder?.requestLayout()
+            }
 
             // 为底部设置 padding
             view.updatePadding(
                 bottom = insets.bottom
             )
             windowInsets
+        }
+    }
+
+    /**
+     * 设置左侧导航栏（横屏模式）
+     */
+    private fun setupSideNavigation() {
+        // 检查是否存在左侧导航栏（横屏模式）
+        val sideNavContainer = binding.root.findViewById<android.view.View>(R.id.sideNavContainer)
+        if (sideNavContainer != null) {
+            val navHelper = NavigationHelper(this)
+            navHelper.setupSideNavigation(
+                navHome = sideNavContainer.findViewById(R.id.navHome),
+                navDiscover = sideNavContainer.findViewById(R.id.navDiscover),
+                navProfile = sideNavContainer.findViewById(R.id.navProfile),
+                navSettings = sideNavContainer.findViewById(R.id.navSettings),
+                ivNavHome = sideNavContainer.findViewById(R.id.ivNavHome),
+                ivNavDiscover = sideNavContainer.findViewById(R.id.ivNavDiscover),
+                ivNavProfile = sideNavContainer.findViewById(R.id.ivNavProfile),
+                tvNavHome = sideNavContainer.findViewById(R.id.tvNavHome),
+                tvNavDiscover = sideNavContainer.findViewById(R.id.tvNavDiscover),
+                tvNavProfile = sideNavContainer.findViewById(R.id.tvNavProfile),
+                currentNavIndex = -1 // 下载管理页面不在主导航栏中
+            )
         }
     }
 }

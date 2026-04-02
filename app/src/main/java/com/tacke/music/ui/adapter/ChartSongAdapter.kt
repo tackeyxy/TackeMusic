@@ -71,11 +71,20 @@ class ChartSongAdapter(
         private val tvRank: TextView = itemView.findViewById(R.id.tvRank)
         private val tvSongName: TextView = itemView.findViewById(R.id.tvSongName)
         private val tvArtist: TextView = itemView.findViewById(R.id.tvArtist)
+        private val ivSource: ImageView = itemView.findViewById(R.id.ivSource)
 
         fun bind(song: ChartSong, rank: Int) {
             tvRank.text = rank.toString()
             tvSongName.text = song.name
             tvArtist.text = song.artist
+
+            // 设置平台图标
+            val sourceIcon = when (song.source.lowercase()) {
+                "kuwo", "kw" -> R.drawable.ic_kuwo_logo
+                else -> R.drawable.ic_netease_logo
+            }
+            ivSource.setImageResource(sourceIcon)
+            ivSource.visibility = if (isMultiSelectMode) View.GONE else View.VISIBLE
 
             // 前三名使用特殊颜色
             val context = itemView.context

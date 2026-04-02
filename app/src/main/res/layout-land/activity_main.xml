@@ -1,0 +1,1027 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background"
+    android:fitsSystemWindows="false"
+    tools:context=".ui.MainActivity">
+
+    <!-- 左侧导航栏 - 使用可复用组件 -->
+    <include
+        android:id="@+id/sideNavContainer"
+        layout="@layout/layout_side_navigation"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
+    <!-- 左侧区域 - 搜索框 + 榜单卡片 -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/leftPanel"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintStart_toEndOf="@id/sideNavContainer"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintWidth_percent="0.45">
+
+        <!-- 搜索栏 -->
+        <LinearLayout
+            android:id="@+id/toolbar"
+            android:layout_width="0dp"
+            android:layout_height="48dp"
+            android:orientation="horizontal"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_search_bar"
+            android:paddingStart="4dp"
+            android:paddingEnd="12dp"
+            android:gravity="center_vertical"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <!-- 音乐源选择器 -->
+            <LinearLayout
+                android:id="@+id/layoutSourceSelector"
+                android:layout_width="wrap_content"
+                android:layout_height="40dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="4dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:background="?attr/selectableItemBackgroundBorderless">
+
+                <ImageView
+                    android:id="@+id/ivSourceSelector"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:scaleType="fitCenter" />
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_marginStart="2dp"
+                    android:src="@drawable/ic_dropdown"
+                    android:tint="@color/text_secondary" />
+
+            </LinearLayout>
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="20dp"
+                android:layout_marginHorizontal="12dp"
+                android:background="@color/divider" />
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_search"
+                android:tint="@color/text_hint" />
+
+            <EditText
+                android:id="@+id/etSearch"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="12dp"
+                android:background="@null"
+                android:hint="搜索歌曲、艺人、专辑"
+                android:textSize="16sp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_hint"
+                android:maxLines="1"
+                android:inputType="text"
+                android:imeOptions="actionSearch"
+                android:gravity="center_vertical" />
+
+        </LinearLayout>
+
+        <!-- 下拉刷新容器 - 仅用于榜单区域 -->
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/swipeRefreshLayout"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginTop="16dp"
+            app:layout_constraintTop_toBottomOf="@id/toolbar"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <androidx.core.widget.NestedScrollView
+                android:id="@+id/scrollView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="20dp"
+                    android:paddingBottom="24dp">
+
+                    <!-- 榜单标题 -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="音乐榜单"
+                        android:textSize="22sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="发现热门音乐，掌握流行趋势"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_secondary" />
+
+                    <!-- 4个榜单卡片 - 2x2网格布局 -->
+                    <GridLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:columnCount="2"
+                        android:rowCount="2"
+                        android:useDefaultMargins="false">
+
+                        <!-- 飙升榜 -->
+                        <FrameLayout
+                            android:id="@+id/cardSoaring"
+                            android:layout_width="0dp"
+                            android:layout_height="160dp"
+                            android:layout_columnWeight="1"
+                            android:layout_marginEnd="8dp"
+                            android:layout_marginBottom="12dp"
+                            android:background="@drawable/bg_chart_soaring"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:foreground="?attr/selectableItemBackground">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:orientation="vertical"
+                                android:padding="10dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="飙升榜"
+                                    android:textSize="14sp"
+                                    android:textStyle="bold"
+                                    android:textColor="@color/white" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="热度飙升"
+                                    android:textSize="10sp"
+                                    android:textColor="#80FFFFFF" />
+
+                                <!-- 前三首歌曲 -->
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:orientation="vertical"
+                                    android:layout_marginTop="6dp">
+
+                                    <LinearLayout
+                                        android:id="@+id/songSoaring1"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="28dp"
+                                        android:orientation="horizontal"
+                                        android:gravity="center_vertical"
+                                        android:background="?attr/selectableItemBackground"
+                                        android:clickable="true"
+                                        android:focusable="true"
+                                        android:paddingHorizontal="4dp">
+
+                                        <TextView
+                                            android:layout_width="14dp"
+                                            android:layout_height="wrap_content"
+                                            android:text="1"
+                                            android:textSize="11sp"
+                                            android:textStyle="bold"
+                                            android:textColor="#FFD700" />
+
+                                        <TextView
+                                            android:id="@+id/tvSoaringSong1"
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:layout_marginStart="4dp"
+                                            android:text="加载中..."
+                                            android:textSize="11sp"
+                                            android:textColor="@color/white"
+                                            android:maxLines="1"
+                                            android:ellipsize="end" />
+
+                                        <ImageView
+                                            android:layout_width="12dp"
+                                            android:layout_height="12dp"
+                                            android:src="@drawable/ic_play"
+                                            android:tint="#80FFFFFF" />
+
+                                    </LinearLayout>
+
+                                    <LinearLayout
+                                        android:id="@+id/songSoaring2"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="28dp"
+                                        android:orientation="horizontal"
+                                        android:gravity="center_vertical"
+                                        android:background="?attr/selectableItemBackground"
+                                        android:clickable="true"
+                                        android:focusable="true"
+                                        android:paddingHorizontal="4dp">
+
+                                        <TextView
+                                            android:layout_width="14dp"
+                                            android:layout_height="wrap_content"
+                                            android:text="2"
+                                            android:textSize="11sp"
+                                            android:textStyle="bold"
+                                            android:textColor="#C0C0C0" />
+
+                                        <TextView
+                                            android:id="@+id/tvSoaringSong2"
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:layout_marginStart="4dp"
+                                            android:text="加载中..."
+                                            android:textSize="11sp"
+                                            android:textColor="#E6FFFFFF"
+                                            android:maxLines="1"
+                                            android:ellipsize="end" />
+
+                                        <ImageView
+                                            android:layout_width="12dp"
+                                            android:layout_height="12dp"
+                                            android:src="@drawable/ic_play"
+                                            android:tint="#80FFFFFF" />
+
+                                    </LinearLayout>
+
+                                    <LinearLayout
+                                        android:id="@+id/songSoaring3"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="28dp"
+                                        android:orientation="horizontal"
+                                        android:gravity="center_vertical"
+                                        android:background="?attr/selectableItemBackground"
+                                        android:clickable="true"
+                                        android:focusable="true"
+                                        android:paddingHorizontal="4dp">
+
+                                        <TextView
+                                            android:layout_width="14dp"
+                                            android:layout_height="wrap_content"
+                                            android:text="3"
+                                            android:textSize="11sp"
+                                            android:textStyle="bold"
+                                            android:textColor="#CD7F32" />
+
+                                        <TextView
+                                            android:id="@+id/tvSoaringSong3"
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:layout_marginStart="4dp"
+                                            android:text="加载中..."
+                                            android:textSize="11sp"
+                                            android:textColor="#CCFFFFFF"
+                                            android:maxLines="1"
+                                            android:ellipsize="end" />
+
+                                        <ImageView
+                                            android:layout_width="12dp"
+                                            android:layout_height="12dp"
+                                            android:src="@drawable/ic_play"
+                                            android:tint="#80FFFFFF" />
+
+                                    </LinearLayout>
+
+                                </LinearLayout>
+
+                            </LinearLayout>
+
+                        </FrameLayout>
+
+                        <!-- 新歌榜 -->
+                        <FrameLayout
+                            android:id="@+id/cardNew"
+                            android:layout_width="0dp"
+                            android:layout_height="160dp"
+                            android:layout_columnWeight="1"
+                            android:layout_marginStart="8dp"
+                            android:layout_marginBottom="12dp"
+                            android:background="@drawable/bg_chart_new"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:foreground="?attr/selectableItemBackground">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:orientation="vertical"
+                                android:padding="10dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="新歌榜"
+                                    android:textSize="14sp"
+                                    android:textStyle="bold"
+                                    android:textColor="@color/white" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="最新发布"
+                                    android:textSize="10sp"
+                                    android:textColor="#80FFFFFF" />
+
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:orientation="vertical"
+                                    android:layout_marginTop="6dp">
+
+                                    <LinearLayout
+                                        android:id="@+id/songNew1"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="28dp"
+                                        android:orientation="horizontal"
+                                        android:gravity="center_vertical"
+                                        android:background="?attr/selectableItemBackground"
+                                        android:clickable="true"
+                                        android:focusable="true"
+                                        android:paddingHorizontal="4dp">
+
+                                        <TextView
+                                            android:layout_width="14dp"
+                                            android:layout_height="wrap_content"
+                                            android:text="1"
+                                            android:textSize="11sp"
+                                            android:textStyle="bold"
+                                            android:textColor="#FFD700" />
+
+                                        <TextView
+                                            android:id="@+id/tvNewSong1"
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:layout_marginStart="4dp"
+                                            android:text="加载中..."
+                                            android:textSize="11sp"
+                                            android:textColor="@color/white"
+                                            android:maxLines="1"
+                                            android:ellipsize="end" />
+
+                                        <ImageView
+                                            android:layout_width="12dp"
+                                            android:layout_height="12dp"
+                                            android:src="@drawable/ic_play"
+                                            android:tint="#80FFFFFF" />
+
+                                    </LinearLayout>
+
+                                    <LinearLayout
+                                        android:id="@+id/songNew2"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="28dp"
+                                        android:orientation="horizontal"
+                                        android:gravity="center_vertical"
+                                        android:background="?attr/selectableItemBackground"
+                                        android:clickable="true"
+                                        android:focusable="true"
+                                        android:paddingHorizontal="4dp">
+
+                                        <TextView
+                                            android:layout_width="14dp"
+                                            android:layout_height="wrap_content"
+                                            android:text="2"
+                                            android:textSize="11sp"
+                                            android:textStyle="bold"
+                                            android:textColor="#C0C0C0" />
+
+                                        <TextView
+                                            android:id="@+id/tvNewSong2"
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:layout_marginStart="4dp"
+                                            android:text="加载中..."
+                                            android:textSize="11sp"
+                                            android:textColor="#E6FFFFFF"
+                                            android:maxLines="1"
+                                            android:ellipsize="end" />
+
+                                        <ImageView
+                                            android:layout_width="12dp"
+                                            android:layout_height="12dp"
+                                            android:src="@drawable/ic_play"
+                                            android:tint="#80FFFFFF" />
+
+                                    </LinearLayout>
+
+                                    <LinearLayout
+                                        android:id="@+id/songNew3"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="28dp"
+                                        android:orientation="horizontal"
+                                        android:gravity="center_vertical"
+                                        android:background="?attr/selectableItemBackground"
+                                        android:clickable="true"
+                                        android:focusable="true"
+                                        android:paddingHorizontal="4dp">
+
+                                        <TextView
+                                            android:layout_width="14dp"
+                                            android:layout_height="wrap_content"
+                                            android:text="3"
+                                            android:textSize="11sp"
+                                            android:textStyle="bold"
+                                            android:textColor="#CD7F32" />
+
+                                        <TextView
+                                            android:id="@+id/tvNewSong3"
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:layout_marginStart="4dp"
+                                            android:text="加载中..."
+                                            android:textSize="11sp"
+                                            android:textColor="#CCFFFFFF"
+                                            android:maxLines="1"
+                                            android:ellipsize="end" />
+
+                                        <ImageView
+                                            android:layout_width="12dp"
+                                            android:layout_height="12dp"
+                                            android:src="@drawable/ic_play"
+                                            android:tint="#80FFFFFF" />
+
+                                    </LinearLayout>
+
+                                </LinearLayout>
+
+                            </LinearLayout>
+
+                        </FrameLayout>
+
+                        <!-- 原创榜 -->
+                        <FrameLayout
+                            android:id="@+id/cardOriginal"
+                            android:layout_width="0dp"
+                            android:layout_height="160dp"
+                            android:layout_columnWeight="1"
+                            android:layout_marginEnd="8dp"
+                            android:background="@drawable/bg_chart_original"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:foreground="?attr/selectableItemBackground">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:orientation="vertical"
+                                android:padding="10dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="原创榜"
+                                    android:textSize="14sp"
+                                    android:textStyle="bold"
+                                    android:textColor="@color/white" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="原创作品"
+                                    android:textSize="10sp"
+                                    android:textColor="#80FFFFFF" />
+
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:orientation="vertical"
+                                    android:layout_marginTop="6dp">
+
+                                    <LinearLayout
+                                        android:id="@+id/songOriginal1"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="28dp"
+                                        android:orientation="horizontal"
+                                        android:gravity="center_vertical"
+                                        android:background="?attr/selectableItemBackground"
+                                        android:clickable="true"
+                                        android:focusable="true"
+                                        android:paddingHorizontal="4dp">
+
+                                        <TextView
+                                            android:layout_width="14dp"
+                                            android:layout_height="wrap_content"
+                                            android:text="1"
+                                            android:textSize="11sp"
+                                            android:textStyle="bold"
+                                            android:textColor="#FFD700" />
+
+                                        <TextView
+                                            android:id="@+id/tvOriginalSong1"
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:layout_marginStart="4dp"
+                                            android:text="加载中..."
+                                            android:textSize="11sp"
+                                            android:textColor="@color/white"
+                                            android:maxLines="1"
+                                            android:ellipsize="end" />
+
+                                        <ImageView
+                                            android:layout_width="12dp"
+                                            android:layout_height="12dp"
+                                            android:src="@drawable/ic_play"
+                                            android:tint="#80FFFFFF" />
+
+                                    </LinearLayout>
+
+                                    <LinearLayout
+                                        android:id="@+id/songOriginal2"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="28dp"
+                                        android:orientation="horizontal"
+                                        android:gravity="center_vertical"
+                                        android:background="?attr/selectableItemBackground"
+                                        android:clickable="true"
+                                        android:focusable="true"
+                                        android:paddingHorizontal="4dp">
+
+                                        <TextView
+                                            android:layout_width="14dp"
+                                            android:layout_height="wrap_content"
+                                            android:text="2"
+                                            android:textSize="11sp"
+                                            android:textStyle="bold"
+                                            android:textColor="#C0C0C0" />
+
+                                        <TextView
+                                            android:id="@+id/tvOriginalSong2"
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:layout_marginStart="4dp"
+                                            android:text="加载中..."
+                                            android:textSize="11sp"
+                                            android:textColor="#E6FFFFFF"
+                                            android:maxLines="1"
+                                            android:ellipsize="end" />
+
+                                        <ImageView
+                                            android:layout_width="12dp"
+                                            android:layout_height="12dp"
+                                            android:src="@drawable/ic_play"
+                                            android:tint="#80FFFFFF" />
+
+                                    </LinearLayout>
+
+                                    <LinearLayout
+                                        android:id="@+id/songOriginal3"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="28dp"
+                                        android:orientation="horizontal"
+                                        android:gravity="center_vertical"
+                                        android:background="?attr/selectableItemBackground"
+                                        android:clickable="true"
+                                        android:focusable="true"
+                                        android:paddingHorizontal="4dp">
+
+                                        <TextView
+                                            android:layout_width="14dp"
+                                            android:layout_height="wrap_content"
+                                            android:text="3"
+                                            android:textSize="11sp"
+                                            android:textStyle="bold"
+                                            android:textColor="#CD7F32" />
+
+                                        <TextView
+                                            android:id="@+id/tvOriginalSong3"
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:layout_marginStart="4dp"
+                                            android:text="加载中..."
+                                            android:textSize="11sp"
+                                            android:textColor="#CCFFFFFF"
+                                            android:maxLines="1"
+                                            android:ellipsize="end" />
+
+                                        <ImageView
+                                            android:layout_width="12dp"
+                                            android:layout_height="12dp"
+                                            android:src="@drawable/ic_play"
+                                            android:tint="#80FFFFFF" />
+
+                                    </LinearLayout>
+
+                                </LinearLayout>
+
+                            </LinearLayout>
+
+                        </FrameLayout>
+
+                        <!-- 热歌榜 -->
+                        <FrameLayout
+                            android:id="@+id/cardHot"
+                            android:layout_width="0dp"
+                            android:layout_height="160dp"
+                            android:layout_columnWeight="1"
+                            android:layout_marginStart="8dp"
+                            android:background="@drawable/bg_chart_hot"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:foreground="?attr/selectableItemBackground">
+
+                            <LinearLayout
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:orientation="vertical"
+                                android:padding="10dp">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="热歌榜"
+                                    android:textSize="14sp"
+                                    android:textStyle="bold"
+                                    android:textColor="@color/white" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="2dp"
+                                    android:text="全网热门"
+                                    android:textSize="10sp"
+                                    android:textColor="#80FFFFFF" />
+
+                                <LinearLayout
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:orientation="vertical"
+                                    android:layout_marginTop="6dp">
+
+                                    <LinearLayout
+                                        android:id="@+id/songHot1"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="28dp"
+                                        android:orientation="horizontal"
+                                        android:gravity="center_vertical"
+                                        android:background="?attr/selectableItemBackground"
+                                        android:clickable="true"
+                                        android:focusable="true"
+                                        android:paddingHorizontal="4dp">
+
+                                        <TextView
+                                            android:layout_width="14dp"
+                                            android:layout_height="wrap_content"
+                                            android:text="1"
+                                            android:textSize="11sp"
+                                            android:textStyle="bold"
+                                            android:textColor="#FFD700" />
+
+                                        <TextView
+                                            android:id="@+id/tvHotSong1"
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:layout_marginStart="4dp"
+                                            android:text="加载中..."
+                                            android:textSize="11sp"
+                                            android:textColor="@color/white"
+                                            android:maxLines="1"
+                                            android:ellipsize="end" />
+
+                                        <ImageView
+                                            android:layout_width="12dp"
+                                            android:layout_height="12dp"
+                                            android:src="@drawable/ic_play"
+                                            android:tint="#80FFFFFF" />
+
+                                    </LinearLayout>
+
+                                    <LinearLayout
+                                        android:id="@+id/songHot2"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="28dp"
+                                        android:orientation="horizontal"
+                                        android:gravity="center_vertical"
+                                        android:background="?attr/selectableItemBackground"
+                                        android:clickable="true"
+                                        android:focusable="true"
+                                        android:paddingHorizontal="4dp">
+
+                                        <TextView
+                                            android:layout_width="14dp"
+                                            android:layout_height="wrap_content"
+                                            android:text="2"
+                                            android:textSize="11sp"
+                                            android:textStyle="bold"
+                                            android:textColor="#C0C0C0" />
+
+                                        <TextView
+                                            android:id="@+id/tvHotSong2"
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:layout_marginStart="4dp"
+                                            android:text="加载中..."
+                                            android:textSize="11sp"
+                                            android:textColor="#E6FFFFFF"
+                                            android:maxLines="1"
+                                            android:ellipsize="end" />
+
+                                        <ImageView
+                                            android:layout_width="12dp"
+                                            android:layout_height="12dp"
+                                            android:src="@drawable/ic_play"
+                                            android:tint="#80FFFFFF" />
+
+                                    </LinearLayout>
+
+                                    <LinearLayout
+                                        android:id="@+id/songHot3"
+                                        android:layout_width="match_parent"
+                                        android:layout_height="28dp"
+                                        android:orientation="horizontal"
+                                        android:gravity="center_vertical"
+                                        android:background="?attr/selectableItemBackground"
+                                        android:clickable="true"
+                                        android:focusable="true"
+                                        android:paddingHorizontal="4dp">
+
+                                        <TextView
+                                            android:layout_width="14dp"
+                                            android:layout_height="wrap_content"
+                                            android:text="3"
+                                            android:textSize="11sp"
+                                            android:textStyle="bold"
+                                            android:textColor="#CD7F32" />
+
+                                        <TextView
+                                            android:id="@+id/tvHotSong3"
+                                            android:layout_width="0dp"
+                                            android:layout_height="wrap_content"
+                                            android:layout_weight="1"
+                                            android:layout_marginStart="4dp"
+                                            android:text="加载中..."
+                                            android:textSize="11sp"
+                                            android:textColor="#CCFFFFFF"
+                                            android:maxLines="1"
+                                            android:ellipsize="end" />
+
+                                        <ImageView
+                                            android:layout_width="12dp"
+                                            android:layout_height="12dp"
+                                            android:src="@drawable/ic_play"
+                                            android:tint="#80FFFFFF" />
+
+                                    </LinearLayout>
+
+                                </LinearLayout>
+
+                            </LinearLayout>
+
+                        </FrameLayout>
+
+                    </GridLayout>
+
+                </LinearLayout>
+
+            </androidx.core.widget.NestedScrollView>
+
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+        <!-- 搜索结果列表区域 - 包含列表和悬浮批量操作栏 -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/searchResultContainer"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginTop="16dp"
+            android:visibility="gone"
+            app:layout_constraintTop_toBottomOf="@id/toolbar"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <!-- 返回按钮和标题栏 -->
+            <LinearLayout
+                android:id="@+id/searchResultHeader"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginStart="20dp"
+                android:layout_marginEnd="20dp"
+                android:layout_marginBottom="8dp"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent">
+
+                <ImageButton
+                    android:id="@+id/btnBackToHome"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:src="@drawable/ic_back_chevron"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:tint="@color/text_primary"
+                    android:contentDescription="返回" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="搜索结果"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary" />
+
+            </LinearLayout>
+
+            <!-- 搜索歌曲列表 - 全宽显示，不受批量操作栏影响 -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvSongs"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_marginStart="20dp"
+                android:layout_marginEnd="20dp"
+                android:paddingBottom="24dp"
+                android:clipToPadding="false"
+                app:layout_constraintTop_toBottomOf="@id/searchResultHeader"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent" />
+
+            <!-- 批量操作栏 - 悬浮于列表之上，不影响滑动 -->
+            <include
+                android:id="@+id/batchActionBarContainer"
+                layout="@layout/layout_batch_action_bar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="16dp"
+                android:layout_marginBottom="24dp"
+                android:elevation="16dp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- 分隔线 -->
+    <View
+        android:layout_width="1dp"
+        android:layout_height="0dp"
+        android:background="@color/divider_light"
+        app:layout_constraintStart_toEndOf="@id/leftPanel"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
+    <!-- 右侧区域 - 推荐歌单列表（独立滚动） -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/rightPanel"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintStart_toEndOf="@id/leftPanel"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <!-- 推荐歌单标题 -->
+        <TextView
+            android:id="@+id/tvPlaylistTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="16dp"
+            android:text="推荐歌单"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- 风格标签横向滚动 -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvPlaylistTags"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal"
+            android:clipToPadding="false"
+            android:paddingEnd="20dp"
+            app:layout_constraintTop_toBottomOf="@id/tvPlaylistTitle"
+            app:layout_constraintStart_toStartOf="@id/tvPlaylistTitle"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- 歌单网格 - 2列布局，独立滚动，调整卡片大小以显示4个 -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvRecommendPlaylists"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginTop="12dp"
+            android:paddingHorizontal="20dp"
+            android:paddingBottom="24dp"
+            android:clipToPadding="false"
+            app:layout_constraintTop_toBottomOf="@id/rvPlaylistTags"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- 加载更多进度条 -->
+        <ProgressBar
+            android:id="@+id/progressBarPlaylistLoadMore"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_gravity="center"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- 刷新成功提示 -->
+        <LinearLayout
+            android:id="@+id/refreshTipContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="80dp"
+            android:background="@drawable/bg_refresh_tip"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="10dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="10dp"
+            android:visibility="gone"
+            android:alpha="0"
+            android:elevation="8dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_check_circle"
+                app:tint="#4CAF50" />
+
+            <TextView
+                android:id="@+id/tvRefreshTip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="刷新数据成功"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- 加载进度条 -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- 底部加载更多进度条 -->
+    <ProgressBar
+        android:id="@+id/progressBarLoadMore"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:visibility="gone"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

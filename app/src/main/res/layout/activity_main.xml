@@ -880,18 +880,58 @@
 
     </LinearLayout>
 
-    <!-- 搜索结果列表 - 放在 NestedScrollView 外部 -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvSongs"
+    <!-- 搜索结果区域 - 包含返回按钮和列表 -->
+    <LinearLayout
+        android:id="@+id/searchResultContainer"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="16dp"
-        android:paddingHorizontal="16dp"
-        android:paddingBottom="160dp"
-        android:clipToPadding="false"
+        android:orientation="vertical"
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/toolbar"
-        app:layout_constraintBottom_toTopOf="@id/bottomNav" />
+        app:layout_constraintBottom_toTopOf="@id/bottomNav">
+
+        <!-- 返回按钮和标题栏 -->
+        <LinearLayout
+            android:id="@+id/searchResultHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp">
+
+            <ImageButton
+                 android:id="@+id/btnBackToHome"
+                 android:layout_width="40dp"
+                 android:layout_height="40dp"
+                 android:src="@drawable/ic_back_chevron"
+                 android:background="?attr/selectableItemBackgroundBorderless"
+                 android:tint="@color/text_primary"
+                 android:contentDescription="返回" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="搜索结果"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary" />
+
+        </LinearLayout>
+
+        <!-- 搜索歌曲列表 -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvSongs"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:paddingHorizontal="16dp"
+            android:paddingBottom="80dp"
+            android:clipToPadding="false" />
+
+    </LinearLayout>
 
     <!-- 底部导航栏 - 保留不动 -->
     <LinearLayout

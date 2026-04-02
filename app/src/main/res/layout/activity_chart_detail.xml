@@ -113,13 +113,15 @@
 
     </LinearLayout>
 
-    <!-- 批量操作栏 - 右侧居中 -->
+    <!-- 批量操作栏容器 - 悬浮于列表右侧 -->
     <include
         android:id="@+id/batchActionBarContainer"
         layout="@layout/layout_batch_action_bar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="end|center_vertical"
-        android:layout_marginEnd="8dp" />
+        android:layout_marginEnd="16dp"
+        android:elevation="16dp"
+        android:visibility="gone" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

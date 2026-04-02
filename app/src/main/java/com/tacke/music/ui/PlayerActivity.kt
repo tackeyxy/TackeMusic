@@ -340,7 +340,7 @@ class PlayerActivity : AppCompatActivity() {
             lightNavigationBar = true
         )
         // 为顶部工具栏设置状态栏高度 padding
-        ImmersiveStatusBarHelper.setStatusBarPadding(binding.toolbar)
+        binding.toolbar?.let { ImmersiveStatusBarHelper.setStatusBarPadding(it) }
 
         playlistManager = PlaylistManager.getInstance(this)
         playbackPreferences = PlaybackPreferences.getInstance(this)

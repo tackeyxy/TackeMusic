@@ -15,6 +15,7 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -111,8 +112,8 @@ class LocalMusicActivity : AppCompatActivity() {
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            binding.statusBarPlaceholder.layoutParams.height = insets.top
-            binding.statusBarPlaceholder.requestLayout()
+            binding.statusBarPlaceholder?.layoutParams?.height = insets.top
+            binding.statusBarPlaceholder?.requestLayout()
             view.updatePadding(bottom = insets.bottom)
             windowInsets
         }
@@ -166,65 +167,65 @@ class LocalMusicActivity : AppCompatActivity() {
 
     private fun setupBatchActions() {
         // 关闭按钮
-        binding.batchActionBarContainer.btnCloseBatch?.setOnClickListener {
+        findViewById<View>(R.id.btnCloseBatch)?.setOnClickListener {
             exitMultiSelectMode()
         }
 
         // 全选按钮
-        binding.batchActionBarContainer.btnSelectAll.setOnClickListener {
+        findViewById<View>(R.id.btnSelectAll)?.setOnClickListener {
             adapter.selectAll()
             updateSelectedCount(adapter.getSelectedItems().size)
         }
 
         // 添加到喜欢按钮
-        binding.batchActionBarContainer.btnAddToFavorite.setOnClickListener {
+        findViewById<View>(R.id.btnAddToFavorite)?.setOnClickListener {
             addSelectedToFavorites()
         }
 
         // 添加到播放按钮
-        binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
+        findViewById<View>(R.id.btnAddToNowPlaying)?.setOnClickListener {
             addSelectedToNowPlaying()
         }
 
         // 添加到歌单按钮
-        binding.batchActionBarContainer.btnAddToPlaylist.setOnClickListener {
+        findViewById<View>(R.id.btnAddToPlaylist)?.setOnClickListener {
             showBatchPlaylistSelectionDialog()
         }
 
         // 清空列表按钮
-        binding.batchActionBarContainer.btnClearAll.setOnClickListener {
+        findViewById<View>(R.id.btnClearAll)?.setOnClickListener {
             showClearAllConfirmDialog()
         }
 
         // 移除所选按钮 - 询问是否同时删除文件
-        binding.batchActionBarContainer.btnBatchRemove.setOnClickListener {
+        findViewById<View>(R.id.btnBatchRemove)?.setOnClickListener {
             showBatchRemoveDialog()
         }
     }
 
     private fun enterMultiSelectMode() {
         isMultiSelectMode = true
-        binding.batchActionBarContainer.root.visibility = View.VISIBLE
+        findViewById<View>(R.id.batchActionBar)?.visibility = View.VISIBLE
         adapter.setMultiSelectMode(true)
         updateSelectedCount(0)
 
         // 本地音乐页面：隐藏下载按钮，显示移除按钮
-        binding.batchActionBarContainer.btnBatchDownload.visibility = View.GONE
-        binding.batchActionBarContainer.btnBatchRemove.visibility = View.VISIBLE
+        findViewById<View>(R.id.btnBatchDownload)?.visibility = View.GONE
+        findViewById<View>(R.id.btnBatchRemove)?.visibility = View.VISIBLE
     }
 
     private fun exitMultiSelectMode() {
         isMultiSelectMode = false
-        binding.batchActionBarContainer.root.visibility = View.GONE
+        findViewById<View>(R.id.batchActionBar)?.visibility = View.GONE
         adapter.setMultiSelectMode(false)
 
         // 恢复按钮默认状态
-        binding.batchActionBarContainer.btnBatchDownload.visibility = View.VISIBLE
-        binding.batchActionBarContainer.btnBatchRemove.visibility = View.GONE
+        findViewById<View>(R.id.btnBatchDownload)?.visibility = View.VISIBLE
+        findViewById<View>(R.id.btnBatchRemove)?.visibility = View.GONE
     }
 
     private fun updateSelectedCount(count: Int) {
-        binding.batchActionBarContainer.tvSelectedCount.text = count.toString()
+        findViewById<TextView>(R.id.tvSelectedCount)?.text = count.toString()
     }
 
     private fun setupSearch() {

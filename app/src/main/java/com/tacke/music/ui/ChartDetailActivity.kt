@@ -117,8 +117,8 @@ class ChartDetailActivity : AppCompatActivity() {
             ChartType.ORIGINAL -> R.drawable.bg_chart_original
             ChartType.HOT -> R.drawable.bg_chart_hot
         }
-        binding.toolbarBackground.setBackgroundResource(backgroundRes)
-        binding.toolbar.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        binding.toolbarBackground?.setBackgroundResource(backgroundRes)
+        binding.toolbar?.setBackgroundColor(android.graphics.Color.TRANSPARENT)
     }
 
     private fun setupRecyclerView() {
@@ -166,38 +166,48 @@ class ChartDetailActivity : AppCompatActivity() {
     }
 
     private fun showBatchActionBar() {
-        binding.batchActionBarContainer.root.visibility = View.VISIBLE
+        // 竖屏布局中的批量操作栏
+        val batchActionBarContainer = findViewById<View>(R.id.batchActionBarContainer)
+        batchActionBarContainer?.visibility = View.VISIBLE
+        // 横屏布局中的批量操作栏
+        val batchActionBarContainerLand = findViewById<View>(R.id.batchActionBarContainerLand)
+        batchActionBarContainerLand?.visibility = View.VISIBLE
         binding.btnPlayAll.visibility = View.GONE
         // 隐藏清空按钮（榜单列表不需要清空功能）
-        binding.batchActionBarContainer.btnClearAll.visibility = View.GONE
+        findViewById<View>(R.id.btnClearAll)?.visibility = View.GONE
         updateBatchActionBar()
         setupBatchActionListeners()
     }
 
     private fun hideBatchActionBar() {
-        binding.batchActionBarContainer.root.visibility = View.GONE
+        // 竖屏布局中的批量操作栏
+        val batchActionBarContainer = findViewById<View>(R.id.batchActionBarContainer)
+        batchActionBarContainer?.visibility = View.GONE
+        // 横屏布局中的批量操作栏
+        val batchActionBarContainerLand = findViewById<View>(R.id.batchActionBarContainerLand)
+        batchActionBarContainerLand?.visibility = View.GONE
         binding.btnPlayAll.visibility = View.VISIBLE
     }
 
     private fun updateBatchActionBar() {
         val selectedCount = adapter.getSelectedSongs().size
-        binding.batchActionBarContainer.tvSelectedCount.text = selectedCount.toString()
+        findViewById<android.widget.TextView>(R.id.tvSelectedCount)?.text = selectedCount.toString()
     }
 
     private fun setupBatchActionListeners() {
         // 关闭按钮
-        binding.batchActionBarContainer.btnCloseBatch?.setOnClickListener {
+        findViewById<View>(R.id.btnCloseBatch)?.setOnClickListener {
             exitMultiSelectMode()
         }
 
         // 全选按钮
-        binding.batchActionBarContainer.btnSelectAll.setOnClickListener {
+        findViewById<View>(R.id.btnSelectAll)?.setOnClickListener {
             adapter.selectAll()
             updateBatchActionBar()
         }
 
         // 下载按钮
-        binding.batchActionBarContainer.btnBatchDownload.setOnClickListener {
+        findViewById<View>(R.id.btnBatchDownload)?.setOnClickListener {
             val selectedSongs = adapter.getSelectedSongs()
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -207,7 +217,7 @@ class ChartDetailActivity : AppCompatActivity() {
         }
 
         // 添加到喜欢按钮
-        binding.batchActionBarContainer.btnAddToFavorite.setOnClickListener {
+        findViewById<View>(R.id.btnAddToFavorite)?.setOnClickListener {
             val selectedSongs = adapter.getSelectedSongs()
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -217,7 +227,7 @@ class ChartDetailActivity : AppCompatActivity() {
         }
 
         // 添加到歌单按钮
-        binding.batchActionBarContainer.btnAddToPlaylist.setOnClickListener {
+        findViewById<View>(R.id.btnAddToPlaylist)?.setOnClickListener {
             val selectedSongs = adapter.getSelectedSongs()
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -227,7 +237,7 @@ class ChartDetailActivity : AppCompatActivity() {
         }
 
         // 加入播放按钮
-        binding.batchActionBarContainer.btnAddToNowPlaying.setOnClickListener {
+        findViewById<View>(R.id.btnAddToNowPlaying)?.setOnClickListener {
             val selectedSongs = adapter.getSelectedSongs()
             if (selectedSongs.isEmpty()) {
                 Toast.makeText(this, "请先选择歌曲", Toast.LENGTH_SHORT).show()
@@ -249,6 +259,9 @@ class ChartDetailActivity : AppCompatActivity() {
                     songs = response.data
                     adapter.submitList(songs)
                     showEmptyState(songs.isEmpty())
+                    // 更新歌曲数量显示
+                    binding.tvChartSubtitle?.text = chartSubtitle
+                    binding.tvSongCount?.text = "${songs.size} 首歌曲"
                 } else {
                     showEmptyState(true)
                     Toast.makeText(this@ChartDetailActivity, response.msg ?: "加载失败", Toast.LENGTH_SHORT).show()
@@ -818,11 +831,11 @@ class ChartDetailActivity : AppCompatActivity() {
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
 
             // 为状态栏占位视图设置高度
-            binding.statusBarPlaceholder.layoutParams.height = insets.top
-            binding.statusBarPlaceholder.requestLayout()
+            binding.statusBarPlaceholder?.layoutParams?.height = insets.top
+            binding.statusBarPlaceholder?.requestLayout()
 
             // 为工具栏设置顶部padding，使其延伸到状态栏下方
-            binding.toolbar.setPadding(0, insets.top, 0, 0)
+            binding.toolbar?.setPadding(0, insets.top, 0, 0)
 
             // 为底部设置 padding
             view.updatePadding(

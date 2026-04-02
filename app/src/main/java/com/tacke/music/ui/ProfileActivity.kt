@@ -24,6 +24,7 @@ import com.tacke.music.data.repository.PlaylistRepository
 import com.tacke.music.databinding.ActivityProfileBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.ui.adapter.PlaylistListAdapter
+import com.tacke.music.util.NavigationHelper
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
@@ -142,7 +143,8 @@ class ProfileActivity : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
-        binding.btnSettings.setOnClickListener {
+        // 设置按钮只在竖屏布局中存在
+        binding.btnSettings?.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
 
@@ -222,7 +224,8 @@ class ProfileActivity : AppCompatActivity() {
     }
 
     private fun setupBottomNavigation() {
-        binding.navHome.setOnClickListener {
+        // 竖屏底部导航栏（横屏模式下可能不存在）
+        binding.navHome?.setOnClickListener {
             if (isNavClickValid()) {
                 val intent = Intent(this, MainActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -232,14 +235,38 @@ class ProfileActivity : AppCompatActivity() {
             }
         }
 
-        binding.navDiscover.setOnClickListener {
+        binding.navDiscover?.setOnClickListener {
             if (isNavClickValid()) {
                 PlayerActivity.startEmpty(this)
             }
         }
 
-        binding.navProfile.setOnClickListener {
+        binding.navProfile?.setOnClickListener {
             // 当前页面，无需处理
+        }
+
+        // 横屏左侧导航栏（如果存在）
+        setupSideNavigation()
+    }
+
+    private fun setupSideNavigation() {
+        // 检查是否存在左侧导航栏（横屏模式）
+        val sideNavContainer = binding.root.findViewById<android.view.View>(R.id.sideNavContainer)
+        if (sideNavContainer != null) {
+            val navHelper = NavigationHelper(this)
+            navHelper.setupSideNavigation(
+                navHome = sideNavContainer.findViewById(R.id.navHome),
+                navDiscover = sideNavContainer.findViewById(R.id.navDiscover),
+                navProfile = sideNavContainer.findViewById(R.id.navProfile),
+                navSettings = sideNavContainer.findViewById(R.id.navSettings),
+                ivNavHome = sideNavContainer.findViewById(R.id.ivNavHome),
+                ivNavDiscover = sideNavContainer.findViewById(R.id.ivNavDiscover),
+                ivNavProfile = sideNavContainer.findViewById(R.id.ivNavProfile),
+                tvNavHome = sideNavContainer.findViewById(R.id.tvNavHome),
+                tvNavDiscover = sideNavContainer.findViewById(R.id.tvNavDiscover),
+                tvNavProfile = sideNavContainer.findViewById(R.id.tvNavProfile),
+                currentNavIndex = 2 // 我的页面
+            )
         }
     }
 
@@ -323,6 +350,10 @@ class ProfileActivity : AppCompatActivity() {
     }
 
     private fun refreshPlaylistList() {
+        // 检查 adapter 是否已初始化
+        if (!::playlistAdapter.isInitialized) {
+            return
+        }
         val displayList = if (isShowingAllPlaylists) allPlaylists else emptyList()
         val newList = ArrayList(displayList)
         playlistAdapter.submitList(newList)
@@ -420,8 +451,8 @@ class ProfileActivity : AppCompatActivity() {
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
 
             // 为状态栏占位视图设置高度
-            binding.statusBarPlaceholder.layoutParams.height = insets.top
-            binding.statusBarPlaceholder.requestLayout()
+            binding.statusBarPlaceholder?.layoutParams?.height = insets.top
+            binding.statusBarPlaceholder?.requestLayout()
 
             // 为底部设置 padding
             view.updatePadding(

@@ -48,6 +48,7 @@ import com.tacke.music.ui.adapter.SongAdapter
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
+import com.tacke.music.util.NavigationHelper
 import com.tacke.music.service.MusicPlaybackService
 import com.tacke.music.utils.PermissionHelper
 
@@ -333,7 +334,19 @@ class MainActivity : AppCompatActivity() {
             updateSourceSelectorUI()
         }
         ensurePlaybackNotificationAvailability()
+
+        // 检查屏幕方向变化并更新适配器
+        val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        adapter.setLandscape(isLandscape)
     }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // 屏幕方向变化时更新适配器布局
+        val isLandscape = newConfig.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        adapter.setLandscape(isLandscape)
+    }
+
 
     private fun ensurePlaybackNotificationAvailability() {
         val permissionState = PermissionHelper.getNotificationPermissionState(
@@ -441,6 +454,10 @@ class MainActivity : AppCompatActivity() {
         )
         binding.rvSongs.layoutManager = LinearLayoutManager(this)
         binding.rvSongs.adapter = adapter
+
+        // 根据当前屏幕方向设置适配器布局
+        val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        adapter.setLandscape(isLandscape)
 
         // 添加滚动监听，实现下拉加载更多
         binding.rvSongs.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -596,6 +613,16 @@ class MainActivity : AppCompatActivity() {
         // 音乐源选择器点击
         binding.layoutSourceSelector.setOnClickListener {
             showSourceSelectorDialog()
+        }
+
+        // 横屏模式下返回按钮 - 关闭搜索列表回到推荐页
+        binding.btnBackToHome?.setOnClickListener {
+            showHomeContent()
+            // 清空搜索框
+            binding.etSearch.text?.clear()
+            currentKeyword = ""
+            currentSongList.clear()
+            adapter.submitList(emptyList())
         }
     }
 
@@ -836,12 +863,14 @@ class MainActivity : AppCompatActivity() {
         binding.rvPlaylistTags.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
         binding.rvPlaylistTags.adapter = playlistTagAdapter
 
-        // 设置推荐歌单RecyclerView - 使用GridLayoutManager，每行2列
+        // 设置推荐歌单RecyclerView - 使用GridLayoutManager，根据屏幕方向设置列数
         recommendPlaylistAdapter = RecommendPlaylistAdapter { playlist ->
             openPlaylistDetail(playlist)
         }
 
-        val gridLayoutManager = GridLayoutManager(this, 2)
+        // 根据屏幕方向设置列数：竖屏2列，横屏2列（横屏下右侧区域独立显示推荐歌单）
+        val spanCount = if (resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE) 2 else 2
+        val gridLayoutManager = GridLayoutManager(this, spanCount)
         binding.rvRecommendPlaylists.layoutManager = gridLayoutManager
         binding.rvRecommendPlaylists.adapter = recommendPlaylistAdapter
 
@@ -1034,14 +1063,15 @@ class MainActivity : AppCompatActivity() {
     private val NAV_CLICK_DEBOUNCE = 500L // 500ms 防抖
 
     private fun setupBottomNavigation() {
-        binding.navHome.setOnClickListener {
+        // 竖屏底部导航栏（横屏模式下可能不存在）
+        binding.navHome?.setOnClickListener {
             if (isNavClickValid()) {
                 updateNavSelection(0)
                 showHomeContent()
             }
         }
 
-        binding.navDiscover.setOnClickListener {
+        binding.navDiscover?.setOnClickListener {
             if (isNavClickValid()) {
                 updateNavSelection(1)
                 // 跳转到正在播放页面 - 支持空状态进入
@@ -1049,11 +1079,35 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.navProfile.setOnClickListener {
+        binding.navProfile?.setOnClickListener {
             if (isNavClickValid()) {
                 updateNavSelection(2)
                 startActivity(Intent(this, ProfileActivity::class.java))
             }
+        }
+
+        // 横屏左侧导航栏（如果存在）
+        setupSideNavigation()
+    }
+
+    private fun setupSideNavigation() {
+        // 检查是否存在左侧导航栏（横屏模式）
+        val sideNavContainer = binding.root.findViewById<android.view.View>(R.id.sideNavContainer)
+        if (sideNavContainer != null) {
+            val navHelper = NavigationHelper(this)
+            navHelper.setupSideNavigation(
+                navHome = sideNavContainer.findViewById(R.id.navHome),
+                navDiscover = sideNavContainer.findViewById(R.id.navDiscover),
+                navProfile = sideNavContainer.findViewById(R.id.navProfile),
+                navSettings = sideNavContainer.findViewById(R.id.navSettings),
+                ivNavHome = sideNavContainer.findViewById(R.id.ivNavHome),
+                ivNavDiscover = sideNavContainer.findViewById(R.id.ivNavDiscover),
+                ivNavProfile = sideNavContainer.findViewById(R.id.ivNavProfile),
+                tvNavHome = sideNavContainer.findViewById(R.id.tvNavHome),
+                tvNavDiscover = sideNavContainer.findViewById(R.id.tvNavDiscover),
+                tvNavProfile = sideNavContainer.findViewById(R.id.tvNavProfile),
+                currentNavIndex = 0 // 首页
+            )
         }
     }
 
@@ -1071,24 +1125,58 @@ class MainActivity : AppCompatActivity() {
         val selectedColor = getColor(R.color.primary)
         val unselectedColor = getColor(R.color.text_secondary)
 
-        binding.tvNavHome.setTextColor(if (index == 0) selectedColor else unselectedColor)
-        binding.tvNavDiscover.setTextColor(if (index == 1) selectedColor else unselectedColor)
-        binding.tvNavProfile.setTextColor(if (index == 2) selectedColor else unselectedColor)
+        binding.tvNavHome?.setTextColor(if (index == 0) selectedColor else unselectedColor)
+        binding.tvNavDiscover?.setTextColor(if (index == 1) selectedColor else unselectedColor)
+        binding.tvNavProfile?.setTextColor(if (index == 2) selectedColor else unselectedColor)
 
-        binding.ivNavHome.isSelected = index == 0
-        binding.ivNavDiscover.isSelected = index == 1
-        binding.ivNavProfile.isSelected = index == 2
+        binding.ivNavHome?.isSelected = index == 0
+        binding.ivNavDiscover?.isSelected = index == 1
+        binding.ivNavProfile?.isSelected = index == 2
+
+        // 横屏模式下更新导航项背景
+        updateNavItemBackground(index)
+    }
+
+    private fun updateNavItemBackground(selectedIndex: Int) {
+        // 横屏模式下更新导航项背景
+        binding.navHome?.let {
+            it.background = if (selectedIndex == 0) {
+                ContextCompat.getDrawable(this, R.drawable.bg_nav_item_selected)
+            } else {
+                ContextCompat.getDrawable(this, R.drawable.bg_nav_item_normal)
+            }
+        }
+        binding.navDiscover?.let {
+            it.background = if (selectedIndex == 1) {
+                ContextCompat.getDrawable(this, R.drawable.bg_nav_item_selected)
+            } else {
+                ContextCompat.getDrawable(this, R.drawable.bg_nav_item_normal)
+            }
+        }
+        binding.navProfile?.let {
+            it.background = if (selectedIndex == 2) {
+                ContextCompat.getDrawable(this, R.drawable.bg_nav_item_selected)
+            } else {
+                ContextCompat.getDrawable(this, R.drawable.bg_nav_item_normal)
+            }
+        }
     }
 
     private fun showHomeContent() {
         // 显示首页内容
         binding.scrollView.visibility = View.VISIBLE
+        // 隐藏搜索结果容器
+        binding.searchResultContainer.visibility = View.GONE
+        // 同时隐藏RecyclerView（兼容竖屏布局）
         binding.rvSongs.visibility = View.GONE
     }
 
     private fun showSearchResults() {
         // 显示搜索结果
         binding.scrollView.visibility = View.GONE
+        // 显示搜索结果容器（包含返回按钮和列表）
+        binding.searchResultContainer.visibility = View.VISIBLE
+        // 确保 RecyclerView 可见（横屏模式下rvSongs是独立引用的）
         binding.rvSongs.visibility = View.VISIBLE
         // 确保 RecyclerView 可以正确显示
         binding.rvSongs.post {
@@ -1526,11 +1614,29 @@ class MainActivity : AppCompatActivity() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
 
-            // 为顶部 Toolbar 设置状态栏高度的 marginTop
-            // 注意：使用 margin 而不是 padding，因为 toolbar 有固定的背景样式
-            val toolbarLayoutParams = binding.toolbar.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
-            toolbarLayoutParams.topMargin = insets.top + resources.getDimensionPixelSize(R.dimen.search_bar_margin_top)
-            binding.toolbar.layoutParams = toolbarLayoutParams
+            // 判断当前屏幕方向
+            val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+            if (isLandscape) {
+                // 横屏模式：状态栏在左侧，为侧边导航栏设置顶部 padding
+                val sideNavContainer = binding.root.findViewById<android.view.View>(R.id.sideNavContainer)
+                sideNavContainer?.findViewById<android.view.View>(R.id.sideNav)?.let { sideNav ->
+                    sideNav.updatePadding(top = insets.top)
+                }
+                // 横屏时 toolbar 不需要额外的顶部 margin
+                binding.toolbar?.let { toolbar ->
+                    val toolbarLayoutParams = toolbar.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
+                    toolbarLayoutParams.topMargin = resources.getDimensionPixelSize(R.dimen.search_bar_margin_top)
+                    toolbar.layoutParams = toolbarLayoutParams
+                }
+            } else {
+                // 竖屏模式：状态栏在顶部，为 Toolbar 设置状态栏高度的 marginTop
+                binding.toolbar?.let { toolbar ->
+                    val toolbarLayoutParams = toolbar.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams
+                    toolbarLayoutParams.topMargin = insets.top + resources.getDimensionPixelSize(R.dimen.search_bar_margin_top)
+                    toolbar.layoutParams = toolbarLayoutParams
+                }
+            }
 
             // 为底部导航栏区域设置 padding
             view.updatePadding(

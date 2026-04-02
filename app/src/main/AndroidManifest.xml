@@ -39,120 +39,120 @@
         android:theme="@style/Theme.TackeMusic"
         android:usesCleartextTraffic="true"
         android:enableOnBackInvokedCallback="true">
-        
+
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
-            android:screenOrientation="portrait"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask"
+            android:configChanges="screenSize|smallestScreenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        
+
         <activity
             android:name=".ui.PlayerActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:theme="@style/Theme.TackeMusic.Player"
-            android:launchMode="singleTop" />
+            android:launchMode="singleTop"
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.ProfileActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:theme="@style/Theme.TackeMusic"
-            android:launchMode="singleTop" />
+            android:launchMode="singleTop"
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.LyricsActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.TackeMusic" />
+            android:theme="@style/Theme.TackeMusic"
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.SettingsActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.BackupRestoreActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
-            android:label="备份与恢复" />
+            android:label="备份与恢复"
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.LyricSettingsActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
-            android:label="歌词设置" />
+            android:label="歌词设置"
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.PlayerCoverSettingsActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
-            android:label="播放页封面样式" />
+            android:label="播放页封面样式"
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.DownloadActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.PlaylistActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.PlaylistDetailActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.RecentPlayActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.ChartDetailActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.NeteasePlaylistDetailActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden" />
 
         <activity
             android:name=".ui.FavoriteSongsActivity"
             android:exported="false"
-            android:screenOrientation="portrait" />
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.LocalMusicActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.TackeMusic" />
+            android:theme="@style/Theme.TackeMusic"
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.LogViewerActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
-            android:label="日志管理" />
+            android:label="日志管理"
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.UpdateCheckActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
-            android:label="检测更新" />
+            android:label="检测更新"
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <activity
             android:name=".ui.NewVersionActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:label="新版本"
-            android:theme="@style/Theme.TackeMusic" />
+            android:theme="@style/Theme.TackeMusic"
+            android:configChanges="screenSize|smallestScreenSize" />
 
         <!-- Android 16: 前台服务需要明确指定 foregroundServiceType -->
         <service
