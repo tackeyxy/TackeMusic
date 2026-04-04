@@ -9,12 +9,6 @@
     android:fitsSystemWindows="false"
     tools:context=".ui.RecentPlayActivity">
 
-    <!-- 状态栏占位 -->
-    <View
-        android:id="@+id/statusBarPlaceholder"
-        android:layout_width="match_parent"
-        android:layout_height="0dp" />
-
     <!-- 左侧区域 - 标题、操作和批量操作 -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/leftPanel"

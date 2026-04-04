@@ -386,10 +386,10 @@ class ProfileActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 try {
                     downloadManager.completedTasks.collect { tasks ->
-                        binding.tvDownloadCount.text = "${tasks.size}首"
+                        binding.tvDownloadCount?.text = "${tasks.size}首"
                     }
                 } catch (e: Exception) {
-                    binding.tvDownloadCount.text = "0首"
+                    binding.tvDownloadCount?.text = "0首"
                 }
             }
         }
@@ -400,10 +400,10 @@ class ProfileActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 try {
                     playlistRepository.getAllPlaylists().collect { playlists ->
-                        binding.tvLocalMusicCount.text = "${playlists.size}个歌单"
+                        binding.tvLocalMusicCount?.text = "${playlists.size}个歌单"
                     }
                 } catch (e: Exception) {
-                    binding.tvLocalMusicCount.text = "0个歌单"
+                    binding.tvLocalMusicCount?.text = "0个歌单"
                 }
             }
         }
@@ -432,10 +432,10 @@ class ProfileActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 try {
                     favoriteRepository.getFavoriteCount().collect { count ->
-                        binding.tvFavoriteCount.text = "${count}首"
+                        binding.tvFavoriteCount?.text = "${count}首"
                     }
                 } catch (e: Exception) {
-                    binding.tvFavoriteCount.text = "0首"
+                    binding.tvFavoriteCount?.text = "0首"
                 }
             }
         }

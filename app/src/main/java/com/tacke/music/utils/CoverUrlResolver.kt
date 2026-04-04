@@ -17,10 +17,16 @@ object CoverUrlResolver {
 
     /**
      * 检查URL是否为相对路径（需要转换）
+     * 相对路径指的是不是完整的 URL，也不是本地文件路径
      */
     fun isRelativePath(url: String?): Boolean {
         if (url.isNullOrEmpty()) return false
-        return !url.startsWith("http://") && !url.startsWith("https://")
+        // 如果以 http:// 或 https:// 开头，是完整 URL
+        if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) return false
+        // 如果以 / 开头，是本地文件路径
+        if (url.startsWith("/")) return false
+        // 其他情况认为是相对路径
+        return true
     }
 
     /**

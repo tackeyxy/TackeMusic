@@ -349,6 +349,9 @@ class PlayerActivity : AppCompatActivity() {
         favoriteRepository = FavoriteRepository(this)
         playlistRepository = PlaylistRepository(this)
 
+        // 从 savedInstanceState 恢复状态（如果有）
+        restoreStateFromBundle(savedInstanceState)
+
         parseIntent()
         setupClickListeners()
         setupAlbumRotation()
@@ -377,6 +380,94 @@ class PlayerActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // 保存关键状态，防止横竖屏切换或Activity重建时丢失
+        outState.putString("song_id", songId)
+        outState.putString("song_name", songName)
+        outState.putString("song_artists", songArtists)
+        outState.putString("song_url", songUrl)
+        outState.putString("song_cover", songCover)
+        outState.putString("song_lyrics", songLyrics)
+        outState.putString("platform", platform.name)
+        outState.putBoolean("is_from_empty_state", isFromEmptyState)
+    }
+
+    private fun restoreStateFromBundle(savedInstanceState: Bundle?) {
+        if (savedInstanceState != null) {
+            // 从 savedInstanceState 恢复状态
+            songId = savedInstanceState.getString("song_id", "")
+            songName = savedInstanceState.getString("song_name", "")
+            songArtists = savedInstanceState.getString("song_artists", "")
+            songUrl = savedInstanceState.getString("song_url", "")
+            songCover = savedInstanceState.getString("song_cover")
+            songLyrics = savedInstanceState.getString("song_lyrics")
+            val platformStr = savedInstanceState.getString("platform", "KUWO")
+            platform = try {
+                MusicRepository.Platform.valueOf(platformStr)
+            } catch (e: Exception) {
+                MusicRepository.Platform.KUWO
+            }
+            isFromEmptyState = savedInstanceState.getBoolean("is_from_empty_state", false)
+
+            Log.d(TAG, "从 savedInstanceState 恢复状态: songId=$songId, songCover=$songCover")
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        Log.d(TAG, "配置变化: orientation=${newConfig.orientation}")
+
+        // 横竖屏切换时重新加载布局
+        // 保存当前状态
+        val currentSongId = songId
+        val currentSongName = songName
+        val currentSongArtists = songArtists
+        val currentSongUrl = songUrl
+        val currentSongCover = songCover
+        val currentSongLyrics = songLyrics
+        val currentPlatform = platform
+        val currentIsFromEmptyState = isFromEmptyState
+
+        // 重新加载布局
+        binding = ActivityPlayerBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        // 恢复状态
+        songId = currentSongId
+        songName = currentSongName
+        songArtists = currentSongArtists
+        songUrl = currentSongUrl
+        songCover = currentSongCover
+        songLyrics = currentSongLyrics
+        platform = currentPlatform
+        isFromEmptyState = currentIsFromEmptyState
+
+        // 重新初始化 UI
+        enableToolbarMarquee()
+        setupClickListeners()
+        setupAlbumRotation()
+        applyCoverStyle()
+        setupGestureDetector()
+        setupPlayer() // 重新设置播放器控件（包括SeekBar监听器）
+
+        // 更新 UI 显示
+        binding.tvSongName.text = songName
+        binding.tvArtist.text = songArtists
+
+        // 重新加载封面和背景
+        if (!songCover.isNullOrEmpty()) {
+            loadCoverAndBackground(songCover)
+        }
+
+        // 重新设置歌词显示
+        if (!songLyrics.isNullOrEmpty()) {
+            parsedLyrics = parseLyrics(songLyrics!!)
+        }
+
+        Log.d(TAG, "配置变化处理完成，当前方向: ${if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) "横屏" else "竖屏"}")
     }
 
     private fun enableToolbarMarquee() {
@@ -734,7 +825,7 @@ class PlayerActivity : AppCompatActivity() {
             return
         }
 
-        // 检查是否是URL过期导致的错误（403 Forbidden）
+        // 检查是否是URL过期导致的错误（403/410 Bad HTTP Status）
         if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED) {
 
@@ -746,13 +837,14 @@ class PlayerActivity : AppCompatActivity() {
                 try {
                     Toast.makeText(this@PlayerActivity, "正在刷新播放链接...", Toast.LENGTH_SHORT).show()
 
-                    // 清除过期的缓存
+                    // 清除过期的缓存（包括数据库缓存和SharedPreferences缓存）
                     playbackPreferences.clearSongDetail(songId)
-
-                    // 重新获取歌曲详情
                     val cachedRepository = CachedMusicRepository(this@PlayerActivity)
+                    cachedRepository.clearCache(songId)
+
+                    // 强制从网络获取最新URL（不使用缓存）
                     val newDetail = withContext(Dispatchers.IO) {
-                        cachedRepository.getSongDetail(
+                        cachedRepository.getSongUrlOnly(
                             platform = platform,
                             songId = songId,
                             quality = currentQuality,
@@ -761,20 +853,32 @@ class PlayerActivity : AppCompatActivity() {
                         )
                     }
 
-                    if (newDetail != null) {
+                    if (newDetail != null && newDetail.url.isNotBlank()) {
+                        // 获取缓存的封面和歌词
+                        val cachedMeta = withContext(Dispatchers.IO) {
+                            cachedRepository.getCachedCoverAndLyrics(songId)
+                        }
+                        // 合并数据：使用新URL，保留缓存的封面和歌词
+                        val mergedDetail = newDetail.copy(
+                            cover = cachedMeta?.cover ?: songDetail?.cover,
+                            lyrics = cachedMeta?.lyrics ?: songDetail?.lyrics
+                        )
+
                         // 保存新的详情
-                        playbackPreferences.saveSongDetail(songId, newDetail)
-                        songDetail = newDetail
+                        playbackPreferences.saveSongDetail(songId, mergedDetail)
+                        songDetail = mergedDetail
 
                         // 获取当前播放位置
                         val currentPosition = exoPlayer?.currentPosition ?: 0
 
                         // 使用新URL重新加载
-                        loadSongButNotPlay(newDetail.url, currentPosition, true)
+                        loadSongButNotPlay(mergedDetail.url, currentPosition, true)
 
                         Toast.makeText(this@PlayerActivity, "播放链接已刷新", Toast.LENGTH_SHORT).show()
+                        Log.d(TAG, "URL刷新成功: $songName")
                     } else {
                         Toast.makeText(this@PlayerActivity, "无法获取播放链接", Toast.LENGTH_LONG).show()
+                        Log.e(TAG, "无法获取新的播放URL: $songName")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to refresh URL", e)
@@ -795,7 +899,7 @@ class PlayerActivity : AppCompatActivity() {
         binding.ivAlbum.setImageResource(R.drawable.ic_album_default)
         binding.ivBackground.visibility = View.GONE
         binding.tvLyricsCurrent.text = ""
-        binding.tvLyricsNext.text = ""
+        binding.tvLyricsNext?.text = ""
         binding.tvCurrentTime.text = "0:00"
         binding.tvTotalTime.text = "0:00"
         binding.seekBar.progress = 0
@@ -940,9 +1044,21 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun parseIntent() {
         val launchMode = intent.getStringExtra(EXTRA_LAUNCH_MODE) ?: LAUNCH_MODE_NORMAL
-        isFromEmptyState = launchMode == LAUNCH_MODE_EMPTY
+        val newIsFromEmptyState = launchMode == LAUNCH_MODE_EMPTY
 
-        if (!isFromEmptyState) {
+        // 如果已经从 savedInstanceState 恢复了状态，且不是空状态启动，
+        // 则优先使用恢复的状态，避免覆盖
+        val shouldRestoreFromIntent = if (songId.isNotEmpty() && !newIsFromEmptyState) {
+            // 检查 Intent 中的歌曲是否与恢复的歌曲相同
+            val intentSongId = intent.getStringExtra("song_id") ?: ""
+            intentSongId != songId // 如果不同，则使用 Intent 的数据
+        } else {
+            true // 没有恢复状态，使用 Intent 数据
+        }
+
+        isFromEmptyState = newIsFromEmptyState
+
+        if (!isFromEmptyState && shouldRestoreFromIntent) {
             songId = intent.getStringExtra("song_id") ?: ""
             songName = intent.getStringExtra("song_name") ?: "未知"
             songArtists = intent.getStringExtra("song_artists") ?: "未知"
@@ -955,7 +1071,9 @@ class PlayerActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 MusicRepository.Platform.KUWO
             }
+        }
 
+        if (!isFromEmptyState) {
             // 从 playbackPreferences 读取当前音质（用户设置的试听音质）
             currentQuality = playbackPreferences.currentQuality
 
@@ -1096,12 +1214,18 @@ class PlayerActivity : AppCompatActivity() {
                 val cachedRepository = CachedMusicRepository(this@PlayerActivity)
 
                 // 从网络获取完整信息（URL已经获取过了，这里主要是为了封面和歌词）
+                // 注意：如果 songCover 是本地文件路径，不要传递给 coverUrlFromSearch
+                val coverUrlForSearch = when {
+                    songCover.isNullOrEmpty() -> null
+                    songCover!!.startsWith("/") -> null // 本地文件路径，不传递
+                    else -> songCover
+                }
                 val detail = withContext(Dispatchers.IO) {
                     cachedRepository.getSongDetail(
                         platform = platform,
                         songId = songId,
                         quality = currentQuality,
-                        coverUrlFromSearch = if (songCover.isNullOrEmpty()) null else songCover,
+                        coverUrlFromSearch = coverUrlForSearch,
                         songName = songName,
                         artists = songArtists
                     )
@@ -1585,13 +1709,45 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun normalizeCoverUrl(url: String?): String? {
         if (url.isNullOrBlank()) return null
-        val trimmed = url.trim()
-        if (!trimmed.startsWith("http://", ignoreCase = true)) return trimmed
-        return if (trimmed.contains("music.126.net", ignoreCase = true)) {
-            trimmed.replaceFirst("http://", "https://", ignoreCase = true)
-        } else {
-            trimmed
+        var trimmed = url.trim()
+        
+        // 检测并修复混合 URL（远程 URL + 本地路径）
+        // 例如：https://p2.music.126.net/...==//data/user/0/...
+        if (trimmed.startsWith("http", ignoreCase = true)) {
+            val localPathIndex = trimmed.indexOf("//data/user/0/")
+            if (localPathIndex > 0) {
+                // 提取本地路径部分
+                trimmed = trimmed.substring(localPathIndex)
+                Log.d(TAG, "检测到混合URL，提取本地路径: $trimmed")
+            } else {
+                // 检测其他可能的本地路径格式
+                val cachePathIndex = trimmed.indexOf("/data/user/0/")
+                if (cachePathIndex > 0) {
+                    trimmed = trimmed.substring(cachePathIndex)
+                    Log.d(TAG, "检测到混合URL，提取本地路径: $trimmed")
+                }
+            }
         }
+        
+        // 如果是本地文件路径，去除 URL 参数（如 ?param=500y500）
+        if (trimmed.startsWith("/")) {
+            val queryIndex = trimmed.indexOf("?")
+            if (queryIndex > 0) {
+                trimmed = trimmed.substring(0, queryIndex)
+                Log.d(TAG, "去除URL参数后的本地路径: $trimmed")
+            }
+            return trimmed
+        }
+        
+        // 如果是 http:// 开头，转换为 https://（针对网易云音乐）
+        if (trimmed.startsWith("http://", ignoreCase = true)) {
+            return if (trimmed.contains("music.126.net", ignoreCase = true)) {
+                trimmed.replaceFirst("http://", "https://", ignoreCase = true)
+            } else {
+                trimmed
+            }
+        }
+        return trimmed
     }
 
     private fun setupPlayer() {
@@ -2560,13 +2716,19 @@ class PlayerActivity : AppCompatActivity() {
                 } else {
                     // 使用带缓存的Repository获取歌曲详情
                     // 传递 songCover 用于酷我平台的相对路径封面解析
+                    // 注意：如果 songCover 是本地文件路径，不要传递给 coverUrlFromSearch
+                    val coverUrlForSearch = when {
+                        songCover.isNullOrEmpty() -> null
+                        songCover!!.startsWith("/") -> null // 本地文件路径，不传递
+                        else -> songCover
+                    }
                     val cachedRepository = CachedMusicRepository(this@PlayerActivity)
                     songDetail = withContext(Dispatchers.IO) {
                         cachedRepository.getSongDetail(
                             platform = platform,
                             songId = songId,
                             quality = quality,
-                            coverUrlFromSearch = songCover,
+                            coverUrlFromSearch = coverUrlForSearch,
                             songName = songName,
                             artists = songArtists
                         )
@@ -2651,13 +2813,19 @@ class PlayerActivity : AppCompatActivity() {
                 } else {
                     // 使用带缓存的Repository获取歌曲详情
                     // 传递 songCover 用于酷我平台的相对路径封面解析
+                    // 注意：如果 songCover 是本地文件路径，不要传递给 coverUrlFromSearch
+                    val coverUrlForSearch = when {
+                        songCover.isNullOrEmpty() -> null
+                        songCover!!.startsWith("/") -> null // 本地文件路径，不传递
+                        else -> songCover
+                    }
                     val cachedRepository = CachedMusicRepository(this@PlayerActivity)
                     songDetail = withContext(Dispatchers.IO) {
                         cachedRepository.getSongDetail(
                             platform = platform,
                             songId = songId,
                             quality = quality,
-                            coverUrlFromSearch = songCover,
+                            coverUrlFromSearch = coverUrlForSearch,
                             songName = songName,
                             artists = songArtists
                         )
@@ -2701,9 +2869,12 @@ class PlayerActivity : AppCompatActivity() {
     private fun updateUI(detail: SongDetail) {
         // 更新专辑封面和背景（始终刷新）
         detail.cover?.let { coverUrl ->
+            // 规范化封面URL，处理可能的混合URL
+            val normalizedUrl = normalizeCoverUrl(coverUrl)
+            
             // 更新专辑封面 - 强制刷新以确保显示最新图片
             Glide.with(this)
-                .load(coverUrl)
+                .load(normalizedUrl)
                 .placeholder(R.drawable.ic_album_default)
                 .error(R.drawable.ic_album_default)
                 .diskCacheStrategy(DiskCacheStrategy.NONE)
@@ -2712,7 +2883,7 @@ class PlayerActivity : AppCompatActivity() {
 
             // 更新背景图片 - 强制刷新以确保显示最新图片
             Glide.with(this)
-                .load(coverUrl)
+                .load(normalizedUrl)
                 .placeholder(R.drawable.bg_default_light_cyan)
                 .error(R.drawable.bg_default_light_cyan)
                 .diskCacheStrategy(DiskCacheStrategy.NONE)
@@ -2722,8 +2893,8 @@ class PlayerActivity : AppCompatActivity() {
             // 显示背景图片
             binding.ivBackground.visibility = View.VISIBLE
 
-            // 更新 songCover
-            songCover = coverUrl
+            // 更新 songCover（使用规范化后的URL）
+            songCover = normalizedUrl
         }
 
         // 解析歌词但不显示到UI
@@ -2771,27 +2942,89 @@ class PlayerActivity : AppCompatActivity() {
             }
         }
 
+        // 判断当前是横屏还是竖屏
+        val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+        if (isLandscape) {
+            // 横屏模式：显示5句歌词（前2句 + 当前 + 后2句）
+            updateLandscapeLyrics(currentIndex)
+        } else {
+            // 竖屏模式：显示当前和下一句
+            updatePortraitLyrics(currentIndex)
+        }
+    }
+
+    private fun updatePortraitLyrics(currentIndex: Int) {
         if (currentIndex >= 0) {
             binding.tvLyricsCurrent.text = parsedLyrics[currentIndex].second
             val nextIndex = currentIndex + 1
             if (nextIndex < parsedLyrics.size) {
-                binding.tvLyricsNext.text = parsedLyrics[nextIndex].second
+                binding.tvLyricsNext?.text = parsedLyrics[nextIndex].second
             } else {
-                binding.tvLyricsNext.text = ""
+                binding.tvLyricsNext?.text = ""
             }
         } else {
             binding.tvLyricsCurrent.text = parsedLyrics.firstOrNull()?.second ?: ""
-            binding.tvLyricsNext.text = if (parsedLyrics.size > 1) parsedLyrics[1].second else ""
+            binding.tvLyricsNext?.text = if (parsedLyrics.size > 1) parsedLyrics[1].second else ""
+        }
+    }
+
+    private fun updateLandscapeLyrics(currentIndex: Int) {
+        val actualIndex = if (currentIndex >= 0) currentIndex else 0
+
+        // 前2句
+        val prev2Index = actualIndex - 2
+        val prev1Index = actualIndex - 1
+
+        // 后2句
+        val next1Index = actualIndex + 1
+        val next2Index = actualIndex + 2
+
+        // 使用 try-catch 避免横屏布局元素不存在时崩溃
+        try {
+            // 前2句
+            binding.tvLyricsPrev2?.text = if (prev2Index >= 0) parsedLyrics[prev2Index].second else ""
+            binding.tvLyricsPrev2?.visibility = if (prev2Index >= 0) View.VISIBLE else View.INVISIBLE
+
+            binding.tvLyricsPrev1?.text = if (prev1Index >= 0) parsedLyrics[prev1Index].second else ""
+            binding.tvLyricsPrev1?.visibility = if (prev1Index >= 0) View.VISIBLE else View.INVISIBLE
+
+            // 当前歌词
+            binding.tvLyricsCurrent.text = parsedLyrics[actualIndex].second
+
+            // 后2句
+            binding.tvLyricsNext1?.text = if (next1Index < parsedLyrics.size) parsedLyrics[next1Index].second else ""
+            binding.tvLyricsNext1?.visibility = if (next1Index < parsedLyrics.size) View.VISIBLE else View.INVISIBLE
+
+            binding.tvLyricsNext2?.text = if (next2Index < parsedLyrics.size) parsedLyrics[next2Index].second else ""
+            binding.tvLyricsNext2?.visibility = if (next2Index < parsedLyrics.size) View.VISIBLE else View.INVISIBLE
+        } catch (e: Exception) {
+            // 如果横屏布局元素不存在，回退到竖屏模式显示
+            updatePortraitLyrics(currentIndex)
         }
     }
 
     private fun applyPlayerLyricStyle() {
         val lyricColor = LyricStyleSettings.getPlayerLyricColor(this)
         val lyricSize = LyricStyleSettings.getPlayerLyricSize(this)
+
+        // 当前歌词样式
         binding.tvLyricsCurrent.setTextColor(lyricColor)
         binding.tvLyricsCurrent.textSize = lyricSize
-        binding.tvLyricsNext.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
-        binding.tvLyricsNext.textSize = (lyricSize * 0.78f).coerceAtLeast(12f)
+
+        // 下一句歌词样式（竖屏）
+        binding.tvLyricsNext?.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
+        binding.tvLyricsNext?.textSize = (lyricSize * 0.78f).coerceAtLeast(12f)
+
+        // 横屏模式下其他歌词样式
+        try {
+            binding.tvLyricsPrev2?.setTextColor(ContextCompat.getColor(this, R.color.text_quaternary))
+            binding.tvLyricsPrev1?.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
+            binding.tvLyricsNext1?.setTextColor(ContextCompat.getColor(this, R.color.text_tertiary))
+            binding.tvLyricsNext2?.setTextColor(ContextCompat.getColor(this, R.color.text_quaternary))
+        } catch (e: Exception) {
+            // 横屏布局元素可能不存在，忽略异常
+        }
     }
 
     private fun playSong(url: String) {
@@ -3092,6 +3325,12 @@ class PlayerActivity : AppCompatActivity() {
             try {
                 // 非下载管理页面，强制重新获取最新URL，但封面和歌词使用缓存
                 // 传递 songCover 用于酷我平台的相对路径封面解析
+                // 注意：如果 songCover 是本地文件路径，不要传递给 coverUrlFromSearch
+                val coverUrlForSearch = when {
+                    songCover.isNullOrEmpty() -> null
+                    songCover!!.startsWith("/") -> null // 本地文件路径，不传递
+                    else -> songCover
+                }
                 val cachedRepository = CachedMusicRepository(this@PlayerActivity)
                 val detail = withContext(Dispatchers.IO) {
                     cachedRepository.getSongUrlWithCache(
@@ -3101,7 +3340,7 @@ class PlayerActivity : AppCompatActivity() {
                         songName = songName,
                         artists = songArtists,
                         useCache = true,
-                        coverUrlFromSearch = songCover
+                        coverUrlFromSearch = coverUrlForSearch
                     )
                 }
                 if (detail != null) {

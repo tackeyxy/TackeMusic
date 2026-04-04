@@ -24,45 +24,46 @@
         android:background="@color/black"
         android:alpha="0.5" />
 
-    <!-- 顶部工具栏（用于代码兼容） -->
+    <!-- 左侧区域 - 专辑封面和歌曲信息 -->
     <androidx.constraintlayout.widget.ConstraintLayout
-        android:id="@+id/toolbar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="16dp"
-        app:layout_constraintTop_toTopOf="parent">
+        android:id="@+id/leftPanel"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:padding="12dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintWidth_percent="0.48">
 
+        <!-- 返回按钮 - 左上角 -->
         <ImageButton
-            android:id="@+id/btnBackToolbar"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_expand_more"
+            android:id="@+id/btnBack"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:src="@drawable/ic_arrow_back"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:tint="@color/text_primary"
             android:contentDescription="返回"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent" />
+            app:layout_constraintTop_toTopOf="parent" />
 
+        <!-- 歌曲信息 - 左侧区域水平居中 -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:id="@+id/songInfoContainer"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_marginEnd="12dp"
             android:orientation="vertical"
             android:gravity="center"
-            app:layout_constraintHorizontal_bias="0.5"
-            app:layout_constraintStart_toEndOf="@id/btnBackToolbar"
-            app:layout_constraintEnd_toStartOf="@id/btnMore"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent">
+            android:layout_marginTop="4dp">
 
             <TextView
                 android:id="@+id/tvSongName"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text=""
-                android:gravity="center"
                 android:textSize="18sp"
                 android:textStyle="bold"
                 android:textColor="@color/text_primary"
@@ -76,10 +77,10 @@
 
             <TextView
                 android:id="@+id/tvArtist"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
                 android:text=""
-                android:gravity="center"
                 android:textSize="13sp"
                 android:textColor="@color/text_secondary"
                 android:maxLines="1"
@@ -92,50 +93,15 @@
 
         </LinearLayout>
 
-        <ImageButton
-            android:id="@+id/btnMore"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:src="@drawable/ic_more_vert"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:tint="@color/text_primary"
-            android:contentDescription="更多"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintBottom_toBottomOf="parent" />
-
-    </androidx.constraintlayout.widget.ConstraintLayout>
-
-    <!-- 左侧区域 - 专辑封面 -->
-    <androidx.constraintlayout.widget.ConstraintLayout
-        android:id="@+id/leftPanel"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:padding="32dp"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintWidth_percent="0.45">
-
-        <!-- 顶部返回按钮（横屏专用，隐藏） -->
-        <ImageButton
-            android:id="@+id/btnBack"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/ic_expand_more"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:tint="@color/text_primary"
-            android:contentDescription="返回"
-            android:visibility="gone"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
-
-        <!-- 专辑封面容器 -->
+        <!-- 专辑封面容器 - 最大化尺寸 -->
         <FrameLayout
             android:id="@+id/albumContainer"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            app:layout_constraintTop_toBottomOf="@id/btnBack"
+            android:layout_marginTop="8dp"
+            android:layout_marginHorizontal="4dp"
+            android:layout_marginBottom="8dp"
+            app:layout_constraintTop_toBottomOf="@id/songInfoContainer"
             app:layout_constraintBottom_toTopOf="@id/sideActionContainer"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
@@ -146,14 +112,14 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:background="@drawable/bg_album_glow"
-                android:layout_margin="24dp" />
+                android:layout_margin="8dp" />
 
             <!-- 唱片 -->
             <androidx.cardview.widget.CardView
                 android:id="@+id/albumCardView"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:layout_margin="32dp"
+                android:layout_margin="12dp"
                 app:cardCornerRadius="200dp"
                 app:cardElevation="0dp">
 
@@ -176,16 +142,16 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center"
-            android:layout_marginTop="16dp"
+            android:layout_marginBottom="2dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent">
 
             <ImageButton
                 android:id="@+id/btnFavoriteSidebar"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:layout_marginEnd="24dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="32dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="添加到我喜欢的"
                 android:padding="0dp"
@@ -194,8 +160,8 @@
 
             <com.tacke.music.ui.widget.OutlinedGlyphTextView
                 android:id="@+id/btnFloatingLyricsSidebar"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
                 android:background="@null"
                 android:padding="0dp"
                 android:contentDescription="悬浮歌词开关"
@@ -205,21 +171,34 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
+    <!-- 更多按钮 - 页面右上角 -->
+    <ImageButton
+        android:id="@+id/btnMore"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:src="@drawable/ic_more_vert"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:tint="@color/text_primary"
+        android:contentDescription="更多"
+        android:layout_margin="12dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <!-- 右侧区域 - 歌词和控制 -->
     <LinearLayout
         android:id="@+id/rightPanel"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:orientation="vertical"
-        android:gravity="center_vertical"
-        android:paddingHorizontal="48dp"
-        android:paddingVertical="32dp"
+        android:gravity="center"
+        android:paddingHorizontal="24dp"
+        android:paddingVertical="12dp"
         app:layout_constraintStart_toEndOf="@id/leftPanel"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent">
 
-        <!-- 歌词区域 -->
+        <!-- 歌词区域 - 显示5句，中间行高亮 -->
         <LinearLayout
             android:id="@+id/lyricsContainer"
             android:layout_width="match_parent"
@@ -228,22 +207,23 @@
             android:orientation="vertical"
             android:gravity="center">
 
+            <!-- 前2句歌词 - 统一颜色 -->
             <TextView
-                android:id="@+id/tvLyricsCurrent"
+                android:id="@+id/tvLyricsPrev2"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text=""
-                android:textSize="22sp"
-                android:textColor="@color/primary"
+                android:textSize="14sp"
+                android:textColor="@color/text_tertiary"
                 android:gravity="center"
-                android:maxLines="2"
+                android:maxLines="1"
                 android:ellipsize="end" />
 
             <TextView
-                android:id="@+id/tvLyricsNext"
+                android:id="@+id/tvLyricsPrev1"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="6dp"
                 android:text=""
                 android:textSize="16sp"
                 android:textColor="@color/text_tertiary"
@@ -251,37 +231,76 @@
                 android:maxLines="1"
                 android:ellipsize="end" />
 
+            <!-- 当前歌词 - 高亮显示，大字号 -->
+            <TextView
+                android:id="@+id/tvLyricsCurrent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text=""
+                android:textSize="22sp"
+                android:textColor="@color/primary"
+                android:gravity="center"
+                android:maxLines="2"
+                android:ellipsize="end" />
+
+            <!-- 后2句歌词 - 统一颜色 -->
+            <TextView
+                android:id="@+id/tvLyricsNext1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:text=""
+                android:textSize="16sp"
+                android:textColor="@color/text_tertiary"
+                android:gravity="center"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tvLyricsNext2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text=""
+                android:textSize="14sp"
+                android:textColor="@color/text_tertiary"
+                android:gravity="center"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
         </LinearLayout>
 
-        <!-- 进度条区域 -->
+        <!-- 进度条区域 - 更紧凑 -->
         <LinearLayout
             android:id="@+id/progressContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:layout_marginTop="10dp">
 
             <SeekBar
                 android:id="@+id/seekBar"
                 android:layout_width="match_parent"
-                android:layout_height="16dp"
+                android:layout_height="12dp"
                 android:progressDrawable="@drawable/bg_seekbar"
                 android:thumb="@android:color/transparent"
                 android:progressTint="@color/primary"
                 android:progressBackgroundTint="@color/surface_light"
-                android:paddingVertical="4dp" />
+                android:paddingVertical="2dp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:layout_marginTop="8dp">
+                android:layout_marginTop="4dp">
 
                 <TextView
                     android:id="@+id/tvCurrentTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="2:40"
-                    android:textSize="14sp"
+                    android:text="0:00"
+                    android:textSize="12sp"
                     android:textColor="@color/text_secondary" />
 
                 <View
@@ -293,28 +312,28 @@
                     android:id="@+id/tvTotalTime"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="4:12"
-                    android:textSize="14sp"
+                    android:text="0:00"
+                    android:textSize="12sp"
                     android:textColor="@color/text_secondary" />
 
             </LinearLayout>
 
         </LinearLayout>
 
-        <!-- 播放控制区域 -->
+        <!-- 播放控制区域 - 更紧凑 -->
         <LinearLayout
             android:id="@+id/controlsContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginTop="16dp">
+            android:layout_marginTop="8dp">
 
             <!-- 播放列表图标 -->
             <ImageButton
                 android:id="@+id/btnPlaylist"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:src="@drawable/ic_playlist"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:tint="@color/text_secondary"
@@ -328,8 +347,8 @@
             <!-- 上一首 -->
             <ImageButton
                 android:id="@+id/btnPrevious"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:src="@drawable/ic_skip_previous"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:tint="@color/text_primary"
@@ -338,15 +357,15 @@
             <!-- 播放/暂停按钮 -->
             <FrameLayout
                 android:id="@+id/btnPlayPauseContainer"
-                android:layout_width="80dp"
-                android:layout_height="80dp"
-                android:layout_marginHorizontal="24dp"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_marginHorizontal="20dp"
                 android:background="@drawable/bg_play_button">
 
                 <ImageButton
                     android:id="@+id/btnPlayPause"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
                     android:layout_gravity="center"
                     android:src="@drawable/ic_play"
                     android:background="@null"
@@ -358,8 +377,8 @@
             <!-- 下一首 -->
             <ImageButton
                 android:id="@+id/btnNext"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
                 android:src="@drawable/ic_skip_next"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:tint="@color/text_primary"
@@ -373,8 +392,8 @@
             <!-- 随机播放 -->
             <ImageButton
                 android:id="@+id/btnShuffle"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:src="@drawable/ic_shuffle"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:tint="@color/text_secondary"

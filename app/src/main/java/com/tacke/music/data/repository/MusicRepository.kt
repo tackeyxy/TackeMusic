@@ -75,8 +75,10 @@ class MusicRepository {
         return try {
             Log.d("MusicRepository", "使用web_albumpic_short获取酷我封面: $albumPicShort")
             
-            // 如果已经是完整URL，直接返回
-            if (albumPicShort.startsWith("http://") || albumPicShort.startsWith("https://")) {
+            // 如果已经是完整URL或本地文件路径，直接返回
+            if (albumPicShort.startsWith("http://", ignoreCase = true) || 
+                albumPicShort.startsWith("https://", ignoreCase = true) ||
+                albumPicShort.startsWith("/")) {
                 return albumPicShort
             }
             

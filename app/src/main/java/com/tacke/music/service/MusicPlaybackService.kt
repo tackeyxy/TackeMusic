@@ -487,7 +487,7 @@ class MusicPlaybackService : Service() {
     private fun handlePlayerError(error: PlaybackException) {
         Log.e("MusicPlaybackService", "Player error: ${error.errorCodeName}", error)
 
-        // 检查是否是URL过期导致的错误（403 Forbidden）
+        // 检查是否是URL过期导致的错误（403/410 Bad HTTP Status）
         if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
             error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED) {
 
@@ -510,19 +510,20 @@ class MusicPlaybackService : Service() {
                 currentSongForRetry = currentSong
                 serviceScope.launch {
                     try {
-                        // 清除过期的缓存
+                        // 清除过期的缓存（包括数据库缓存和SharedPreferences缓存）
                         playbackPreferences.clearSongDetail(currentSong.id)
-
-                        // 重新获取歌曲详情
                         val cachedRepository = CachedMusicRepository(this@MusicPlaybackService)
+                        cachedRepository.clearCache(currentSong.id)
+
                         val platform = try {
                             MusicRepository.Platform.valueOf(currentSong.platform.uppercase())
                         } catch (e: Exception) {
                             MusicRepository.Platform.KUWO
                         }
 
+                        // 强制从网络获取最新URL（不使用缓存）
                         val newDetail = withContext(Dispatchers.IO) {
-                            cachedRepository.getSongDetail(
+                            cachedRepository.getSongUrlOnly(
                                 platform = platform,
                                 songId = currentSong.id,
                                 quality = currentQuality,
@@ -531,9 +532,21 @@ class MusicPlaybackService : Service() {
                             )
                         }
 
-                        if (newDetail != null) {
+                        if (newDetail != null && newDetail.url.isNotBlank()) {
+                            // 获取缓存的封面和歌词
+                            val cachedMeta = withContext(Dispatchers.IO) {
+                                cachedRepository.getCachedCoverAndLyrics(currentSong.id)
+                            }
+                            // 合并数据：使用新URL，保留缓存的封面和歌词
+                            val mergedDetail = newDetail.copy(
+                                cover = cachedMeta?.cover ?: currentSong.coverUrl,
+                                lyrics = cachedMeta?.lyrics
+                            )
                             // 使用新URL重新播放
-                            playSong(newDetail, currentSong)
+                            playSong(mergedDetail, currentSong)
+                            Log.d("MusicPlaybackService", "URL刷新成功，重新播放: ${currentSong.name}")
+                        } else {
+                            Log.e("MusicPlaybackService", "无法获取新的播放URL: ${currentSong.name}")
                         }
                     } catch (e: Exception) {
                         Log.e("MusicPlaybackService", "Failed to refresh URL", e)
@@ -1167,7 +1180,31 @@ class MusicPlaybackService : Service() {
         songName: String,
         artist: String
     ): Bitmap? {
-        val reference = coverReference?.trim().orEmpty()
+        var reference = coverReference?.trim().orEmpty()
+
+        // 检测并修复混合 URL（远程 URL + 本地路径）
+        // 例如：https://p2.music.126.net/...==//data/user/0/...
+        if (reference.startsWith("http", ignoreCase = true)) {
+            val localPathIndex = reference.indexOf("//data/user/0/")
+            if (localPathIndex > 0) {
+                // 提取本地路径部分
+                reference = reference.substring(localPathIndex)
+            } else {
+                val cachePathIndex = reference.indexOf("/data/user/0/")
+                if (cachePathIndex > 0) {
+                    reference = reference.substring(cachePathIndex)
+                }
+            }
+        }
+
+        // 如果是本地文件路径，去除 URL 参数（如 ?param=500y500）
+        if (reference.startsWith("/")) {
+            val queryIndex = reference.indexOf("?")
+            if (queryIndex > 0) {
+                reference = reference.substring(0, queryIndex)
+            }
+        }
+
         if (reference.isNotEmpty()) {
             if (reference.startsWith("http", ignoreCase = true)) {
                 val cachedPath = com.tacke.music.utils.CoverImageManager.downloadAndCacheCoverByUrl(

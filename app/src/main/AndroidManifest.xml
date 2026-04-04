@@ -56,7 +56,7 @@
             android:exported="false"
             android:theme="@style/Theme.TackeMusic.Player"
             android:launchMode="singleTop"
-            android:configChanges="screenSize|smallestScreenSize" />
+            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden" />
 
         <activity
             android:name=".ui.ProfileActivity"
@@ -69,7 +69,7 @@
             android:name=".ui.LyricsActivity"
             android:exported="false"
             android:theme="@style/Theme.TackeMusic"
-            android:configChanges="screenSize|smallestScreenSize" />
+            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden" />
 
         <activity
             android:name=".ui.SettingsActivity"

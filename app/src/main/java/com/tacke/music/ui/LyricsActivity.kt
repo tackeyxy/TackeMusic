@@ -217,6 +217,47 @@ class LyricsActivity : AppCompatActivity() {
         lyricStylePrefs.unregisterOnSharedPreferenceChangeListener(lyricStyleListener)
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+
+        // 保存当前状态
+        val currentParsedLyrics = parsedLyrics
+        val currentLyricIndex = this.currentLyricIndex
+        val currentPosition = this.currentPosition
+        val currentDuration = this.duration
+        val currentIsPlaying = this.isPlaying
+
+        // 重新加载布局
+        binding = ActivityLyricsBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        // 恢复状态
+        parsedLyrics = currentParsedLyrics
+        this.currentLyricIndex = currentLyricIndex
+        this.currentPosition = currentPosition
+        this.duration = currentDuration
+        this.isPlaying = currentIsPlaying
+
+        // 重新初始化 UI
+        setupRecyclerView()
+        setupClickListeners()
+        setupGestureDetector()
+        setupPlaybackReceiver()
+        setupSeekBar()
+        enableToolbarMarquee()
+
+        // 恢复歌词显示
+        lyricsAdapter.submitList(parsedLyrics.map { it.second })
+        updateLyricsHighlight(currentPosition)
+
+        // 恢复背景
+        val coverUrl = intent.getStringExtra("cover_url")
+        loadBackground(coverUrl)
+
+        // 恢复播放状态显示
+        updateProgressUI()
+    }
+
     private fun setupRecyclerView() {
         lyricsAdapter = LyricsAdapter(
             onLyricClick = { _ ->
@@ -540,10 +581,11 @@ class LyricsActivity : AppCompatActivity() {
     }
 
     private fun loadBackground(coverUrl: String?) {
-        if (!coverUrl.isNullOrEmpty()) {
+        val normalizedUrl = normalizeCoverUrl(coverUrl)
+        if (!normalizedUrl.isNullOrEmpty()) {
             // 加载背景图片
             Glide.with(this)
-                .load(coverUrl)
+                .load(normalizedUrl)
                 .placeholder(R.drawable.bg_default_light_cyan)
                 .error(R.drawable.bg_default_light_cyan)
                 .into(binding.ivBackground)
@@ -554,6 +596,42 @@ class LyricsActivity : AppCompatActivity() {
             // 没有封面时隐藏背景图片
             binding.ivBackground.visibility = View.GONE
         }
+    }
+
+    /**
+     * 规范化封面URL
+     * 处理混合URL（远程URL + 本地路径）的情况
+     */
+    private fun normalizeCoverUrl(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        var trimmed = url.trim()
+
+        // 检测并修复混合 URL（远程 URL + 本地路径）
+        // 例如：https://p2.music.126.net/...==//data/user/0/...
+        if (trimmed.startsWith("http", ignoreCase = true)) {
+            val localPathIndex = trimmed.indexOf("//data/user/0/")
+            if (localPathIndex > 0) {
+                // 提取本地路径部分
+                trimmed = trimmed.substring(localPathIndex)
+            } else {
+                // 检测其他可能的本地路径格式
+                val cachePathIndex = trimmed.indexOf("/data/user/0/")
+                if (cachePathIndex > 0) {
+                    trimmed = trimmed.substring(cachePathIndex)
+                }
+            }
+        }
+
+        // 如果是本地文件路径，去除 URL 参数（如 ?param=500y500）
+        if (trimmed.startsWith("/")) {
+            val queryIndex = trimmed.indexOf("?")
+            if (queryIndex > 0) {
+                trimmed = trimmed.substring(0, queryIndex)
+            }
+            return trimmed
+        }
+
+        return trimmed
     }
 
     private fun formatTime(millis: Long): String {

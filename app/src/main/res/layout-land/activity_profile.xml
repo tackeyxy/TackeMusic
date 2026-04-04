@@ -56,8 +56,7 @@
                     android:padding="16dp"
                     android:clickable="true"
                     android:focusable="true"
-                    android:foreground="?attr/selectableItemBackground"
-                    android:background="@drawable/bg_chart_soaring">
+                    android:foreground="?attr/selectableItemBackground">
 
                     <ImageView
                         android:layout_width="36dp"
@@ -74,15 +73,6 @@
                         android:textStyle="bold"
                         android:textColor="#FFFFFF" />
 
-                    <TextView
-                        android:id="@+id/tvLocalMusicCount"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:text="0个歌单"
-                        android:textSize="13sp"
-                        android:textColor="#CCFFFFFF" />
-
                 </LinearLayout>
 
                 <!-- 下载管理 -->
@@ -97,8 +87,7 @@
                     android:padding="16dp"
                     android:clickable="true"
                     android:focusable="true"
-                    android:foreground="?attr/selectableItemBackground"
-                    android:background="@drawable/bg_chart_new">
+                    android:foreground="?attr/selectableItemBackground">
 
                     <ImageView
                         android:layout_width="36dp"
@@ -114,15 +103,6 @@
                         android:textSize="16sp"
                         android:textStyle="bold"
                         android:textColor="#FFFFFF" />
-
-                    <TextView
-                        android:id="@+id/tvDownloadCount"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:text="0首"
-                        android:textSize="13sp"
-                        android:textColor="#CCFFFFFF" />
 
                 </LinearLayout>
 
@@ -146,8 +126,7 @@
                     android:padding="16dp"
                     android:clickable="true"
                     android:focusable="true"
-                    android:foreground="?attr/selectableItemBackground"
-                    android:background="@drawable/bg_chart_original">
+                    android:foreground="?attr/selectableItemBackground">
 
                     <ImageView
                         android:layout_width="36dp"
@@ -164,15 +143,6 @@
                         android:textStyle="bold"
                         android:textColor="#FFFFFF" />
 
-                    <TextView
-                        android:id="@+id/tvFavoriteCount"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:text="0首"
-                        android:textSize="13sp"
-                        android:textColor="#CCFFFFFF" />
-
                 </LinearLayout>
 
                 <!-- 播放历史 -->
@@ -187,8 +157,7 @@
                     android:padding="16dp"
                     android:clickable="true"
                     android:focusable="true"
-                    android:foreground="?attr/selectableItemBackground"
-                    android:background="@drawable/bg_chart_hot">
+                    android:foreground="?attr/selectableItemBackground">
 
                     <ImageView
                         android:layout_width="36dp"
@@ -204,15 +173,6 @@
                         android:textSize="16sp"
                         android:textStyle="bold"
                         android:textColor="#FFFFFF" />
-
-                    <TextView
-                        android:id="@+id/tvRecentCount"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:text="0首"
-                        android:textSize="13sp"
-                        android:textColor="#CCFFFFFF" />
 
                 </LinearLayout>
 

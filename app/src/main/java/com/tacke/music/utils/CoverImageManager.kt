@@ -242,13 +242,42 @@ object CoverImageManager {
     }
 
     private fun normalizeImageUrl(url: String): String {
-        val trimmed = url.trim()
-        if (!trimmed.startsWith("http://", ignoreCase = true)) return trimmed
-        return if (trimmed.contains("music.126.net", ignoreCase = true)) {
-            trimmed.replaceFirst("http://", "https://", ignoreCase = true)
-        } else {
-            trimmed
+        var trimmed = url.trim()
+
+        // 检测并修复混合 URL（远程 URL + 本地路径）
+        // 例如：https://p2.music.126.net/...==//data/user/0/...
+        if (trimmed.startsWith("http", ignoreCase = true)) {
+            val localPathIndex = trimmed.indexOf("//data/user/0/")
+            if (localPathIndex > 0) {
+                // 提取本地路径部分
+                trimmed = trimmed.substring(localPathIndex)
+            } else {
+                // 检测其他可能的本地路径格式
+                val cachePathIndex = trimmed.indexOf("/data/user/0/")
+                if (cachePathIndex > 0) {
+                    trimmed = trimmed.substring(cachePathIndex)
+                }
+            }
         }
+
+        // 如果是本地文件路径，去除 URL 参数（如 ?param=500y500）
+        if (trimmed.startsWith("/")) {
+            val queryIndex = trimmed.indexOf("?")
+            if (queryIndex > 0) {
+                trimmed = trimmed.substring(0, queryIndex)
+            }
+            return trimmed
+        }
+
+        // 如果是 http:// 开头，转换为 https://（针对网易云音乐）
+        if (trimmed.startsWith("http://", ignoreCase = true)) {
+            return if (trimmed.contains("music.126.net", ignoreCase = true)) {
+                trimmed.replaceFirst("http://", "https://", ignoreCase = true)
+            } else {
+                trimmed
+            }
+        }
+        return trimmed
     }
 
     /**
