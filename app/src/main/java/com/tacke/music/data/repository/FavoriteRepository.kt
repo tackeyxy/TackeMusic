@@ -178,13 +178,15 @@ class FavoriteRepository(private val context: Context) {
             if (isLocalSong(song.id, song.platform)) {
                 return@forEach
             }
-            val existingPath = CoverImageManager.getCoverPath(context, song.id, song.platform)
+            // 使用小写的平台名称（与CoverImageManager缓存键一致）
+            val cachePlatform = song.platform.lowercase()
+            val existingPath = CoverImageManager.getCoverPath(context, song.id, cachePlatform)
 
             if (existingPath == null) {
                 val coverPath = CoverImageManager.downloadAndCacheCover(
                     context,
                     song.id,
-                    song.platform
+                    cachePlatform
                 )
 
                 if (coverPath != null) {

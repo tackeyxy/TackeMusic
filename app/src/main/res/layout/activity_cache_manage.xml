@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/background"
+    android:fitsSystemWindows="false">
+
+    <!-- 状态栏占位 -->
+    <View
+        android:id="@+id/statusBarPlaceholder"
+        android:layout_width="match_parent"
+        android:layout_height="0dp" />
+
+    <!-- 顶部标题栏 -->
+    <LinearLayout
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+
+        <ImageButton
+            android:id="@+id/btnBack"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_arrow_back_modern"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/text_primary"
+            android:contentDescription="返回" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="16dp"
+            android:text="缓存管理"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary" />
+
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- 总缓存大小卡片 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@drawable/bg_card_rounded"
+                android:padding="20dp"
+                android:gravity="center">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="缓存总大小"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_secondary" />
+
+                <TextView
+                    android:id="@+id/tvTotalCacheSize"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="0 B"
+                    android:textSize="32sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/primary" />
+
+                <Button
+                    android:id="@+id/btnClearAllCache"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:text="清除所有缓存"
+                    android:textSize="14sp"
+                    android:textColor="@android:color/white"
+                    android:backgroundTint="@color/primary" />
+
+            </LinearLayout>
+
+            <!-- 缓存过期时间设置 -->
+            <LinearLayout
+                android:id="@+id/layoutCacheExpiry"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/bg_card_rounded"
+                android:paddingHorizontal="16dp"
+                android:layout_marginTop="16dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@drawable/ic_timer"
+                    android:tint="@color/primary" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="16dp"
+                    android:text="缓存过期时间"
+                    android:textSize="15sp"
+                    android:textColor="@color/text_primary" />
+
+                <TextView
+                    android:id="@+id/tvCacheExpiryValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="30 天"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_secondary" />
+
+                <ImageView
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_marginStart="8dp"
+                    android:src="@drawable/ic_chevron_right"
+                    android:tint="@color/text_hint" />
+
+            </LinearLayout>
+
+            <!-- 分项缓存列表标题 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:layout_marginBottom="8dp"
+                android:text="分项缓存"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary" />
+
+            <!-- 分项缓存列表 -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recyclerViewCacheTypes"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_card_rounded"
+                android:padding="8dp" />
+
+        </LinearLayout>
+
+    </ScrollView>
+
+</LinearLayout>

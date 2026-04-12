@@ -268,9 +268,9 @@
 
         </LinearLayout>
 
-        <!-- 缓存过期时间设置 -->
+        <!-- 边听边存设置 -->
         <LinearLayout
-            android:id="@+id/layoutCacheExpiry"
+            android:id="@+id/layoutListenWhileCache"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:orientation="horizontal"
@@ -284,7 +284,7 @@
             <ImageView
                 android:layout_width="24dp"
                 android:layout_height="24dp"
-                android:src="@drawable/ic_timer"
+                android:src="@drawable/ic_download"
                 android:tint="@color/primary" />
 
             <TextView
@@ -292,17 +292,54 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginStart="16dp"
-                android:text="缓存过期时间"
+                android:text="边听边存"
                 android:textSize="15sp"
                 android:textColor="@color/text_primary" />
 
             <TextView
-                android:id="@+id/tvCacheExpiryValue"
+                android:id="@+id/tvListenWhileCacheValue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="7 天"
+                android:text="已关闭"
                 android:textSize="14sp"
                 android:textColor="@color/text_secondary" />
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_chevron_right"
+                android:tint="@color/text_hint" />
+
+        </LinearLayout>
+
+        <!-- 缓存管理 -->
+        <LinearLayout
+            android:id="@+id/layoutCacheManage"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_card_rounded"
+            android:paddingHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_folder"
+                android:tint="@color/primary" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:text="缓存管理"
+                android:textSize="15sp"
+                android:textColor="@color/text_primary" />
 
             <ImageView
                 android:layout_width="20dp"

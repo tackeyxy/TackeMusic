@@ -1629,20 +1629,20 @@ class PlayerActivity : AppCompatActivity() {
             val coverTargetSongName = songName
             val coverTargetArtist = songArtists
 
-            // 加载专辑封面 - 强制刷新以确保显示最新图片
+            // 加载专辑封面 - 使用ALL缓存策略避免流长度问题
             Glide.with(this)
                 .load(normalizedCoverUrl)
                 .placeholder(R.drawable.ic_album_default)
                 .error(R.drawable.ic_album_default)
-                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                .diskCacheStrategy(DiskCacheStrategy.ALL)
                 .into(binding.ivAlbum)
 
-            // 加载背景图片 - 强制刷新以确保显示最新图片
+            // 加载背景图片 - 使用ALL缓存策略避免流长度问题
             Glide.with(this)
                 .load(normalizedCoverUrl)
                 .placeholder(R.drawable.bg_default_light_cyan)
                 .error(R.drawable.bg_default_light_cyan)
-                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                .diskCacheStrategy(DiskCacheStrategy.ALL)
                 .into(binding.ivBackground)
 
             // 显示背景图片
@@ -1652,7 +1652,7 @@ class PlayerActivity : AppCompatActivity() {
             Glide.with(this)
                 .asBitmap()
                 .load(normalizedCoverUrl)
-                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
+                .diskCacheStrategy(DiskCacheStrategy.ALL)
                 .into(object : CustomTarget<Bitmap>() {
                     override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
                         if (songId == coverTargetSongId) {
@@ -1935,6 +1935,14 @@ class PlayerActivity : AppCompatActivity() {
                 Toast.makeText(this, "暂无歌曲", Toast.LENGTH_SHORT).show()
             } else {
                 toggleFloatingLyrics()
+            }
+        }
+
+        binding.btnCommentSidebar?.setOnClickListener {
+            if (songId.isBlank() || isFromEmptyState) {
+                Toast.makeText(this, "暂无歌曲", Toast.LENGTH_SHORT).show()
+            } else {
+                openCommentsPage()
             }
         }
 
@@ -2343,6 +2351,17 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    private fun openCommentsPage() {
+        SongCommentsActivity.start(
+            this,
+            songId,
+            songName,
+            songArtists,
+            platform,
+            songCover
+        )
+    }
+
     private fun requestOverlayPermission() {
         AlertDialog.Builder(this)
             .setTitle("需要悬浮窗权限")
@@ -2584,6 +2603,9 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnFavoriteSidebar.alpha = if (hasSong) 1f else 0.45f
         binding.btnFavoriteSidebar.isEnabled = hasSong
 
+        binding.btnCommentSidebar?.alpha = if (hasSong) 1f else 0.45f
+        binding.btnCommentSidebar?.isEnabled = hasSong
+
         if (!hasSong) {
             binding.btnFavoriteSidebar.setImageResource(R.drawable.ic_heart_outline)
             binding.btnFavoriteSidebar.setColorFilter(heartOutlineColor)
@@ -2777,7 +2799,8 @@ class PlayerActivity : AppCompatActivity() {
                         songLyrics = preferNonBlank(localDetail.lyrics, songLyrics)
                         updateUI(localDetail)
                         loadCoverAndBackground(songCover)
-                        loadSongButNotPlay(localDetail.url)
+                        // 修复：本地歌曲点击播放时需要自动播放
+                        loadSongButNotPlay(localDetail.url, 0L, true)
 
                         val playlistSong = PlaylistSong(
                             id = songId,
@@ -2834,7 +2857,8 @@ class PlayerActivity : AppCompatActivity() {
                     songDetail?.let { detail ->
                         songLyrics = detail.lyrics
                         updateUI(detail)
-                        loadSongButNotPlay(detail.url)
+                        // 修复：获取歌曲详情后需要自动播放
+                        loadSongButNotPlay(detail.url, 0L, true)
 
                         val playlistSong = PlaylistSong(
                             id = songId,

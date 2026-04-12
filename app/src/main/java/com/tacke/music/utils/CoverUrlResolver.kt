@@ -56,8 +56,11 @@ object CoverUrlResolver {
             return@withContext coverUrl
         }
 
+        // 使用小写的平台名称（与CoverImageManager缓存键一致）
+        val cachePlatform = platform.lowercase()
+
         // 尝试从本地缓存获取
-        val cachedPath = CoverImageManager.getCoverPath(context, songId, platform)
+        val cachedPath = CoverImageManager.getCoverPath(context, songId, cachePlatform)
         if (cachedPath != null) {
             Log.d(TAG, "使用本地缓存的封面: $cachedPath")
             return@withContext cachedPath
@@ -197,8 +200,11 @@ object CoverUrlResolver {
         songName: String? = null,
         artist: String? = null
     ): String? {
+        // 使用小写的平台名称（与CoverImageManager缓存键一致）
+        val cachePlatform = platform.lowercase()
+
         // 首先检查本地缓存
-        val cachedPath = CoverImageManager.getCoverPath(context, songId, platform)
+        val cachedPath = CoverImageManager.getCoverPath(context, songId, cachePlatform)
         if (cachedPath != null) {
             return cachedPath
         }

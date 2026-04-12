@@ -50,6 +50,7 @@ import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.ui.PlayerActivity
 import com.tacke.music.utils.CoverUrlResolver
 import com.tacke.music.utils.PermissionHelper
+import com.tacke.music.utils.SongCoverLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -1180,14 +1181,44 @@ class MusicPlaybackService : Service() {
         songName: String,
         artist: String
     ): Bitmap? {
+        // 使用新的封面加载逻辑
+        try {
+            val platformEnum = try {
+                MusicRepository.Platform.valueOf(platform.uppercase())
+            } catch (e: Exception) {
+                MusicRepository.Platform.KUWO
+            }
+
+            val song = com.tacke.music.data.model.Song(
+                index = 0,
+                id = songId,
+                name = songName,
+                artists = artist,
+                platform = platform,
+                coverUrl = coverReference
+            )
+
+            val coverResult = SongCoverLoader.loadCover(
+                this,
+                song,
+                SongCoverLoader.SourceType.PLAYLIST_DETAIL,
+                null
+            )
+
+            if (coverResult.bitmap != null) {
+                return coverResult.bitmap
+            }
+        } catch (e: Exception) {
+            Log.e(notificationLogTag, "新封面加载逻辑失败，回退到旧逻辑: ${e.message}")
+        }
+
+        // 回退到旧逻辑
         var reference = coverReference?.trim().orEmpty()
 
         // 检测并修复混合 URL（远程 URL + 本地路径）
-        // 例如：https://p2.music.126.net/...==//data/user/0/...
         if (reference.startsWith("http", ignoreCase = true)) {
             val localPathIndex = reference.indexOf("//data/user/0/")
             if (localPathIndex > 0) {
-                // 提取本地路径部分
                 reference = reference.substring(localPathIndex)
             } else {
                 val cachePathIndex = reference.indexOf("/data/user/0/")
@@ -1197,7 +1228,7 @@ class MusicPlaybackService : Service() {
             }
         }
 
-        // 如果是本地文件路径，去除 URL 参数（如 ?param=500y500）
+        // 如果是本地文件路径，去除 URL 参数
         if (reference.startsWith("/")) {
             val queryIndex = reference.indexOf("?")
             if (queryIndex > 0) {
@@ -1207,6 +1238,7 @@ class MusicPlaybackService : Service() {
 
         if (reference.isNotEmpty()) {
             if (reference.startsWith("http", ignoreCase = true)) {
+                // platform已经由调用者转为小写，与CoverImageManager缓存键一致
                 val cachedPath = com.tacke.music.utils.CoverImageManager.downloadAndCacheCoverByUrl(
                     context = this,
                     songId = songId,
@@ -1215,20 +1247,16 @@ class MusicPlaybackService : Service() {
                 )
                 if (!cachedPath.isNullOrBlank()) {
                     return BitmapFactory.decodeFile(cachedPath)
-                } else {
-                    return null
                 }
             } else {
                 val file = File(reference)
                 if (file.exists()) {
                     return BitmapFactory.decodeFile(file.absolutePath)
-                } else {
-                    return com.tacke.music.utils.CoverImageManager.loadCoverBitmap(this, songId, platform)
                 }
             }
-        } else {
-            return com.tacke.music.utils.CoverImageManager.loadCoverBitmap(this, songId, platform)
         }
+
+        return com.tacke.music.utils.CoverImageManager.loadCoverBitmap(this, songId, platform)
     }
 
     private fun buildNotificationCoverKey(songId: String, platform: String, coverReference: String?): String {

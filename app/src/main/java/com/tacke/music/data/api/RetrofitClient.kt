@@ -11,7 +11,9 @@ object RetrofitClient {
 
     // API 基础 URL 配置
     private const val KUWO_SEARCH_BASE_URL = "http://search.kuwo.cn/"
+    private const val KUWO_COMMENT_BASE_URL = "http://ncomment.kuwo.cn/"
     private const val NETEASE_BASE_URL = "http://interface.music.163.com/"
+    private const val NETEASE_COMMENT_BASE_URL = "http://music.163.com/"
     private const val CHART_BASE_URL = "https://music.xcloudv.top/"
     private const val NETEASE_PLAYLIST_BASE_URL = "https://music.163.com/"
     // GdStudio API - 用于获取歌曲播放URL
@@ -36,8 +38,20 @@ object RetrofitClient {
         .addConverterFactory(GsonConverterFactory.create())
         .build()
 
+    private val kuwoCommentRetrofit = Retrofit.Builder()
+        .baseUrl(KUWO_COMMENT_BASE_URL)
+        .client(okHttpClient)
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+
     private val neteaseRetrofit = Retrofit.Builder()
         .baseUrl(NETEASE_BASE_URL)
+        .client(okHttpClient)
+        .addConverterFactory(GsonConverterFactory.create())
+        .build()
+
+    private val neteaseCommentRetrofit = Retrofit.Builder()
+        .baseUrl(NETEASE_COMMENT_BASE_URL)
         .client(okHttpClient)
         .addConverterFactory(GsonConverterFactory.create())
         .build()
@@ -67,7 +81,9 @@ object RetrofitClient {
         .build()
 
     val kuwoApi: KuwoApi = kuwoSearchRetrofit.create(KuwoApi::class.java)
+    val kuwoCommentApi: KuwoApi = kuwoCommentRetrofit.create(KuwoApi::class.java)
     val neteaseApi: NeteaseApi = neteaseRetrofit.create(NeteaseApi::class.java)
+    val neteaseCommentApi: NeteaseApi = neteaseCommentRetrofit.create(NeteaseApi::class.java)
     val chartApi: ChartApi = chartRetrofit.create(ChartApi::class.java)
     val playlistApi: PlaylistApi = playlistRetrofit.create(PlaylistApi::class.java)
     val gdStudioApi: GdStudioApi = gdStudioRetrofit.create(GdStudioApi::class.java)

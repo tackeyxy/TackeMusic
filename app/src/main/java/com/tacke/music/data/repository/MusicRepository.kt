@@ -298,24 +298,32 @@ class MusicRepository {
         // 获取封面URL - 简化逻辑，只尝试使用coverUrlFromSearch获取
         // 详细的平台特定逻辑在CachedMusicRepository中处理
         val coverUrl = if (!coverUrlFromSearch.isNullOrEmpty()) {
-            if (coverUrlFromSearch.startsWith("http://") || coverUrlFromSearch.startsWith("https://")) {
-                // 已经是完整URL，直接使用
-                coverUrlFromSearch
-            } else {
-                // 相对路径（如酷我的 web_albumpic_short），尝试使用GdStudio API获取
-                retryWithBackoff(
-                    times = 2,
-                    initialDelay = 300L,
-                    maxDelay = 1500L
-                ) {
-                    Log.d("MusicRepository", "尝试使用web_albumpic_short获取封面: $coverUrlFromSearch")
-                    val picResponse = RetrofitClient.gdStudioApi.getAlbumPic(
-                        source = platformStr,
-                        id = coverUrlFromSearch,
-                        size = "500"
-                    )
-                    picResponse
-                }?.url
+            when {
+                coverUrlFromSearch.startsWith("http://") || coverUrlFromSearch.startsWith("https://") -> {
+                    // 已经是完整URL，直接使用
+                    coverUrlFromSearch
+                }
+                coverUrlFromSearch.startsWith("/") || coverUrlFromSearch.startsWith("file://") -> {
+                    // 本地路径，直接使用
+                    Log.d("MusicRepository", "使用本地缓存封面: $coverUrlFromSearch")
+                    coverUrlFromSearch
+                }
+                else -> {
+                    // 相对路径（如酷我的 web_albumpic_short），尝试使用GdStudio API获取
+                    retryWithBackoff(
+                        times = 2,
+                        initialDelay = 300L,
+                        maxDelay = 1500L
+                    ) {
+                        Log.d("MusicRepository", "尝试使用web_albumpic_short获取封面: $coverUrlFromSearch")
+                        val picResponse = RetrofitClient.gdStudioApi.getAlbumPic(
+                            source = platformStr,
+                            id = coverUrlFromSearch,
+                            size = "500"
+                        )
+                        picResponse
+                    }?.url
+                }
             }
         } else {
             // 没有提供封面URL，返回null，由上层根据平台使用不同的获取逻辑

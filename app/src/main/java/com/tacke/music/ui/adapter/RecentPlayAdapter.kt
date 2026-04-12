@@ -140,8 +140,10 @@ class RecentPlayAdapter(
         private fun loadCover(recentPlay: RecentPlay) {
             lifecycleScope?.launch {
                 // 1. 首先尝试从本地缓存获取封面图片（最高优先级）
+                // 使用小写的平台名称（与CoverImageManager缓存键一致）
+                val cachePlatform = recentPlay.platform.lowercase()
                 val localCoverPath = withContext(Dispatchers.IO) {
-                    CoverImageManager.getCoverPath(itemView.context, recentPlay.id, recentPlay.platform)
+                    CoverImageManager.getCoverPath(itemView.context, recentPlay.id, cachePlatform)
                 }
 
                 if (localCoverPath != null) {
@@ -237,10 +239,12 @@ class RecentPlayAdapter(
             lifecycleScope?.launch {
                 try {
                     val context = itemView.context
+                    // 使用小写的平台名称（与CoverImageManager缓存键一致）
+                    val cachePlatform = recentPlay.platform.lowercase()
                     val localPath = CoverImageManager.downloadAndCacheCover(
                         context,
                         recentPlay.id,
-                        recentPlay.platform
+                        cachePlatform
                     )
 
                     if (localPath != null) {

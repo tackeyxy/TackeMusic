@@ -397,10 +397,12 @@ class DownloadHistoryAdapter(
             lifecycleScope?.launch {
                 try {
                     val context = itemView.context
+                    // 使用小写的平台名称（与CoverImageManager缓存键一致）
+                    val cachePlatform = task.platform.lowercase()
                     val localPath = CoverImageManager.downloadAndCacheCover(
                         context,
                         task.songId,
-                        task.platform,
+                        cachePlatform,
                         "320k",
                         task.songName,
                         task.artist

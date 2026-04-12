@@ -2,9 +2,16 @@ package com.tacke.music.ui
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -32,15 +39,10 @@ class SettingsActivity : AppCompatActivity() {
         const val KEY_LYRIC_COLOR = "lyric_color"
         const val KEY_CONCURRENT_DOWNLOADS = "concurrent_downloads"
         const val KEY_PLAYBACK_QUALITY = "playback_quality"
-        const val KEY_CACHE_EXPIRY_DAYS = "cache_expiry_days"
+        const val KEY_LISTEN_WHILE_CACHE = "listen_while_cache"
 
         // 默认歌词颜色（青色）
         const val DEFAULT_LYRIC_COLOR = 0xFF00CED1.toInt()
-
-        // 默认缓存过期时间（7天）
-        const val DEFAULT_CACHE_EXPIRY_DAYS = 7
-        const val MIN_CACHE_EXPIRY_DAYS = 1
-        const val MAX_CACHE_EXPIRY_DAYS = 30
 
         // 默认同时下载个数
         const val DEFAULT_CONCURRENT_DOWNLOADS = 3
@@ -49,6 +51,17 @@ class SettingsActivity : AppCompatActivity() {
 
         // 默认试听音质（在线播放音质）
         const val DEFAULT_PLAYBACK_QUALITY = "320k"
+
+        // 边听边存功能
+        fun isListenWhileCacheEnabled(context: Context): Boolean {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return prefs.getBoolean(KEY_LISTEN_WHILE_CACHE, false)
+        }
+
+        fun setListenWhileCacheEnabled(context: Context, enabled: Boolean) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(KEY_LISTEN_WHILE_CACHE, enabled).apply()
+        }
 
         // 试听音质选项
         val PLAYBACK_QUALITY_OPTIONS = listOf(
@@ -136,27 +149,6 @@ class SettingsActivity : AppCompatActivity() {
         fun getDefaultDownloadQuality(context: Context): String = getPlaybackQuality(context)
         fun setDefaultDownloadQuality(context: Context, quality: String) = setPlaybackQuality(context, quality)
 
-        // 缓存过期时间选项（只保留1日、7日、15日、30日）
-        val CACHE_EXPIRY_OPTIONS = listOf(1, 7, 15, 30)
-
-        fun getCacheExpiryDays(context: Context): Int {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val savedDays = prefs.getInt(KEY_CACHE_EXPIRY_DAYS, DEFAULT_CACHE_EXPIRY_DAYS)
-            // 如果保存的值不在有效选项中，返回最接近的选项值
-            return if (CACHE_EXPIRY_OPTIONS.contains(savedDays)) {
-                savedDays
-            } else {
-                // 找到最接近的选项值
-                CACHE_EXPIRY_OPTIONS.minByOrNull { kotlin.math.abs(it - savedDays) } ?: DEFAULT_CACHE_EXPIRY_DAYS
-            }
-        }
-
-        fun setCacheExpiryDays(context: Context, days: Int) {
-            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val validDays = days.coerceIn(MIN_CACHE_EXPIRY_DAYS, MAX_CACHE_EXPIRY_DAYS)
-            prefs.edit().putInt(KEY_CACHE_EXPIRY_DAYS, validDays).apply()
-        }
-
         fun getDefaultDownloadPath(context: Context): String {
             return File(
                 Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -210,7 +202,7 @@ class SettingsActivity : AppCompatActivity() {
         updateDownloadPathText()
         updateConcurrentDownloadsText()
         updatePlaybackQualityText()
-        updateCacheExpiryText()
+        updateListenWhileCacheText()
         updateCurrentVersionText()
         updatePlayerCoverText()
     }
@@ -271,8 +263,12 @@ class SettingsActivity : AppCompatActivity() {
             showPlaybackQualityDialog()
         }
 
-        binding.layoutCacheExpiry.setOnClickListener {
-            showCacheExpiryDialog()
+        binding.layoutListenWhileCache?.setOnClickListener {
+            showListenWhileCacheDialog()
+        }
+
+        binding.layoutCacheManage?.setOnClickListener {
+            startActivity(Intent(this, CacheManageActivity::class.java))
         }
 
         binding.layoutBackupRestore.setOnClickListener {
@@ -290,88 +286,57 @@ class SettingsActivity : AppCompatActivity() {
         binding.tvPlaybackQualityValue.text = qualityLabel
     }
 
-    private fun updateCacheExpiryText() {
-        val currentDays = getCacheExpiryDays(this)
-        binding.tvCacheExpiryValue.text = "$currentDays 天"
-    }
-
-    private fun showCacheExpiryDialog() {
-        val currentDays = getCacheExpiryDays(this)
-        val options = CACHE_EXPIRY_OPTIONS.map { "$it 天" }.toTypedArray()
-        val currentIndex = CACHE_EXPIRY_OPTIONS.indexOf(currentDays).coerceAtLeast(0)
-
-        // 创建自定义对话框视图
-        val dialogView = layoutInflater.inflate(R.layout.dialog_cache_expiry, null)
-
-        // 立即清除按钮
-        val btnClearNow = dialogView.findViewById<android.widget.Button>(R.id.btnClearNow)
-        btnClearNow?.setOnClickListener {
-            clearImageCache()
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle("选择缓存过期时间")
-            .setView(dialogView)
-            .setSingleChoiceItems(options, currentIndex) { dialog, which ->
-                val selectedDays = CACHE_EXPIRY_OPTIONS[which]
-                setCacheExpiryDays(this, selectedDays)
-                updateCacheExpiryText()
-
-                Toast.makeText(this, "缓存过期时间已设置为: $selectedDays 天", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
-            }
-            .setNegativeButton("取消", null)
-            .show()
-    }
-
-    /**
-     * 清除图片缓存（只清除缓存在本地的图片，不影响数据库中的数据）
-     */
-    private fun clearImageCache() {
-        lifecycleScope.launch {
-            try {
-                val success = com.tacke.music.utils.CoverImageManager.clearAllCache(this@SettingsActivity)
-                if (success) {
-                    val cacheSize = com.tacke.music.utils.CoverImageManager.getCacheSize(this@SettingsActivity)
-                    val sizeText = formatCacheSize(cacheSize)
-                    Toast.makeText(this@SettingsActivity, "图片缓存已清除，当前缓存大小: $sizeText", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this@SettingsActivity, "清除缓存失败", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: Exception) {
-                Toast.makeText(this@SettingsActivity, "清除缓存失败: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    /**
-     * 格式化缓存大小显示
-     */
-    private fun formatCacheSize(sizeBytes: Long): String {
-        return when {
-            sizeBytes >= 1024 * 1024 * 1024 -> String.format("%.2f GB", sizeBytes / (1024.0 * 1024.0 * 1024.0))
-            sizeBytes >= 1024 * 1024 -> String.format("%.2f MB", sizeBytes / (1024.0 * 1024.0))
-            sizeBytes >= 1024 -> String.format("%.2f KB", sizeBytes / 1024.0)
-            else -> "$sizeBytes B"
-        }
-    }
-
-
-
     private fun updateConcurrentDownloadsText() {
         val currentCount = getConcurrentDownloads(this)
         binding.tvConcurrentDownloadsValue.text = currentCount.toString()
     }
 
+    private fun updateListenWhileCacheText() {
+        val enabled = isListenWhileCacheEnabled(this)
+        binding.tvListenWhileCacheValue?.text = if (enabled) "已开启" else "已关闭"
+    }
+
+    private fun showListenWhileCacheDialog() {
+        val currentEnabled = isListenWhileCacheEnabled(this)
+        val currentIndex = if (currentEnabled) 0 else 1
+
+        // 检测屏幕方向
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+        // 统一使用自定义弹窗布局
+        showSelectorDialog(
+            title = "边听边存",
+            options = listOf(
+                SelectorOption("开启", "", R.drawable.ic_check),
+                SelectorOption("关闭", "", R.drawable.ic_close)
+            ),
+            selectedIndex = currentIndex,
+            isLandscape = isLandscape,
+            onSelected = { index ->
+                val enabled = index == 0
+                setListenWhileCacheEnabled(this, enabled)
+                updateListenWhileCacheText()
+                Toast.makeText(this, if (enabled) "边听边存已开启" else "边听边存已关闭", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
     private fun showConcurrentDownloadsDialog() {
         val currentCount = getConcurrentDownloads(this)
-        val options = (MIN_CONCURRENT_DOWNLOADS..MAX_CONCURRENT_DOWNLOADS).map { "$it 个" }.toTypedArray()
-        val currentIndex = currentCount - MIN_CONCURRENT_DOWNLOADS
 
-        AlertDialog.Builder(this)
-            .setTitle("选择同时下载个数")
-            .setSingleChoiceItems(options, currentIndex) { dialog, which ->
-                val selectedCount = which + MIN_CONCURRENT_DOWNLOADS
+        // 检测屏幕方向
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+        // 统一使用自定义弹窗布局
+        showSelectorDialog(
+            title = "选择同时下载个数",
+            options = (MIN_CONCURRENT_DOWNLOADS..MAX_CONCURRENT_DOWNLOADS).map {
+                SelectorOption("$it", "个")
+            },
+            selectedIndex = currentCount - MIN_CONCURRENT_DOWNLOADS,
+            isLandscape = isLandscape,
+            onSelected = { index ->
+                val selectedCount = index + MIN_CONCURRENT_DOWNLOADS
                 setConcurrentDownloads(this, selectedCount)
                 updateConcurrentDownloadsText()
 
@@ -380,29 +345,39 @@ class SettingsActivity : AppCompatActivity() {
                 downloadManager.updateConcurrentLimit(selectedCount)
 
                 Toast.makeText(this, "同时下载个数已设置为: $selectedCount", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
             }
-            .setNegativeButton("取消", null)
-            .show()
+        )
     }
 
     private fun showPlaybackQualityDialog() {
         val currentQuality = getPlaybackQuality(this)
-        val options = PLAYBACK_QUALITY_OPTIONS.map { it.second }.toTypedArray()
         val currentIndex = PLAYBACK_QUALITY_OPTIONS.indexOfFirst { it.first == currentQuality }.coerceAtLeast(0)
 
-        AlertDialog.Builder(this)
-            .setTitle("选择试听音质")
-            .setSingleChoiceItems(options, currentIndex) { dialog, which ->
-                val selectedQuality = PLAYBACK_QUALITY_OPTIONS[which].first
+        // 检测屏幕方向
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+        // 统一使用自定义弹窗布局
+        showSelectorDialog(
+            title = "选择试听音质",
+            options = PLAYBACK_QUALITY_OPTIONS.map {
+                val parts = it.second.split(" ")
+                SelectorOption(parts[0], parts.getOrElse(1) { "" })
+            },
+            selectedIndex = currentIndex,
+            isLandscape = isLandscape,
+            onSelected = { index ->
+                val selectedQuality = PLAYBACK_QUALITY_OPTIONS[index].first
                 setPlaybackQuality(this, selectedQuality)
                 updatePlaybackQualityText()
 
-                Toast.makeText(this, "试听音质已设置为: ${PLAYBACK_QUALITY_OPTIONS[which].second}", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
+                // 关键修复：同步更新 PlaybackPreferences 中的音质设置
+                // 确保边听边存使用正确的音质
+                val playbackPreferences = com.tacke.music.data.preferences.PlaybackPreferences.getInstance(this)
+                playbackPreferences.currentQuality = selectedQuality
+
+                Toast.makeText(this, "试听音质已设置为: ${PLAYBACK_QUALITY_OPTIONS[index].second}", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("取消", null)
-            .show()
+        )
     }
 
     private fun showLyricColorPickerDialog() {
@@ -504,7 +479,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun updateDownloadPathText() {
         val customPath = getDownloadPath(this)
         val displayPath = customPath ?: getDefaultDownloadPath(this)
-        binding.tvDownloadPathValue.text = displayPath
+        binding.tvDownloadPathValue?.text = displayPath
     }
 
     private var downloadPathDialog: AlertDialog? = null
@@ -563,17 +538,24 @@ class SettingsActivity : AppCompatActivity() {
         val currentSource = getDefaultSource(this)
         val currentIndex = platforms.indexOf(currentSource)
 
-        AlertDialog.Builder(this)
-            .setTitle("选择默认音源")
-            .setSingleChoiceItems(platformNamesArray, currentIndex) { dialog, which ->
-                val selectedPlatform = platforms[which]
+        // 检测屏幕方向
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+        // 统一使用自定义弹窗布局
+        showSelectorDialog(
+            title = "选择默认音源",
+            options = platforms.map {
+                SelectorOption(platformNames[it] ?: it.name, "")
+            },
+            selectedIndex = currentIndex,
+            isLandscape = isLandscape,
+            onSelected = { index ->
+                val selectedPlatform = platforms[index]
                 setDefaultSource(this, selectedPlatform)
                 updateDefaultSourceText()
-                Toast.makeText(this, "默认音源已设置为: ${platformNamesArray[which]}", Toast.LENGTH_SHORT).show()
-                dialog.dismiss()
+                Toast.makeText(this, "默认音源已设置为: ${platformNamesArray[index]}", Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("取消", null)
-            .show()
+        )
     }
 
     /**
@@ -594,6 +576,99 @@ class SettingsActivity : AppCompatActivity() {
                 bottom = insets.bottom
             )
             windowInsets
+        }
+    }
+
+    /**
+     * 选项数据类，用于横屏选择器弹窗
+     */
+    data class SelectorOption(
+        val mainText: String,
+        val subText: String = "",
+        val iconResId: Int = 0
+    )
+
+    /**
+     * 显示选择器弹窗
+     * 适配横竖屏布局，使用流式布局支持换行居中显示
+     */
+    private fun showSelectorDialog(
+        title: String,
+        options: List<SelectorOption>,
+        selectedIndex: Int,
+        isLandscape: Boolean,
+        onSelected: (Int) -> Unit
+    ) {
+        // 根据屏幕方向选择布局
+        val layoutRes = if (isLandscape) {
+            R.layout.dialog_selector_horizontal
+        } else {
+            R.layout.dialog_selector_vertical
+        }
+
+        val dialogView = LayoutInflater.from(this).inflate(layoutRes, null)
+
+        // 设置标题
+        dialogView.findViewById<TextView>(R.id.tvDialogTitle).text = title
+
+        // 获取选项容器 (FlexboxLayout)
+        val optionsContainer = dialogView.findViewById<com.google.android.flexbox.FlexboxLayout>(R.id.optionsContainer)
+
+        // 创建弹窗
+        val alertDialog = AlertDialog.Builder(this, R.style.DialogTheme)
+            .setView(dialogView)
+            .create()
+
+        // 动态添加选项
+        options.forEachIndexed { index, option ->
+            val optionView = LayoutInflater.from(this)
+                .inflate(R.layout.item_selector_option_horizontal, optionsContainer, false)
+
+            // 设置选项文本
+            optionView.findViewById<TextView>(R.id.tvOptionText).text = option.mainText
+
+            // 设置副文本（如果有）
+            val subTextView = optionView.findViewById<TextView>(R.id.tvOptionSubText)
+            if (option.subText.isNotEmpty()) {
+                subTextView.text = option.subText
+                subTextView.visibility = View.VISIBLE
+            }
+
+            // 设置图标（如果有）
+            val iconView = optionView.findViewById<ImageView>(R.id.ivOptionIcon)
+            if (option.iconResId != 0) {
+                iconView.setImageResource(option.iconResId)
+                iconView.visibility = View.VISIBLE
+            }
+
+            // 设置选中状态 - 只显示右上角勾选标记
+            val isSelected = index == selectedIndex
+            optionView.isSelected = isSelected
+            optionView.findViewById<ImageView>(R.id.ivSelectedCheck).visibility =
+                if (isSelected) View.VISIBLE else View.GONE
+
+            // 点击事件
+            optionView.setOnClickListener {
+                onSelected(index)
+                alertDialog.dismiss()
+            }
+
+            optionsContainer.addView(optionView)
+        }
+
+        // 设置取消按钮点击事件
+        dialogView.findViewById<TextView>(R.id.btnCancel).setOnClickListener {
+            alertDialog.dismiss()
+        }
+
+        alertDialog.show()
+
+        // 设置弹窗宽度
+        alertDialog.window?.let { window ->
+            val displayMetrics = resources.displayMetrics
+            val widthRatio = if (isLandscape) 0.75 else 0.85
+            val width = (displayMetrics.widthPixels * widthRatio).toInt()
+            window.setLayout(width, FrameLayout.LayoutParams.WRAP_CONTENT)
         }
     }
 }

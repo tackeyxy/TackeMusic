@@ -676,10 +676,11 @@ class PlaybackManager private constructor(context: Context) {
 
                     // 如果封面URL有效，预下载封面图片到本地缓存
                     if (!detail.cover.isNullOrEmpty()) {
+                        // 使用小写的平台名称（与CoverImageManager缓存键一致）
                         CoverImageManager.downloadAndCacheCover(
                             context = appContext,
                             songId = firstSong.id,
-                            platform = platform.name,
+                            platform = platform.name.lowercase(),
                             quality = playbackQuality,
                             songName = firstSong.name,
                             artist = firstSong.artists
@@ -999,21 +1000,25 @@ class PlaybackManager private constructor(context: Context) {
         // 使用传入的音质，如果没有则使用用户设置的试听音质
         val playbackQuality = quality ?: SettingsActivity.getPlaybackQuality(appContext)
 
-        // 尝试获取歌曲详情（用于歌词和封面），传入封面URL以获取正确的封面
+        // 优先从本地缓存获取歌曲详情（不触发网络请求）
         val cachedRepository = CachedMusicRepository(context)
-        val detail = withContext(Dispatchers.IO) {
-            try {
-                cachedRepository.getSongDetail(
-                    platform = validPlatform,
-                    songId = songId,
-                    quality = playbackQuality,
-                    songName = songName,
-                    artists = artist,
-                    coverUrlFromSearch = coverUrl
-                )
-            } catch (e: Exception) {
-                null
-            }
+        val cachedDetail = withContext(Dispatchers.IO) {
+            cachedRepository.getLocalSongDetail(songId)
+        }
+
+        // 如果本地缓存存在，直接使用缓存数据
+        val finalDetail = if (cachedDetail != null) {
+            Log.d(TAG, "使用本地缓存的歌曲详情播放下载歌曲: $songName")
+            cachedDetail
+        } else {
+            // 本地缓存不存在，创建基本的SongDetail用于播放
+            Log.d(TAG, "本地缓存不存在，使用下载任务信息播放: $songName")
+            SongDetail(
+                url = playUrl,
+                info = SongInfo(name = songName, artist = artist),
+                cover = coverUrl,
+                lyrics = null
+            )
         }
 
         // 保存播放状态
@@ -1022,7 +1027,7 @@ class PlaybackManager private constructor(context: Context) {
             position = 0L,
             isPlaying = true,
             quality = playbackQuality,
-            songDetail = detail
+            songDetail = finalDetail
         )
 
         // 启动播放页面
@@ -1033,9 +1038,16 @@ class PlaybackManager private constructor(context: Context) {
             songArtists = artist,
             platform = validPlatform,
             songUrl = playUrl,
-            songCover = detail?.cover ?: coverUrl,
-            songLyrics = detail?.lyrics
+            songCover = finalDetail.cover ?: coverUrl,
+            songLyrics = finalDetail.lyrics
         )
+
+        // 后台尝试获取缺失的封面和歌词（如果缓存中没有）
+        if (cachedDetail?.cover.isNullOrBlank() || cachedDetail?.lyrics.isNullOrBlank()) {
+            Log.d(TAG, "后台获取缺失的封面和歌词: $songName")
+            preloadManager.preloadPlaylistSong(playlistSong)
+        }
+
         return true
     }
 

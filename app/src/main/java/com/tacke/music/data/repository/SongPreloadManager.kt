@@ -145,8 +145,10 @@ class SongPreloadManager private constructor(context: Context) {
         artist: String?
     ) {
         try {
+            // 使用小写的平台名称（与CoverImageManager缓存键一致）
+            val cachePlatform = platform.lowercase()
             // 检查本地是否已有缓存
-            val existingPath = CoverImageManager.getCoverPath(appContext, songId, platform)
+            val existingPath = CoverImageManager.getCoverPath(appContext, songId, cachePlatform)
             if (existingPath != null) {
                 Log.d(TAG, "封面图片已缓存: $songId")
                 return
@@ -156,7 +158,7 @@ class SongPreloadManager private constructor(context: Context) {
             val localPath = CoverImageManager.downloadAndCacheCover(
                 context = appContext,
                 songId = songId,
-                platform = platform,
+                platform = cachePlatform,
                 quality = "320k",
                 songName = songName,
                 artist = artist

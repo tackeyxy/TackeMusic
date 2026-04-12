@@ -273,22 +273,24 @@ class PlaylistRepository(private val context: Context) {
     suspend fun refreshPlaylistCovers(playlistId: String) {
         val songs = playlistDao.getSongsInPlaylistSync(playlistId)
         var updatedCount = 0
-        
+
         songs.forEach { song ->
             if (isLocalSong(song.id, song.platform)) {
                 return@forEach
             }
+            // 使用小写的平台名称（与CoverImageManager缓存键一致）
+            val cachePlatform = song.platform.lowercase()
             // 检查是否已经有本地缓存的封面
-            val existingPath = CoverImageManager.getCoverPath(context, song.id, song.platform)
-            
+            val existingPath = CoverImageManager.getCoverPath(context, song.id, cachePlatform)
+
             if (existingPath == null) {
                 // 没有缓存，尝试下载
                 val coverPath = CoverImageManager.downloadAndCacheCover(
                     context,
                     song.id,
-                    song.platform
+                    cachePlatform
                 )
-                
+
                 if (coverPath != null) {
                     // 更新数据库中的封面路径
                     playlistDao.updateSongCoverUrl(playlistId, song.id, coverPath)
@@ -296,7 +298,7 @@ class PlaylistRepository(private val context: Context) {
                 }
             }
         }
-        
+
         Log.d(TAG, "刷新歌单 $playlistId 封面完成，更新了 $updatedCount 首歌曲")
     }
 

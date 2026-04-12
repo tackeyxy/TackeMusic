@@ -178,8 +178,10 @@ class PlaylistSongAdapter(
             val isLocalSong = isLocalSong(song)
             lifecycleScope?.launch {
                 // 1. 首先尝试从本地缓存获取封面图片（最高优先级）
+                // 使用小写的平台名称（与CoverImageManager缓存键一致）
+                val cachePlatform = song.platform.lowercase()
                 val localCoverPath = withContext(Dispatchers.IO) {
-                    CoverImageManager.getCoverPath(itemView.context, song.id, song.platform)
+                    CoverImageManager.getCoverPath(itemView.context, song.id, cachePlatform)
                 }
 
                 if (localCoverPath != null) {
@@ -297,10 +299,12 @@ class PlaylistSongAdapter(
             lifecycleScope?.launch {
                 try {
                     val context = itemView.context
+                    // 使用小写的平台名称（与CoverImageManager缓存键一致）
+                    val cachePlatform = song.platform.lowercase()
                     val localPath = CoverImageManager.downloadAndCacheCover(
                         context,
                         song.id,
-                        song.platform
+                        cachePlatform
                     )
 
                     if (localPath != null) {

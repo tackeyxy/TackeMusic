@@ -647,16 +647,70 @@ class FavoriteSongsActivity : AppCompatActivity() {
         val cachedRepository = CachedMusicRepository(context)
         val dm = DownloadManager.getInstance(context)
 
-        // 立即显示添加下载任务提示
-        Toast.makeText(
-            this@FavoriteSongsActivity,
-            "已添加 ${songs.size} 首歌曲到下载队列",
-            Toast.LENGTH_SHORT
-        ).show()
-
-        // 使用 GlobalScope 确保 Activity 销毁后任务继续执行
+        // 关键修复：使用 GlobalScope 确保 Activity 销毁后任务继续执行
         GlobalScope.launch(Dispatchers.IO) {
+            var skippedCount = 0
+            val songsToDownload = mutableListOf<FavoriteSongEntity>()
+
+            // 第一步：检查所有歌曲的音质
             songs.forEach { song ->
+                try {
+                    val (hasHigherOrEqualQuality, existingFilePath) = com.tacke.music.utils.DownloadQualityChecker.checkExistingDownloadQuality(
+                        context,
+                        song.id,
+                        quality
+                    )
+
+                    if (hasHigherOrEqualQuality) {
+                        // 已存在更高或相同音质的文件，跳过
+                        skippedCount++
+                    } else {
+                        // 可以下载，如果需要则删除旧文件
+                        if (existingFilePath != null) {
+                            com.tacke.music.utils.DownloadQualityChecker.deleteExistingFile(existingFilePath)
+                            // 同时从下载历史中删除记录
+                            com.tacke.music.utils.DownloadQualityChecker.deleteDownloadRecord(context, song.id)
+                        }
+                        songsToDownload.add(song)
+                    }
+                } catch (e: Exception) {
+                    // 检查失败，默认允许下载
+                    songsToDownload.add(song)
+                }
+            }
+
+            // 在主线程显示提示
+            withContext(Dispatchers.Main) {
+                when {
+                    skippedCount > 0 && songsToDownload.isEmpty() -> {
+                        // 所有歌曲都跳过
+                        Toast.makeText(
+                            this@FavoriteSongsActivity,
+                            "${skippedCount} 首歌曲已存在更高音质或相同音质的文件，请在本地歌曲列表扫描添加！",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    skippedCount > 0 -> {
+                        // 部分跳过，部分下载
+                        Toast.makeText(
+                            this@FavoriteSongsActivity,
+                            "已添加 ${songsToDownload.size} 首歌曲到下载队列，${skippedCount} 首已存在更高音质跳过",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    else -> {
+                        // 全部下载
+                        Toast.makeText(
+                            this@FavoriteSongsActivity,
+                            "已添加 ${songsToDownload.size} 首歌曲到下载队列",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+
+            // 第二步：下载需要下载的歌曲
+            songsToDownload.forEach { song ->
                 launch {
                     try {
                         val platform = when (song.platform.uppercase()) {
@@ -918,10 +972,12 @@ class FavoriteSongsActivity : AppCompatActivity() {
                 lifecycleScope.launch {
                     try {
                         val context = itemView.context
+                        // 使用小写的平台名称（与CoverImageManager缓存键一致）
+                        val cachePlatform = song.platform.lowercase()
                         val localPath = CoverImageManager.downloadAndCacheCover(
                             context,
                             song.id,
-                            song.platform
+                            cachePlatform
                         )
 
                         if (localPath != null) {

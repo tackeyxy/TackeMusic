@@ -6,35 +6,47 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import android.widget.ImageButton
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.SeekBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.tacke.music.util.ImmersiveStatusBarHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.LinearSmoothScroller
 import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.bumptech.glide.Glide
 import com.tacke.music.R
+import com.tacke.music.data.api.RetrofitClient
+import com.tacke.music.data.model.Comment
 import com.tacke.music.data.repository.CachedMusicRepository
 import com.tacke.music.data.repository.MusicRepository
-import com.tacke.music.databinding.ActivityLyricsBinding
+import com.tacke.music.ui.adapter.CommentAdapter
 import com.tacke.music.ui.adapter.LyricsAdapter
+import com.tacke.music.util.ImmersiveStatusBarHelper
 import com.tacke.music.utils.LyricStyleSettings
+import com.tacke.music.utils.SongCoverLoader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class LyricsActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityLyricsBinding
     private lateinit var lyricsAdapter: LyricsAdapter
     private lateinit var gestureDetector: GestureDetector
     private lateinit var playbackReceiver: BroadcastReceiver
@@ -75,9 +87,24 @@ class LyricsActivity : AppCompatActivity() {
         }
     }
 
+    // 评论相关
+    private var commentAdapter: com.tacke.music.ui.adapter.CommentAdapter? = null
+    private var currentCommentTab = 0 // 0: 热门, 1: 最新
+    private var commentPage = 1
+    private val commentPageSize = 20
+    private var isLoadingComments = false
+    private var hasMoreComments = true
+    private var actualCommentSource: CommentSource? = null
+    private var actualSongId: String = ""
+
+    enum class CommentSource {
+        KUWO, NETEASE
+    }
+
     companion object {
         const val REQUEST_CODE = 1001
         const val ACTION_REQUEST_PLAYBACK_STATUS = "com.tacke.music.REQUEST_PLAYBACK_STATUS"
+        private const val TAG = "LyricsActivity"
 
         fun startForResult(
             activity: AppCompatActivity,
@@ -106,32 +133,424 @@ class LyricsActivity : AppCompatActivity() {
         }
     }
 
+    // Views
+    private lateinit var ivBackground: ImageView
+    private lateinit var btnBack: ImageButton
+    private lateinit var tvSongName: TextView
+    private lateinit var tvArtist: TextView
+    private lateinit var rvLyrics: RecyclerView
+    private lateinit var seekBar: SeekBar
+    private lateinit var tvCurrentTime: TextView
+    private lateinit var tvTotalTime: TextView
+    private var btnLocateCurrent: ImageButton? = null
+    private var btnJumpToLyric: ImageButton? = null
+
+    // 横屏评论相关 Views
+    private var rvComments: RecyclerView? = null
+    private var tvCommentCount: TextView? = null
+    private var btnHotComments: TextView? = null
+    private var btnLatestComments: TextView? = null
+    private var swipeRefreshLayoutComments: SwipeRefreshLayout? = null
+    private var progressBarComments: ProgressBar? = null
+    private var tvEmptyComments: TextView? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityLyricsBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        enableToolbarMarquee()
+        setContentView(R.layout.activity_lyrics)
 
-        // 设置沉浸式状态栏 - 透明状态栏，背景延伸到状态栏
+        // 设置沉浸式状态栏
         ImmersiveStatusBarHelper.setup(
             activity = this,
             lightStatusBar = false,
             lightNavigationBar = true
         )
-        // 为顶部工具栏设置状态栏高度 padding
-        binding.toolbar?.let { ImmersiveStatusBarHelper.setStatusBarPadding(it) }
 
+        initViews()
         setupRecyclerView()
         setupSeekBar()
         setupClickListeners()
         setupGestureDetector()
         setupPlaybackReceiver()
         loadSongInfo()
+
+        // 如果是横屏，初始化评论功能
+        if (isLandscape()) {
+            setupComments()
+        }
     }
 
-    private fun enableToolbarMarquee() {
-        binding.tvSongName.isSelected = true
-        binding.tvArtist.isSelected = true
+    private fun isLandscape(): Boolean {
+        return resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    }
+
+    private fun initViews() {
+        ivBackground = findViewById(R.id.ivBackground)
+        btnBack = findViewById(R.id.btnBack)
+        tvSongName = findViewById(R.id.tvSongName)
+        tvArtist = findViewById(R.id.tvArtist)
+        rvLyrics = findViewById(R.id.rvLyrics)
+        seekBar = findViewById(R.id.seekBar)
+        tvCurrentTime = findViewById(R.id.tvCurrentTime)
+        tvTotalTime = findViewById(R.id.tvTotalTime)
+        btnLocateCurrent = findViewById(R.id.btnLocateCurrent)
+        btnJumpToLyric = findViewById(R.id.btnJumpToLyric)
+
+        // 横屏评论相关 Views
+        rvComments = findViewById(R.id.rvComments)
+        tvCommentCount = findViewById(R.id.tvCommentCount)
+        btnHotComments = findViewById(R.id.btnHotComments)
+        btnLatestComments = findViewById(R.id.btnLatestComments)
+        swipeRefreshLayoutComments = findViewById(R.id.swipeRefreshLayoutComments)
+        progressBarComments = findViewById(R.id.progressBarComments)
+        tvEmptyComments = findViewById(R.id.tvEmptyComments)
+    }
+
+    private fun setupComments() {
+        if (rvComments == null) return
+
+        commentAdapter = CommentAdapter()
+        rvComments?.layoutManager = LinearLayoutManager(this)
+        rvComments?.adapter = commentAdapter
+
+        // 评论标签切换
+        btnHotComments?.setOnClickListener {
+            switchCommentTab(0)
+        }
+        btnLatestComments?.setOnClickListener {
+            switchCommentTab(1)
+        }
+
+        // 设置下拉刷新
+        swipeRefreshLayoutComments?.apply {
+            setColorSchemeResources(
+                R.color.primary,
+                R.color.accent_cyan,
+                R.color.accent_purple
+            )
+            setOnRefreshListener {
+                refreshComments()
+            }
+        }
+
+        // 设置加载更多监听器
+        rvComments?.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(recyclerView, dx, dy)
+                if (dy > 0) { // 只向下滚动时触发
+                    checkLoadMoreComments()
+                }
+            }
+        })
+
+        // 强制加载评论（重置所有状态）
+        loadComments(forceReload = true)
+    }
+
+    /**
+     * 检查是否需要加载更多评论
+     */
+    private fun checkLoadMoreComments() {
+        val layoutManager = rvComments?.layoutManager as? LinearLayoutManager ?: return
+        val lastVisibleItem = layoutManager.findLastVisibleItemPosition()
+        val totalItemCount = layoutManager.itemCount
+
+        // 距离底部5个item时触发加载
+        if (lastVisibleItem >= totalItemCount - 5) {
+            loadMoreComments()
+        }
+    }
+
+    /**
+     * 加载更多评论
+     */
+    private fun loadMoreComments() {
+        if (isLoadingComments || !hasMoreComments) return
+        
+        commentPage++
+        loadComments()
+    }
+
+    private fun refreshComments() {
+        lifecycleScope.launch {
+            try {
+                commentAdapter?.submitComments(emptyList<Comment>())
+                loadComments(forceReload = true)
+                Toast.makeText(this@LyricsActivity, "刷新成功", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@LyricsActivity, "刷新失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                swipeRefreshLayoutComments?.isRefreshing = false
+            }
+        }
+    }
+
+    private fun switchCommentTab(tab: Int) {
+        if (currentCommentTab == tab) return
+
+        currentCommentTab = tab
+
+        // 更新UI
+        updateCommentTabUI()
+
+        // 清空列表并强制重新加载
+        commentAdapter?.submitComments(emptyList<Comment>())
+        loadComments(forceReload = true)
+    }
+
+    private fun updateCommentTabUI() {
+        if (currentCommentTab == 0) {
+            btnHotComments?.setBackgroundResource(R.drawable.bg_tab_selected)
+            btnHotComments?.alpha = 1.0f
+            btnLatestComments?.setBackgroundResource(0)
+            btnLatestComments?.alpha = 0.6f
+        } else {
+            btnHotComments?.setBackgroundResource(0)
+            btnHotComments?.alpha = 0.6f
+            btnLatestComments?.setBackgroundResource(R.drawable.bg_tab_selected)
+            btnLatestComments?.alpha = 1.0f
+        }
+    }
+
+    private fun loadComments(forceReload: Boolean = false) {
+        // 如果不是强制重载，检查是否正在加载或没有更多数据
+        if (!forceReload && (isLoadingComments || !hasMoreComments)) {
+            Log.d(TAG, "跳过加载: isLoading=$isLoadingComments, hasMore=$hasMoreComments")
+            return
+        }
+        
+        // 强制重载时重置状态
+        if (forceReload) {
+            commentPage = 1
+            hasMoreComments = true
+            isLoadingComments = false
+            actualCommentSource = null
+            actualSongId = ""
+        }
+        
+        isLoadingComments = true
+
+        progressBarComments?.visibility = View.VISIBLE
+        tvEmptyComments?.visibility = View.GONE
+
+        lifecycleScope.launch {
+            try {
+                val comments = if (songId.startsWith("local_")) {
+                    loadLocalSongComments()
+                } else {
+                    when (platform) {
+                        MusicRepository.Platform.KUWO -> loadKuwoComments()
+                        MusicRepository.Platform.NETEASE -> loadNeteaseComments()
+                        else -> emptyList()
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    isLoadingComments = false
+                    progressBarComments?.visibility = View.GONE
+
+                    if (comments.isEmpty() && commentPage == 1) {
+                        tvEmptyComments?.visibility = View.VISIBLE
+                    } else {
+                        tvEmptyComments?.visibility = View.GONE
+                        if (commentPage == 1) {
+                            commentAdapter?.submitComments(comments)
+                        } else {
+                            val currentList = commentAdapter?.currentList ?: emptyList()
+                            val currentComments = mutableListOf<Comment>()
+                            for (item in currentList) {
+                                if (item is CommentAdapter.ListItem.CommentItem) {
+                                    currentComments.add(item.comment)
+                                }
+                            }
+                            currentComments.addAll(comments)
+                            commentAdapter?.submitComments(currentComments)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "加载评论失败", e)
+                withContext(Dispatchers.Main) {
+                    isLoadingComments = false
+                    progressBarComments?.visibility = View.GONE
+                }
+            }
+        }
+    }
+
+    private suspend fun loadLocalSongComments(): List<Comment> = withContext(Dispatchers.IO) {
+        val searchKeyword = "$songName $songArtists"
+        Log.d(TAG, "本地歌曲搜索关键词: $searchKeyword")
+
+        try {
+            val kuwoSongId = async { searchKuwoSong(searchKeyword) }.await()
+            val neteaseSongId = async { searchNeteaseSong(searchKeyword) }.await()
+
+            Log.d(TAG, "酷我搜索结果: $kuwoSongId, 网易云搜索结果: $neteaseSongId")
+
+            if (kuwoSongId == null && neteaseSongId == null) {
+                return@withContext emptyList()
+            }
+
+            val kuwoTotal = kuwoSongId?.let { getKuwoCommentTotal(it) } ?: 0
+            val neteaseTotal = neteaseSongId?.let { getNeteaseCommentTotal(it) } ?: 0
+
+            Log.d(TAG, "酷我评论数: $kuwoTotal, 网易云评论数: $neteaseTotal")
+
+            val (selectedSource, selectedSongId, total) = when {
+                kuwoSongId != null && neteaseSongId == null -> Triple(CommentSource.KUWO, kuwoSongId, kuwoTotal)
+                kuwoSongId == null && neteaseSongId != null -> Triple(CommentSource.NETEASE, neteaseSongId, neteaseTotal)
+                kuwoTotal >= neteaseTotal -> Triple(CommentSource.KUWO, kuwoSongId!!, kuwoTotal)
+                else -> Triple(CommentSource.NETEASE, neteaseSongId!!, neteaseTotal)
+            }
+
+            actualCommentSource = selectedSource
+            actualSongId = selectedSongId
+
+            withContext(Dispatchers.Main) {
+                tvCommentCount?.text = "($total)"
+            }
+
+            when (selectedSource) {
+                CommentSource.KUWO -> loadKuwoCommentsWithId(selectedSongId)
+                CommentSource.NETEASE -> loadNeteaseCommentsWithId(selectedSongId)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "加载本地歌曲评论失败", e)
+            emptyList()
+        }
+    }
+
+    private suspend fun searchKuwoSong(keyword: String): String? {
+        return try {
+            val response = RetrofitClient.kuwoApi.searchMusic(keywords = keyword)
+            val jsonString = response.string()
+            val jsonObject = com.google.gson.JsonParser.parseString(jsonString).asJsonObject
+            val abslist = jsonObject.getAsJsonArray("abslist")
+
+            if (abslist != null && abslist.size() > 0) {
+                val firstItem = abslist[0].asJsonObject
+                val musicRid = firstItem.get("MUSICRID")?.asString
+                musicRid?.replace("MUSIC_", "")
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "搜索酷我歌曲失败", e)
+            null
+        }
+    }
+
+    private suspend fun searchNeteaseSong(keyword: String): String? {
+        return try {
+            val response = RetrofitClient.musicSearchApi.searchSongs(name = keyword)
+            val neteaseResult = response.firstOrNull { it.source == "netease" || it.source == "wy" }
+            neteaseResult?.id
+        } catch (e: Exception) {
+            Log.e(TAG, "搜索网易云歌曲失败", e)
+            null
+        }
+    }
+
+    private suspend fun getKuwoCommentTotal(songId: String): Int {
+        return try {
+            val response = RetrofitClient.kuwoCommentApi.getComments(
+                type = "get_comment",
+                page = 1,
+                rows = 1,
+                songId = songId
+            )
+            response.total ?: 0
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    private suspend fun getNeteaseCommentTotal(songId: String): Int {
+        return try {
+            val response = RetrofitClient.neteaseCommentApi.getLatestComments(
+                songId = songId,
+                limit = 1,
+                offset = 0
+            )
+            response.total ?: 0
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    private suspend fun loadKuwoComments(): List<Comment> {
+        return loadKuwoCommentsWithId(songId)
+    }
+
+    private suspend fun loadKuwoCommentsWithId(id: String): List<Comment> {
+        val type = if (currentCommentTab == 0) "get_rec_comment" else "get_comment"
+        return try {
+            val response = RetrofitClient.kuwoCommentApi.getComments(
+                type = type,
+                page = commentPage,
+                rows = commentPageSize,
+                songId = id
+            )
+
+            val total = response.total ?: 0
+            withContext(Dispatchers.Main) {
+                tvCommentCount?.text = "($total)"
+            }
+
+            response.rows?.map { item ->
+                Comment(
+                    id = item.id ?: "",
+                    content = item.content,
+                    userName = item.userName ?: "未知用户",
+                    userAvatar = item.userAvatar,
+                    time = item.time,
+                    likeCount = item.likeCount?.toIntOrNull() ?: 0
+                )
+            } ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private suspend fun loadNeteaseComments(): List<Comment> {
+        return loadNeteaseCommentsWithId(songId)
+    }
+
+    private suspend fun loadNeteaseCommentsWithId(id: String): List<Comment> {
+        return try {
+            val response = if (currentCommentTab == 0) {
+                RetrofitClient.neteaseCommentApi.getHotComments(
+                    songId = id,
+                    limit = commentPageSize,
+                    offset = (commentPage - 1) * commentPageSize
+                )
+            } else {
+                RetrofitClient.neteaseCommentApi.getLatestComments(
+                    songId = id,
+                    limit = commentPageSize,
+                    offset = (commentPage - 1) * commentPageSize
+                )
+            }
+
+            val total = response.total ?: 0
+            withContext(Dispatchers.Main) {
+                tvCommentCount?.text = "($total)"
+            }
+
+            val commentList = if (currentCommentTab == 0) response.hotComments else response.comments
+            commentList?.map { item ->
+                Comment(
+                    id = item.commentId?.toString() ?: "",
+                    content = item.content,
+                    userName = item.user?.nickname ?: "未知用户",
+                    userAvatar = item.user?.avatarUrl,
+                    time = item.time,
+                    likeCount = item.likedCount ?: 0
+                )
+            } ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     private fun setupPlaybackReceiver() {
@@ -143,8 +562,6 @@ class LyricsActivity : AppCompatActivity() {
                             currentPosition = it.getLongExtra(PlayerActivity.EXTRA_CURRENT_POSITION, currentPosition)
                             duration = it.getLongExtra(PlayerActivity.EXTRA_DURATION, duration)
                             isPlaying = it.getBooleanExtra(PlayerActivity.EXTRA_IS_PLAYING, isPlaying)
-
-                            // 更新UI
                             updateProgressUI()
                             updateLyricsHighlight(currentPosition)
                         }
@@ -156,19 +573,18 @@ class LyricsActivity : AppCompatActivity() {
 
     private fun updateProgressUI() {
         if (!isTracking) {
-            binding.seekBar.max = duration.toInt()
-            binding.seekBar.progress = currentPosition.toInt()
-            binding.tvCurrentTime.text = formatTime(currentPosition)
-            binding.tvTotalTime.text = formatTime(duration)
+            seekBar.max = duration.toInt()
+            seekBar.progress = currentPosition.toInt()
+            tvCurrentTime.text = formatTime(currentPosition)
+            tvTotalTime.text = formatTime(duration)
         }
     }
 
     private fun setupSeekBar() {
-        binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) {
-                    binding.tvCurrentTime.text = formatTime(progress.toLong())
-                    // 实时发送进度更新
+                    tvCurrentTime.text = formatTime(progress.toLong())
                     val intent = Intent(PlayerActivity.ACTION_SEEK_TO).apply {
                         putExtra(PlayerActivity.EXTRA_SEEK_POSITION, progress.toLong())
                     }
@@ -182,16 +598,12 @@ class LyricsActivity : AppCompatActivity() {
 
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 isTracking = false
-                val seekPosition = binding.seekBar.progress.toLong()
-                // 发送跳转广播
+                val seekPosition = seekBar?.progress?.toLong() ?: 0
                 val intent = Intent(PlayerActivity.ACTION_SEEK_TO).apply {
                     putExtra(PlayerActivity.EXTRA_SEEK_POSITION, seekPosition)
                 }
                 LocalBroadcastManager.getInstance(this@LyricsActivity).sendBroadcast(intent)
-                
-                // 立即更新当前位置
                 currentPosition = seekPosition
-                // 立即更新歌词高亮
                 updateLyricsHighlight(seekPosition)
             }
         })
@@ -199,15 +611,12 @@ class LyricsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // 注册广播接收器
         val filter = IntentFilter().apply {
             addAction(PlayerActivity.ACTION_PLAYBACK_UPDATE)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(playbackReceiver, filter)
         lyricStylePrefs.registerOnSharedPreferenceChangeListener(lyricStyleListener)
         applyFullscreenLyricStyle()
-
-        // 请求当前播放状态
         LocalBroadcastManager.getInstance(this).sendBroadcast(Intent(ACTION_REQUEST_PLAYBACK_STATUS))
     }
 
@@ -217,7 +626,7 @@ class LyricsActivity : AppCompatActivity() {
         lyricStylePrefs.unregisterOnSharedPreferenceChangeListener(lyricStyleListener)
     }
 
-    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+    override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
 
         // 保存当前状态
@@ -226,43 +635,58 @@ class LyricsActivity : AppCompatActivity() {
         val currentPosition = this.currentPosition
         val currentDuration = this.duration
         val currentIsPlaying = this.isPlaying
+        val currentSongName = this.songName
+        val currentSongArtists = this.songArtists
+        val currentSongId = this.songId
+        val currentPlatform = this.platform
+        val currentCoverUrl = this.coverUrl
 
         // 重新加载布局
-        binding = ActivityLyricsBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        setContentView(R.layout.activity_lyrics)
 
         // 恢复状态
-        parsedLyrics = currentParsedLyrics
+        this.songName = currentSongName
+        this.songArtists = currentSongArtists
+        this.songId = currentSongId
+        this.platform = currentPlatform
+        this.coverUrl = currentCoverUrl
+        this.parsedLyrics = currentParsedLyrics
         this.currentLyricIndex = currentLyricIndex
         this.currentPosition = currentPosition
         this.duration = currentDuration
         this.isPlaying = currentIsPlaying
 
-        // 重新初始化 UI
+        // 重新初始化
+        initViews()
         setupRecyclerView()
         setupClickListeners()
         setupGestureDetector()
         setupPlaybackReceiver()
         setupSeekBar()
-        enableToolbarMarquee()
 
-        // 恢复歌词显示
+        // 恢复UI
+        tvSongName.text = songName
+        tvArtist.text = songArtists
+
+        // 恢复歌词
         lyricsAdapter.submitList(parsedLyrics.map { it.second })
         updateLyricsHighlight(currentPosition)
 
         // 恢复背景
-        val coverUrl = intent.getStringExtra("cover_url")
         loadBackground(coverUrl)
 
-        // 恢复播放状态显示
+        // 恢复进度
         updateProgressUI()
+
+        // 如果是横屏，初始化评论
+        if (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+            setupComments()
+        }
     }
 
     private fun setupRecyclerView() {
         lyricsAdapter = LyricsAdapter(
-            onLyricClick = { _ ->
-                // 按需求：单击歌词不跳转进度，只允许“长按+右侧按钮”触发跳转
-            },
+            onLyricClick = { _ -> },
             onLyricLongClick = { position ->
                 onLyricLineLongPressed(position)
             },
@@ -274,33 +698,26 @@ class LyricsActivity : AppCompatActivity() {
         )
 
         layoutManager = LinearLayoutManager(this)
-        binding.rvLyrics.layoutManager = layoutManager
-        binding.rvLyrics.adapter = lyricsAdapter
+        rvLyrics.layoutManager = layoutManager
+        rvLyrics.adapter = lyricsAdapter
+        rvLyrics.addItemDecoration(LyricsItemDecoration())
 
-        // 添加顶部和底部间距，使歌词可以滚动到中间
-        binding.rvLyrics.addItemDecoration(LyricsItemDecoration())
-
-        // 监听用户滚动事件
-        binding.rvLyrics.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+        rvLyrics.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                 super.onScrollStateChanged(recyclerView, newState)
                 when (newState) {
                     RecyclerView.SCROLL_STATE_DRAGGING -> {
-                        // 用户开始拖动
                         isUserScrolling = true
                         showLocateButton()
-                        // 取消之前的超时任务
                         userScrollTimeout?.removeCallbacksAndMessages(null)
                     }
                     RecyclerView.SCROLL_STATE_IDLE -> {
-                        // 滚动停止，设置超时后恢复自动居中
                         userScrollTimeout?.removeCallbacksAndMessages(null)
                         userScrollTimeout = android.os.Handler(android.os.Looper.getMainLooper())
                         userScrollTimeout?.postDelayed({
                             isUserScrolling = false
                             hideLocateButton()
                             hideLyricJumpButton()
-                            // 恢复居中显示当前歌词
                             if (currentLyricIndex >= 0) {
                                 scrollToCenter(currentLyricIndex)
                             }
@@ -312,20 +729,19 @@ class LyricsActivity : AppCompatActivity() {
     }
 
     private fun showLocateButton() {
-        binding.btnLocateCurrent?.visibility = View.VISIBLE
+        btnLocateCurrent?.visibility = View.VISIBLE
     }
 
     private fun hideLocateButton() {
-        binding.btnLocateCurrent?.visibility = View.GONE
+        btnLocateCurrent?.visibility = View.GONE
     }
 
     private fun setupClickListeners() {
-        binding.btnBack.setOnClickListener {
+        btnBack.setOnClickListener {
             finish()
         }
 
-        // 定位到当前播放歌词按钮
-        binding.btnLocateCurrent?.setOnClickListener {
+        btnLocateCurrent?.setOnClickListener {
             isUserScrolling = false
             hideLocateButton()
             if (currentLyricIndex >= 0) {
@@ -333,7 +749,7 @@ class LyricsActivity : AppCompatActivity() {
             }
         }
 
-        binding.btnJumpToLyric.setOnClickListener {
+        btnJumpToLyric?.setOnClickListener {
             val target = pendingLyricJumpTime
             if (target != null) {
                 seekTo(target)
@@ -356,11 +772,9 @@ class LyricsActivity : AppCompatActivity() {
                 val diffX = e2.x - (e1?.x ?: 0f)
                 val diffY = e2.y - (e1?.y ?: 0f)
 
-                // 检测右滑返回
                 if (kotlin.math.abs(diffX) > kotlin.math.abs(diffY)) {
                     if (kotlin.math.abs(diffX) > SWIPE_THRESHOLD && kotlin.math.abs(velocityX) > SWIPE_VELOCITY_THRESHOLD) {
                         if (diffX > 0) {
-                            // 右滑 - 返回
                             finish()
                             return true
                         }
@@ -370,7 +784,7 @@ class LyricsActivity : AppCompatActivity() {
             }
         })
 
-        binding.root.setOnTouchListener { _, event ->
+        findViewById<View>(android.R.id.content).setOnTouchListener { _, event ->
             gestureDetector.onTouchEvent(event)
             false
         }
@@ -378,9 +792,9 @@ class LyricsActivity : AppCompatActivity() {
 
     private fun loadSongInfo() {
         hideLyricJumpButton()
-        // 从 Intent 获取歌曲信息
-        songName = intent.getStringExtra("song_name") ?: "未知"
-        songArtists = intent.getStringExtra("song_artists") ?: "未知"
+
+        songName = intent.getStringExtra("song_name") ?: "未知歌曲"
+        songArtists = intent.getStringExtra("song_artists") ?: "未知歌手"
         coverUrl = intent.getStringExtra("cover_url")
         val lyricsText = intent.getStringExtra("lyrics")
         songId = intent.getStringExtra("song_id") ?: ""
@@ -394,39 +808,66 @@ class LyricsActivity : AppCompatActivity() {
         duration = intent.getLongExtra("duration", 0)
         isPlaying = intent.getBooleanExtra("is_playing", false)
 
-        binding.tvSongName.text = songName
-        binding.tvArtist.text = songArtists
+        // 设置歌曲信息
+        tvSongName.text = songName
+        tvArtist.text = songArtists
 
-        // 加载背景图片
-        loadBackground(coverUrl)
+        // 启用跑马灯效果
+        tvSongName.isSelected = true
+        tvArtist.isSelected = true
+
+        // 加载背景
+        if (!coverUrl.isNullOrEmpty()) {
+            loadBackground(coverUrl)
+        } else {
+            lifecycleScope.launch {
+                try {
+                    val song = com.tacke.music.data.model.Song(
+                        index = 0,
+                        id = songId,
+                        name = songName,
+                        artists = songArtists,
+                        platform = platform.name,
+                        coverUrl = coverUrl
+                    )
+                    val coverResult = SongCoverLoader.loadCover(
+                        this@LyricsActivity,
+                        song,
+                        SongCoverLoader.SourceType.PLAYLIST_DETAIL,
+                        null
+                    )
+                    if (coverResult.coverUrl != null) {
+                        coverUrl = coverResult.coverUrl
+                        loadBackground(coverUrl)
+                    }
+                } catch (e: Exception) {
+                    // 静默处理
+                }
+            }
+        }
 
         // 解析歌词
         if (!lyricsText.isNullOrEmpty()) {
             parsedLyrics = parseLyrics(lyricsText)
             if (parsedLyrics.isNotEmpty()) {
                 lyricsAdapter.submitList(parsedLyrics.map { it.second })
-                // 高亮当前播放的歌词
                 updateLyricsHighlight(currentPosition)
             } else {
                 lyricsAdapter.submitList(listOf("纯音乐，请欣赏"))
             }
         } else {
-            // 没有歌词，尝试从网络获取
             parsedLyrics = emptyList()
             lyricsAdapter.submitList(listOf("正在加载歌词..."))
             loadLyricsFromNetwork()
         }
 
-        // 初始化进度条
-        binding.seekBar.max = duration.toInt()
-        binding.seekBar.progress = currentPosition.toInt()
-        binding.tvCurrentTime.text = formatTime(currentPosition)
-        binding.tvTotalTime.text = formatTime(duration)
+        // 初始化进度
+        seekBar.max = duration.toInt()
+        seekBar.progress = currentPosition.toInt()
+        tvCurrentTime.text = formatTime(currentPosition)
+        tvTotalTime.text = formatTime(duration)
     }
 
-    /**
-     * 从网络加载歌词
-     */
     private fun loadLyricsFromNetwork() {
         if (isLoadingLyrics || songId.isEmpty()) {
             if (songId.isEmpty()) {
@@ -439,7 +880,6 @@ class LyricsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 val cachedRepository = CachedMusicRepository(this@LyricsActivity)
-                // 获取用户设置的试听音质
                 val playbackQuality = SettingsActivity.getPlaybackQuality(this@LyricsActivity)
                 val detail = withContext(Dispatchers.IO) {
                     cachedRepository.getSongDetail(
@@ -453,7 +893,6 @@ class LyricsActivity : AppCompatActivity() {
                 }
 
                 if (detail?.lyrics != null && detail.lyrics.isNotEmpty()) {
-                    // 成功获取到歌词
                     parsedLyrics = parseLyrics(detail.lyrics)
                     if (parsedLyrics.isNotEmpty()) {
                         lyricsAdapter.submitList(parsedLyrics.map { it.second })
@@ -463,7 +902,6 @@ class LyricsActivity : AppCompatActivity() {
                         lyricsAdapter.submitList(listOf("纯音乐，请欣赏"))
                     }
                 } else {
-                    // 获取歌词失败
                     lyricsAdapter.submitList(listOf("暂无歌词"))
                 }
             } catch (e: Exception) {
@@ -490,7 +928,6 @@ class LyricsActivity : AppCompatActivity() {
             currentLyricIndex = newIndex
             lyricsAdapter.setCurrentPosition(newIndex)
 
-            // 只有在用户没有手动滚动时才自动居中
             if (!isUserScrolling) {
                 scrollToCenter(newIndex)
             }
@@ -502,18 +939,15 @@ class LyricsActivity : AppCompatActivity() {
     }
 
     private fun scrollToCenter(position: Int) {
-        val layoutManager = binding.rvLyrics.layoutManager as? LinearLayoutManager ?: return
-        
-        // 计算 RecyclerView 的中心位置
-        val recyclerViewHeight = binding.rvLyrics.height
+        val layoutManager = rvLyrics.layoutManager as? LinearLayoutManager ?: return
+        val recyclerViewHeight = rvLyrics.height
         if (recyclerViewHeight <= 0) return
-        
-        // 使用 SmoothScroller 滚动到目标位置并居中
+
         val smoothScroller = object : LinearSmoothScroller(this) {
             override fun getVerticalSnapPreference(): Int {
                 return SNAP_TO_START
             }
-            
+
             override fun calculateDtToFit(
                 viewStart: Int,
                 viewEnd: Int,
@@ -521,7 +955,6 @@ class LyricsActivity : AppCompatActivity() {
                 boxEnd: Int,
                 snapPreference: Int
             ): Int {
-                // 计算将视图居中的偏移量
                 val viewHeight = viewEnd - viewStart
                 val boxHeight = boxEnd - boxStart
                 return (boxStart + boxHeight / 2) - (viewStart + viewHeight / 2)
@@ -557,12 +990,10 @@ class LyricsActivity : AppCompatActivity() {
             putExtra(PlayerActivity.EXTRA_SEEK_POSITION, time)
         }
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
-        
-        // 立即更新当前位置和高亮
         currentPosition = time
         updateLyricsHighlight(time)
-        binding.seekBar.progress = time.toInt()
-        binding.tvCurrentTime.text = formatTime(time)
+        seekBar.progress = time.toInt()
+        tvCurrentTime.text = formatTime(time)
         hideLyricJumpButton()
     }
 
@@ -571,50 +1002,38 @@ class LyricsActivity : AppCompatActivity() {
         val target = parsedLyrics[position].first
         pendingLyricJumpTime = target
         lyricsAdapter.setJumpTarget(position, formatTime(target))
-        binding.btnJumpToLyric.visibility = View.GONE
+        btnJumpToLyric?.visibility = View.GONE
     }
 
     private fun hideLyricJumpButton() {
         pendingLyricJumpTime = null
-        binding.btnJumpToLyric.visibility = View.GONE
+        btnJumpToLyric?.visibility = View.GONE
         lyricsAdapter.clearJumpTarget()
     }
 
     private fun loadBackground(coverUrl: String?) {
         val normalizedUrl = normalizeCoverUrl(coverUrl)
         if (!normalizedUrl.isNullOrEmpty()) {
-            // 加载背景图片
             Glide.with(this)
                 .load(normalizedUrl)
                 .placeholder(R.drawable.bg_default_light_cyan)
                 .error(R.drawable.bg_default_light_cyan)
-                .into(binding.ivBackground)
-            
-            // 显示背景图片
-            binding.ivBackground.visibility = View.VISIBLE
+                .into(ivBackground)
+            ivBackground.visibility = View.VISIBLE
         } else {
-            // 没有封面时隐藏背景图片
-            binding.ivBackground.visibility = View.GONE
+            ivBackground.visibility = View.GONE
         }
     }
 
-    /**
-     * 规范化封面URL
-     * 处理混合URL（远程URL + 本地路径）的情况
-     */
     private fun normalizeCoverUrl(url: String?): String? {
         if (url.isNullOrBlank()) return null
         var trimmed = url.trim()
 
-        // 检测并修复混合 URL（远程 URL + 本地路径）
-        // 例如：https://p2.music.126.net/...==//data/user/0/...
         if (trimmed.startsWith("http", ignoreCase = true)) {
             val localPathIndex = trimmed.indexOf("//data/user/0/")
             if (localPathIndex > 0) {
-                // 提取本地路径部分
                 trimmed = trimmed.substring(localPathIndex)
             } else {
-                // 检测其他可能的本地路径格式
                 val cachePathIndex = trimmed.indexOf("/data/user/0/")
                 if (cachePathIndex > 0) {
                     trimmed = trimmed.substring(cachePathIndex)
@@ -622,7 +1041,6 @@ class LyricsActivity : AppCompatActivity() {
             }
         }
 
-        // 如果是本地文件路径，去除 URL 参数（如 ?param=500y500）
         if (trimmed.startsWith("/")) {
             val queryIndex = trimmed.indexOf("?")
             if (queryIndex > 0) {

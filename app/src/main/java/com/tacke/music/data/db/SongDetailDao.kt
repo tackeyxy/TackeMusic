@@ -41,4 +41,13 @@ interface SongDetailDao {
 
     @Query("DELETE FROM song_details")
     suspend fun deleteAll()
+
+    @Query("SELECT * FROM song_details ORDER BY updatedAt DESC")
+    suspend fun getAllSongDetailsOnce(): List<SongDetailEntity>
+
+    @Query("SELECT * FROM song_details WHERE id = :songId LIMIT 1")
+    suspend fun getSongDetailOnce(songId: String): SongDetailEntity?
+
+    @Query("DELETE FROM song_details")
+    suspend fun clearAllSongDetails()
 }

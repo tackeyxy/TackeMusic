@@ -176,7 +176,9 @@ class ListCoverRepairManager private constructor(context: Context) {
             return resolveLocalSongCover(songId, name, artists)
         }
 
-        val cachedPath = CoverImageManager.getCoverPath(appContext, songId, platform)
+        // 使用小写的平台名称（与CoverImageManager缓存键一致）
+        val cachePlatform = platform.lowercase()
+        val cachedPath = CoverImageManager.getCoverPath(appContext, songId, cachePlatform)
         if (!cachedPath.isNullOrBlank()) {
             return cachedPath
         }
@@ -184,7 +186,7 @@ class ListCoverRepairManager private constructor(context: Context) {
         return CoverImageManager.downloadAndCacheCover(
             context = appContext,
             songId = songId,
-            platform = platform,
+            platform = cachePlatform,
             songName = name,
             artist = artists
         )

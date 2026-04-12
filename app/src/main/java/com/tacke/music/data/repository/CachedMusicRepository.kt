@@ -3,7 +3,7 @@ package com.tacke.music.data.repository
 import android.content.Context
 import android.util.Log
 import com.tacke.music.data.model.SongDetail
-import com.tacke.music.ui.SettingsActivity
+import com.tacke.music.ui.CacheManageActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -24,7 +24,7 @@ class CachedMusicRepository(private val context: Context) {
      * 获取缓存过期时间（天数）
      */
     private fun getCacheExpiryDays(): Int {
-        return SettingsActivity.getCacheExpiryDays(context)
+        return CacheManageActivity.getCacheExpiryDays(context)
     }
 
     /**
