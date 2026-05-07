@@ -1,11 +1,11 @@
 {
   "status": 200,
   "data": {
-    "versionCode": 2,
-    "versionName": "1.0.2",
+    "versionCode": 3,
+    "versionName": "1.0.3",
     "download_url": "https://gh-proxy.org/https://github.com/tackeyxy/TackeMusic/blob/main/apk/app-release.apk",
-    "file_size": "10.63 MB",
-    "release_notes": "1. 请先卸载原版\n2. 调整歌名滚动和通知栏显示布局 ",
-    "publish_time": "2026-03-23 11:45:00"
+    "file_size": "15.63 MB",
+    "release_notes": "1. 修复单曲循环下切换歌曲异常的问题\n2. 调整横屏模式下设置页显示不全问题\n3.新增默认180天过期时间阈值 ",
+    "publish_time": "2026-05-07 21:15:00"
   }
 }
