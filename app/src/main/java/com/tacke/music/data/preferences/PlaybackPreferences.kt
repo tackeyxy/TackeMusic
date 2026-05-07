@@ -20,6 +20,7 @@ class PlaybackPreferences(context: Context) {
         private const val KEY_CURRENT_POSITION = "current_position"
         private const val KEY_IS_PLAYING = "is_playing"
         private const val KEY_CURRENT_QUALITY = "current_quality"
+        private const val KEY_CURRENT_PLATFORM = "current_platform"
 
         // 播放列表
         private const val KEY_PLAYLIST = "playlist"
@@ -71,6 +72,11 @@ class PlaybackPreferences(context: Context) {
         get() = prefs.getString(KEY_CURRENT_QUALITY, null)
             ?: SettingsActivity.getPlaybackQuality(context)
         set(value) = prefs.edit().putString(KEY_CURRENT_QUALITY, value).apply()
+
+    // 当前平台
+    var currentPlatform: String?
+        get() = prefs.getString(KEY_CURRENT_PLATFORM, "KUWO")
+        set(value) = prefs.edit().putString(KEY_CURRENT_PLATFORM, value).apply()
 
     // 当前播放索引
     var currentIndex: Int

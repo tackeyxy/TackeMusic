@@ -25,6 +25,8 @@ import com.tacke.music.R
 import com.tacke.music.data.repository.MusicRepository
 import com.tacke.music.databinding.ActivitySettingsBinding
 import com.tacke.music.databinding.DialogDownloadPathBinding
+import com.tacke.music.recognition.RecognitionEngine
+import com.tacke.music.recognition.RecognitionEngineManager
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -205,6 +207,7 @@ class SettingsActivity : AppCompatActivity() {
         updateListenWhileCacheText()
         updateCurrentVersionText()
         updatePlayerCoverText()
+        updateRecognitionEngineText()
     }
 
     private fun updateCurrentVersionText() {
@@ -221,9 +224,42 @@ class SettingsActivity : AppCompatActivity() {
         binding.tvPlayerCoverValue.text = styleText
     }
 
+    private fun updateRecognitionEngineText() {
+        val engineManager = RecognitionEngineManager(this)
+        binding.tvRecognitionEngineValue?.text = engineManager.getCurrentEngineName()
+    }
+
+    private fun showRecognitionEngineDialog() {
+        val engineManager = RecognitionEngineManager(this)
+        val availableEngines = engineManager.getAvailableEngines()
+        val currentEngine = engineManager.currentEngine.value
+        val currentIndex = availableEngines.indexOfFirst { it.first == currentEngine }
+
+        // 检测屏幕方向
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+        // 统一使用自定义弹窗布局
+        showSelectorDialog(
+            title = "选择音乐识别引擎",
+            options = availableEngines.map {
+                SelectorOption(it.second, "")
+            },
+            selectedIndex = currentIndex,
+            isLandscape = isLandscape,
+            onSelected = { index ->
+                val selectedEngine = availableEngines[index].first
+                engineManager.switchEngine(selectedEngine)
+                updateRecognitionEngineText()
+                val engineName = availableEngines[index].second
+                Toast.makeText(this, "已切换到: $engineName", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
     override fun onResume() {
         super.onResume()
         updatePlayerCoverText()
+        updateRecognitionEngineText()
     }
 
     private fun setupClickListeners() {
@@ -249,6 +285,10 @@ class SettingsActivity : AppCompatActivity() {
 
         binding.layoutPlayerCover.setOnClickListener {
             startActivity(Intent(this, PlayerCoverSettingsActivity::class.java))
+        }
+
+        binding.layoutRecognitionEngine?.setOnClickListener {
+            showRecognitionEngineDialog()
         }
 
         binding.layoutLogViewer.setOnClickListener {
@@ -641,11 +681,10 @@ class SettingsActivity : AppCompatActivity() {
                 iconView.visibility = View.VISIBLE
             }
 
-            // 设置选中状态 - 只显示右上角勾选标记
+            // 设置选中状态 - 不显示右上角勾选标记
             val isSelected = index == selectedIndex
             optionView.isSelected = isSelected
-            optionView.findViewById<ImageView>(R.id.ivSelectedCheck).visibility =
-                if (isSelected) View.VISIBLE else View.GONE
+            optionView.findViewById<ImageView>(R.id.ivSelectedCheck).visibility = View.GONE
 
             // 点击事件
             optionView.setOnClickListener {

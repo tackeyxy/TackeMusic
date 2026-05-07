@@ -255,6 +255,51 @@
 
                 </LinearLayout>
 
+                <!-- 音乐识别引擎设置 -->
+                <LinearLayout
+                    android:id="@+id/layoutRecognitionEngine"
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_card_rounded"
+                    android:paddingHorizontal="20dp"
+                    android:layout_marginTop="12dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <ImageView
+                        android:layout_width="28dp"
+                        android:layout_height="28dp"
+                        android:src="@drawable/ic_mic"
+                        android:tint="@color/primary" />
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="16dp"
+                        android:text="音乐识别引擎"
+                        android:textSize="16sp"
+                        android:textColor="@color/text_primary" />
+
+                    <TextView
+                        android:id="@+id/tvRecognitionEngineValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Doreso识别"
+                        android:textSize="15sp"
+                        android:textColor="@color/text_secondary" />
+
+                    <ImageView
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_marginStart="8dp"
+                        android:src="@drawable/ic_chevron_right"
+                        android:tint="@color/text_hint" />
+
+                </LinearLayout>
+
             </LinearLayout>
 
             <!-- 中列：下载与缓存 -->

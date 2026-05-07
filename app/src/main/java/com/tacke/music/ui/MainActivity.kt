@@ -6,6 +6,7 @@ import android.animation.ObjectAnimator
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -15,6 +16,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -51,6 +53,12 @@ import com.tacke.music.playlist.PlaylistManager
 import com.tacke.music.util.NavigationHelper
 import com.tacke.music.service.MusicPlaybackService
 import com.tacke.music.utils.PermissionHelper
+import com.tacke.music.recognition.DoresoRecognizer
+import com.tacke.music.recognition.RecognitionEngine
+import com.tacke.music.recognition.RecognitionEngineManager
+import com.tacke.music.recognition.audio.AudioFileDecoder
+import com.tacke.music.recognition.ui.RecognitionListeningDialog
+import com.tacke.music.recognition.ui.RecognitionResultDialog
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -119,15 +127,71 @@ class MainActivity : AppCompatActivity() {
     private companion object {
         const val REQUEST_POST_NOTIFICATIONS = 2001
         const val REQUEST_PHONE_STATE = 2002
+        const val REQUEST_RECORD_AUDIO = 2003
     }
 
     private var hasPromptedNotificationSettings = false
     private var hasPromptedNotificationChannelSettings = false
 
+    // 听歌识曲相关
+    private lateinit var recognitionEngineManager: RecognitionEngineManager
+    private var recognitionListeningDialog: RecognitionListeningDialog? = null
+    private var recognitionResultDialog: RecognitionResultDialog? = null
+
+    // 音频文件选择器 - 支持常见音频格式
+    // 必须在 Activity 创建时注册，不能延迟初始化
+    private var audioFilePicker: androidx.activity.result.ActivityResultLauncher<Array<String>>? = null
+    private var audioFilePickerFallback: androidx.activity.result.ActivityResultLauncher<String>? = null
+
+    // 使用 AudioFileDecoder 中定义的格式常量
+
+    /**
+     * 检查是否为支持的音频文件
+     * 支持常用的音乐格式：MP3, M4A, AAC, FLAC, WAV, OGG, OPUS, WMA, AIFF, AU, MKA 等
+     */
+    private fun isSupportedAudioFile(uri: Uri): Boolean {
+        // 1. 检查文件扩展名
+        val fileName = getFileNameFromUri(uri)?.lowercase() ?: return true // 如果无法获取文件名，允许尝试
+        val extension = fileName.substringAfterLast(".", "")
+        if (extension.isNotEmpty() && DoresoRecognizer.isSupportedExtension(extension)) {
+            return true
+        }
+
+        // 2. 检查 MIME 类型
+        val mimeType = contentResolver.getType(uri)
+        if (mimeType != null) {
+            // 检查是否是支持的音频类型
+            if (DoresoRecognizer.isSupportedMimeType(mimeType)) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * 从 URI 获取文件名
+     */
+    private fun getFileNameFromUri(uri: Uri): String? {
+        var fileName: String? = null
+        contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val displayNameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (displayNameIndex != -1) {
+                    fileName = cursor.getString(displayNameIndex)
+                }
+            }
+        }
+        return fileName
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // 在 onCreate 中立即注册文件选择器（必须在 STARTED 之前）
+        registerAudioFilePickers()
 
         // Android 16: 适配 Edge-to-Edge 模式
         setupEdgeToEdge()
@@ -137,6 +201,7 @@ class MainActivity : AppCompatActivity() {
         favoriteRepository = FavoriteRepository(this)
         playlistManager = PlaylistManager.getInstance(this)
         playbackManager = PlaybackManager.getInstance(this)
+        recognitionEngineManager = RecognitionEngineManager(this)
         requestNotificationPermissionIfNeeded()
         ensurePlaybackNotificationAvailability()
         requestPhoneStatePermissionIfNeeded()
@@ -210,6 +275,12 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "通话状态权限已开启", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "未授予通话状态权限，来电自动暂停将不可用", Toast.LENGTH_SHORT).show()
+            }
+        } else if (requestCode == REQUEST_RECORD_AUDIO) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                startRecognition()
+            } else {
+                Toast.makeText(this, "需要录音权限才能使用听歌识曲功能", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -613,6 +684,11 @@ class MainActivity : AppCompatActivity() {
         // 音乐源选择器点击
         binding.layoutSourceSelector.setOnClickListener {
             showSourceSelectorDialog()
+        }
+
+        // 听歌识曲按钮点击
+        binding.btnRecognition?.setOnClickListener {
+            checkAndRequestAudioPermission()
         }
 
         // 横屏模式下返回按钮 - 关闭搜索列表回到推荐页
@@ -1729,6 +1805,241 @@ class MainActivity : AppCompatActivity() {
 
             // 消费掉系统栏 insets，防止子视图重复处理
             WindowInsetsCompat.CONSUMED
+        }
+    }
+
+    // ==================== 听歌识曲功能 ====================
+
+    private fun checkAndRequestAudioPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            startRecognition()
+        } else {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.RECORD_AUDIO),
+                REQUEST_RECORD_AUDIO
+            )
+        }
+    }
+
+    private fun startRecognition() {
+        // 显示识别选择弹窗
+        recognitionListeningDialog = RecognitionListeningDialog(
+            context = this,
+            onStartRecording = {
+                // 用户选择录音识别
+                recognitionListeningDialog?.startRecordingMode()
+                startAudioRecording()
+            },
+            onSelectFile = {
+                // 用户选择文件识别
+                openAudioFilePicker()
+            },
+            onCancel = {
+                // 取消识别
+                recognitionEngineManager.cancelRecognition()
+            }
+        ).apply {
+            show()
+        }
+    }
+
+    /**
+     * 开始录音识别
+     */
+    private fun startAudioRecording() {
+        Log.d("MainActivity", "开始录音识别流程")
+        lifecycleScope.launch {
+            try {
+                val engineName = recognitionEngineManager.getCurrentEngineName()
+                Log.d("MainActivity", "使用识别引擎: $engineName")
+                when (val result = recognitionEngineManager.recognizeFromRecording { progress ->
+                    Log.d("MainActivity", "识别进度: $progress")
+                    // 更新进度状态
+                    when {
+                        progress < 40 -> recognitionListeningDialog?.setStatus("正在采集音频...")
+                        progress < 70 -> recognitionListeningDialog?.setStatus("正在处理音频...")
+                        progress < 90 -> recognitionListeningDialog?.setStatus("正在识别歌曲...")
+                        else -> recognitionListeningDialog?.setStatus("正在获取结果...")
+                    }
+                }) {
+                    is RecognitionEngineManager.RecognitionResult.Success -> {
+                        Log.d("MainActivity", "识别成功: ${result.track.title} (引擎: ${result.engine})")
+                        recognitionListeningDialog?.dismiss()
+                        showRecognitionResult(result.track)
+                    }
+                    is RecognitionEngineManager.RecognitionResult.NotFound -> {
+                        Log.d("MainActivity", "识别未找到结果")
+                        recognitionListeningDialog?.dismiss()
+                        Toast.makeText(this@MainActivity, "未能识别出歌曲，请重试", Toast.LENGTH_SHORT).show()
+                    }
+                    is RecognitionEngineManager.RecognitionResult.Error -> {
+                        Log.e("MainActivity", "识别错误: ${result.message}")
+                        recognitionListeningDialog?.dismiss()
+                        Toast.makeText(this@MainActivity, "识别失败: ${result.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "识别过程异常", e)
+                recognitionListeningDialog?.dismiss()
+                Toast.makeText(this@MainActivity, "识别出错: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /**
+     * 注册音频文件选择器（必须在 onCreate 中调用）
+     */
+    private fun registerAudioFilePickers() {
+        // 主文件选择器 - OpenDocument
+        audioFilePicker = registerForActivityResult(
+            ActivityResultContracts.OpenDocument()
+        ) { uri: Uri? ->
+            uri?.let {
+                Log.d("MainActivity", "文件选择器返回 URI: $it")
+                // 检查文件扩展名
+                if (isSupportedAudioFile(it)) {
+                    startFileRecognition(it)
+                } else {
+                    Toast.makeText(this, "不支持的音频格式，请选择 MP3、FLAC、M4A、WAV、AAC 或 OGG 格式的文件", Toast.LENGTH_LONG).show()
+                }
+            } ?: run {
+                Log.d("MainActivity", "用户取消了文件选择")
+            }
+        }
+
+        // 备用文件选择器 - GetContent
+        audioFilePickerFallback = registerForActivityResult(
+            ActivityResultContracts.GetContent()
+        ) { uri: Uri? ->
+            uri?.let {
+                Log.d("MainActivity", "备用文件选择器返回 URI: $it")
+                if (isSupportedAudioFile(it)) {
+                    startFileRecognition(it)
+                } else {
+                    showUnsupportedFormatDialog()
+                }
+            } ?: run {
+                Log.d("MainActivity", "用户取消了文件选择")
+            }
+        }
+    }
+
+    /**
+     * 打开音频文件选择器
+     * 支持格式：MP3, M4A, AAC, FLAC, WAV, OGG, OPUS, WMA, AIFF, AU, SND, MKA 等
+     */
+    private fun openAudioFilePicker() {
+        // 关闭当前弹窗
+        recognitionListeningDialog?.dismiss()
+        recognitionListeningDialog = null
+
+        // 检查文件选择器是否已注册
+        if (audioFilePicker == null) {
+            Log.e("MainActivity", "文件选择器未注册")
+            Toast.makeText(this, "文件选择器未初始化，请重试", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 启动文件选择器，指定支持的音频格式
+        try {
+            // 使用 DoresoRecognizer 支持的MIME类型，添加通配符作为后备
+            val mimeTypes = DoresoRecognizer.SUPPORTED_AUDIO_TYPES.toTypedArray() + "audio/*"
+            Log.d("MainActivity", "启动文件选择器，支持格式: ${mimeTypes.joinToString()}")
+            audioFilePicker?.launch(mimeTypes)
+        } catch (e: IllegalStateException) {
+            // 如果 OpenDocument 失败，回退到 GetContent
+            Log.w("MainActivity", "OpenDocument 失败，使用备用选择器", e)
+            Toast.makeText(this, "正在使用备用文件选择器", Toast.LENGTH_SHORT).show()
+            openAudioFilePickerFallback()
+        } catch (e: Exception) {
+            Log.e("MainActivity", "启动文件选择器失败", e)
+            Toast.makeText(this, "无法启动文件选择器: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * 备用文件选择器（当 OpenDocument 不可用时）
+     */
+    private fun openAudioFilePickerFallback() {
+        audioFilePickerFallback?.launch("audio/*")
+    }
+
+    /**
+     * 显示不支持的格式提示对话框
+     */
+    private fun showUnsupportedFormatDialog() {
+        // 构建支持的格式列表
+        val formatList = listOf(
+            "MP3", "M4A", "AAC", "FLAC", "WAV",
+            "OGG", "OPUS", "WMA", "AIFF", "AU", "MKA"
+        ).joinToString(", ")
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("不支持的音频格式")
+            .setMessage("请选择以下格式的音频文件：\n\n${formatList}")
+            .setPositiveButton("确定", null)
+            .show()
+    }
+
+    /**
+     * 从音频文件开始识别
+     */
+    private fun startFileRecognition(uri: Uri) {
+        // 显示正在处理弹窗（覆盖之前的弹窗）
+        recognitionListeningDialog?.dismiss()
+        recognitionListeningDialog = RecognitionListeningDialog(
+            context = this,
+            onStartRecording = null,
+            onSelectFile = null,
+            onCancel = {
+                // 取消识别
+                recognitionEngineManager.cancelRecognition()
+            }
+        ).apply {
+            startFileProcessingMode()
+            show()
+        }
+
+        // 开始文件识别
+        lifecycleScope.launch {
+            try {
+                when (val result = recognitionEngineManager.recognizeFromFile(uri) { progress ->
+                    // 更新进度状态
+                    when {
+                        progress < 40 -> recognitionListeningDialog?.setStatus("正在准备文件...")
+                        progress < 70 -> recognitionListeningDialog?.setStatus("正在处理音频...")
+                        progress < 90 -> recognitionListeningDialog?.setStatus("正在识别歌曲...")
+                        else -> recognitionListeningDialog?.setStatus("正在获取结果...")
+                    }
+                }) {
+                    is RecognitionEngineManager.RecognitionResult.Success -> {
+                        recognitionListeningDialog?.dismiss()
+                        showRecognitionResult(result.track)
+                    }
+                    is RecognitionEngineManager.RecognitionResult.NotFound -> {
+                        recognitionListeningDialog?.dismiss()
+                        Toast.makeText(this@MainActivity, "未能识别出歌曲，请重试", Toast.LENGTH_SHORT).show()
+                    }
+                    is RecognitionEngineManager.RecognitionResult.Error -> {
+                        recognitionListeningDialog?.dismiss()
+                        Toast.makeText(this@MainActivity, "识别失败: ${result.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                recognitionListeningDialog?.dismiss()
+                Toast.makeText(this@MainActivity, "识别出错: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun showRecognitionResult(track: RecognitionEngineManager.RecognizedTrack) {
+        recognitionResultDialog = RecognitionResultDialog(this, lifecycleScope) {
+            recognitionResultDialog = null
+        }.apply {
+            showRecognitionResult(track)
         }
     }
 }

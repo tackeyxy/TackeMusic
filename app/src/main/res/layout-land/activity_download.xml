@@ -87,7 +87,7 @@
         </LinearLayout>
 
         <!-- 内容区域 -->
-        <FrameLayout
+        <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1">
@@ -100,6 +100,10 @@
                 android:paddingHorizontal="20dp"
                 android:paddingBottom="16dp"
                 android:clipToPadding="false"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
                 tools:listitem="@layout/item_playlist_song" />
 
             <!-- 空状态视图 -->
@@ -109,8 +113,11 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:gravity="center"
-                android:layout_gravity="center"
-                android:visibility="gone">
+                android:visibility="gone"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintEnd_toEndOf="parent">
 
                 <ImageView
                     android:layout_width="80dp"
@@ -130,20 +137,22 @@
 
             </LinearLayout>
 
-            <!-- 批量操作栏 - 横屏专用布局 -->
+            <!-- 批量操作栏容器 - 横屏模式下浮于列表右侧中部 -->
             <FrameLayout
                 android:id="@+id/batchActionBarContainer"
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="bottom"
-                android:layout_marginHorizontal="20dp"
-                android:layout_marginBottom="16dp">
+                android:layout_marginEnd="12dp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintVertical_bias="0.5">
 
                 <include layout="@layout/layout_batch_action_bar" />
 
             </FrameLayout>
 
-        </FrameLayout>
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
     </LinearLayout>
 

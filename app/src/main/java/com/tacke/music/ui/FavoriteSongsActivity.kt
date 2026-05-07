@@ -34,6 +34,7 @@ import com.tacke.music.databinding.ActivityPlaylistDetailBinding
 import com.tacke.music.download.DownloadManager
 import com.tacke.music.playback.PlaybackManager
 import com.tacke.music.playlist.PlaylistManager
+import com.tacke.music.util.NavigationHelper
 import com.tacke.music.utils.CoverImageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -73,6 +74,7 @@ class FavoriteSongsActivity : AppCompatActivity() {
 
         // Android 16: 适配 Edge-to-Edge 模式
         setupEdgeToEdge()
+        setupSideNavigation()
 
         favoriteRepository = FavoriteRepository(this)
         playlistRepository = PlaylistRepository(this)
@@ -1016,21 +1018,54 @@ class FavoriteSongsActivity : AppCompatActivity() {
     /**
      * Android 16: 设置 Edge-to-Edge 模式
      * 处理系统栏（状态栏和导航栏）的 insets
-     * 为状态栏占位视图设置高度，防止内容被状态栏遮挡
+     * 适配横竖屏不同布局
      */
     private fun setupEdgeToEdge() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
 
-            // 为状态栏占位视图设置高度
-            binding.statusBarPlaceholder?.layoutParams?.height = insets.top
-            binding.statusBarPlaceholder?.requestLayout()
+            // 判断当前屏幕方向
+            val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+            if (isLandscape) {
+                // 横屏模式：状态栏在左侧，为侧边导航栏设置顶部 padding
+                val sideNav = binding.root.findViewById<android.view.View>(R.id.sideNavContainer)
+                sideNav?.findViewById<android.view.View>(R.id.sideNav)?.let { navView ->
+                    navView.setPadding(navView.paddingLeft, insets.top, navView.paddingRight, navView.paddingBottom)
+                }
+            } else {
+                // 竖屏模式：状态栏在顶部，为状态栏占位视图设置高度
+                binding.statusBarPlaceholder?.layoutParams?.height = insets.top
+                binding.statusBarPlaceholder?.requestLayout()
+            }
 
             // 为底部设置 padding
-            view.updatePadding(
-                bottom = insets.bottom
-            )
+            view.updatePadding(bottom = insets.bottom)
             windowInsets
+        }
+    }
+
+    /**
+     * 设置左侧导航栏（横屏模式）
+     */
+    private fun setupSideNavigation() {
+        // 检查是否存在左侧导航栏（横屏模式）
+        val sideNavContainer = binding.root.findViewById<android.view.View>(R.id.sideNavContainer)
+        if (sideNavContainer != null) {
+            val navHelper = NavigationHelper(this)
+            navHelper.setupSideNavigation(
+                navHome = sideNavContainer.findViewById(R.id.navHome),
+                navDiscover = sideNavContainer.findViewById(R.id.navDiscover),
+                navProfile = sideNavContainer.findViewById(R.id.navProfile),
+                navSettings = sideNavContainer.findViewById(R.id.navSettings),
+                ivNavHome = sideNavContainer.findViewById(R.id.ivNavHome),
+                ivNavDiscover = sideNavContainer.findViewById(R.id.ivNavDiscover),
+                ivNavProfile = sideNavContainer.findViewById(R.id.ivNavProfile),
+                tvNavHome = sideNavContainer.findViewById(R.id.tvNavHome),
+                tvNavDiscover = sideNavContainer.findViewById(R.id.tvNavDiscover),
+                tvNavProfile = sideNavContainer.findViewById(R.id.tvNavProfile),
+                currentNavIndex = -1 // 我喜欢的页面不在主导航栏中
+            )
         }
     }
 }

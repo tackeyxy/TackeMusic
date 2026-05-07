@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="280dp"
+    android:layout_height="wrap_content"
+    android:layout_gravity="center"
+    app:cardCornerRadius="20dp"
+    app:cardElevation="12dp"
+    app:cardBackgroundColor="@color/surface">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="32dp"
+        android:gravity="center_horizontal">
+
+        <!-- 录音动画（初始隐藏，录音时显示） -->
+        <FrameLayout
+            android:id="@+id/layoutAnimation"
+            android:layout_width="120dp"
+            android:layout_height="120dp"
+            android:visibility="gone">
+
+            <!-- 外圈波纹 -->
+            <View
+                android:id="@+id/wave1"
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_recognition_wave" />
+
+            <View
+                android:id="@+id/wave2"
+                android:layout_width="100dp"
+                android:layout_height="100dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_recognition_wave" />
+
+            <View
+                android:id="@+id/wave3"
+                android:layout_width="80dp"
+                android:layout_height="80dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_recognition_wave" />
+
+            <!-- 中心图标 -->
+            <androidx.cardview.widget.CardView
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_gravity="center"
+                app:cardCornerRadius="30dp"
+                app:cardBackgroundColor="@color/primary">
+
+                <ImageView
+                    android:id="@+id/ivCenterIcon"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_mic"
+                    app:tint="@color/white" />
+
+            </androidx.cardview.widget.CardView>
+
+        </FrameLayout>
+
+        <!-- 状态文字 -->
+        <TextView
+            android:id="@+id/tvStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="听歌识曲"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/text_primary" />
+
+        <TextView
+            android:id="@+id/tvSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="请选择识别方式"
+            android:textSize="14sp"
+            android:textColor="@color/text_secondary" />
+
+        <!-- 开始录音按钮（初始显示） -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnStartRecord"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="24dp"
+            android:text="开始录音识别"
+            android:textSize="14sp"
+            android:textColor="@color/white"
+            app:backgroundTint="@color/primary"
+            app:cornerRadius="24dp"
+            app:icon="@drawable/ic_mic"
+            app:iconGravity="textStart"
+            app:iconTint="@color/white"
+            style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+
+        <!-- 选择文件按钮 -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSelectFile"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:text="选择音频文件"
+            android:textSize="14sp"
+            android:textColor="@color/primary"
+            app:backgroundTint="@color/primary_light"
+            app:cornerRadius="24dp"
+            app:icon="@drawable/ic_folder"
+            app:iconGravity="textStart"
+            app:iconTint="@color/primary"
+            style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+
+        <!-- 取消按钮 -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCancel"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:layout_marginTop="12dp"
+            android:text="取消"
+            android:textSize="14sp"
+            android:textColor="@color/text_primary"
+            app:backgroundTint="@color/background"
+            app:cornerRadius="24dp"
+            style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+
+    </LinearLayout>
+
+</androidx.cardview.widget.CardView>

@@ -870,8 +870,24 @@ class MusicPlaybackService : Service() {
 
         val playPauseIcon = if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
 
+        // 获取当前歌曲信息，用于通知点击时传递到PlayerActivity
+        val currentSong = playlistManager.getCurrentSong()
+        val currentSongId = currentSong?.id ?: playbackPreferences.currentSongId ?: ""
+        val currentSongName = currentSong?.name ?: songName
+        val currentSongArtists = currentSong?.artists ?: artist
+        val currentSongPlatform = currentSong?.platform ?: playbackPreferences.currentPlatform ?: "KUWO"
+        val currentSongDetail = currentSongId.takeIf { it.isNotEmpty() }?.let { playbackPreferences.getSongDetail(it) }
+        val currentSongCover = currentSongDetail?.cover ?: currentSong?.coverUrl
+        val currentSongLyrics = currentSongDetail?.lyrics
+
         val intent = Intent(this, PlayerActivity::class.java).apply {
             putExtra(PlayerActivity.EXTRA_LAUNCH_MODE, PlayerActivity.LAUNCH_MODE_RESTORE)
+            putExtra("song_id", currentSongId)
+            putExtra("song_name", currentSongName)
+            putExtra("song_artists", currentSongArtists)
+            putExtra("platform", currentSongPlatform)
+            putExtra("song_cover", currentSongCover)
+            putExtra("song_lyrics", currentSongLyrics)
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
@@ -890,7 +906,13 @@ class MusicPlaybackService : Service() {
             maxProgress = maxProgress,
             isIndeterminate = duration <= 0L,
             playPauseIcon = playPauseIcon,
-            uiStyle = uiStyle
+            uiStyle = uiStyle,
+            currentSongId = currentSongId,
+            currentSongName = currentSongName,
+            currentSongArtists = currentSongArtists,
+            currentSongPlatform = currentSongPlatform,
+            currentSongCover = currentSongCover,
+            currentSongLyrics = currentSongLyrics
         )
         val expandedView = createNotificationRemoteViews(
             layoutId = R.layout.notification_music_playback_expanded,
@@ -903,7 +925,13 @@ class MusicPlaybackService : Service() {
             maxProgress = maxProgress,
             isIndeterminate = duration <= 0L,
             playPauseIcon = playPauseIcon,
-            uiStyle = uiStyle
+            uiStyle = uiStyle,
+            currentSongId = currentSongId,
+            currentSongName = currentSongName,
+            currentSongArtists = currentSongArtists,
+            currentSongPlatform = currentSongPlatform,
+            currentSongCover = currentSongCover,
+            currentSongLyrics = currentSongLyrics
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -964,7 +992,13 @@ class MusicPlaybackService : Service() {
         maxProgress: Int,
         isIndeterminate: Boolean,
         playPauseIcon: Int,
-        uiStyle: NotificationUiStyle
+        uiStyle: NotificationUiStyle,
+        currentSongId: String,
+        currentSongName: String,
+        currentSongArtists: String,
+        currentSongPlatform: String,
+        currentSongCover: String?,
+        currentSongLyrics: String?
     ): RemoteViews {
         return RemoteViews(packageName, layoutId).apply {
             setTextViewText(R.id.notificationTitle, songName)
@@ -1016,6 +1050,12 @@ class MusicPlaybackService : Service() {
 
             val mainIntent = Intent(this@MusicPlaybackService, PlayerActivity::class.java).apply {
                 putExtra(PlayerActivity.EXTRA_LAUNCH_MODE, PlayerActivity.LAUNCH_MODE_RESTORE)
+                putExtra("song_id", currentSongId)
+                putExtra("song_name", currentSongName)
+                putExtra("song_artists", currentSongArtists)
+                putExtra("platform", currentSongPlatform)
+                putExtra("song_cover", currentSongCover)
+                putExtra("song_lyrics", currentSongLyrics)
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             }
             val mainPendingIntent = PendingIntent.getActivity(

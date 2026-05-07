@@ -78,6 +78,18 @@
             android:imeOptions="actionSearch"
             android:gravity="center_vertical" />
 
+        <!-- 听歌识曲按钮 -->
+        <ImageButton
+            android:id="@+id/btnRecognition"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:src="@drawable/ic_mic"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/primary"
+            android:padding="6dp"
+            android:scaleType="fitCenter"
+            android:contentDescription="听歌识曲" />
+
     </LinearLayout>
 
     <!-- 下拉刷新容器 -->

@@ -89,7 +89,8 @@ class PlaybackManager private constructor(context: Context) {
 
         // 添加到播放列表并设置为当前播放（不清空原有列表）
         playlistManager.addSong(playlistSong)
-        playlistManager.setCurrentIndex(playlistManager.getPlaylistSize() - 1)
+        val newIndex = playlistManager.getPlaylistSize() - 1
+        playlistManager.setCurrentIndex(newIndex)
 
         // 关键修复：彻底清除之前的播放状态，确保新歌曲从头开始播放
         clearPlaybackState()
@@ -97,6 +98,8 @@ class PlaybackManager private constructor(context: Context) {
         // 确保播放位置为0，新歌曲从头开始
         playbackPreferences.currentPosition = 0L
         playbackPreferences.isPlaying = false
+        // 关键修复：重新设置索引，因为 clearPlaybackState 会清除它
+        playbackPreferences.currentIndex = newIndex
 
         // 获取用户设置的试听音质
         val playbackQuality = SettingsActivity.getPlaybackQuality(appContext)
@@ -107,7 +110,8 @@ class PlaybackManager private constructor(context: Context) {
             position = 0L,
             isPlaying = true,
             quality = playbackQuality,
-            songDetail = songDetail
+            songDetail = songDetail,
+            platform = platform
         )
 
         // 再次确保位置为0
@@ -189,12 +193,15 @@ class PlaybackManager private constructor(context: Context) {
 
         // 5. 添加到播放列表
         playlistManager.addSong(playlistSong)
-        playlistManager.setCurrentIndex(playlistManager.getPlaylistSize() - 1)
+        val newIndex = playlistManager.getPlaylistSize() - 1
+        playlistManager.setCurrentIndex(newIndex)
 
-        // 6. 清除之前的播放状态
+        // 6. 清除之前的播放状态（但保留索引，因为后面会重新设置）
         clearPlaybackState()
         playbackPreferences.currentPosition = 0L
         playbackPreferences.isPlaying = false
+        // 关键修复：重新设置索引，因为 clearPlaybackState 会清除它
+        playbackPreferences.currentIndex = newIndex
 
         // 7. 保存播放状态（使用用户设置的试听音质）
         savePlaybackState(
@@ -202,7 +209,8 @@ class PlaybackManager private constructor(context: Context) {
             position = 0L,
             isPlaying = true,
             quality = playbackQuality,
-            songDetail = finalDetail
+            songDetail = finalDetail,
+            platform = platform
         )
 
         // 8. 启动播放页面（快速进入）
@@ -268,7 +276,8 @@ class PlaybackManager private constructor(context: Context) {
             position = 0L,
             isPlaying = true,
             quality = playbackQuality,
-            songDetail = songDetail
+            songDetail = songDetail,
+            platform = platform
         )
 
         // 启动播放页面
@@ -341,6 +350,10 @@ class PlaybackManager private constructor(context: Context) {
         // 确保播放位置为0，新歌曲从头开始
         playbackPreferences.currentPosition = 0L
         playbackPreferences.isPlaying = false
+        // 关键修复：重新设置索引，因为 clearPlaybackState 会清除它
+        if (songIndex != -1) {
+            playbackPreferences.currentIndex = songIndex
+        }
 
         // 获取用户设置的试听音质
         val playbackQuality = SettingsActivity.getPlaybackQuality(appContext)
@@ -351,7 +364,8 @@ class PlaybackManager private constructor(context: Context) {
             position = 0L,
             isPlaying = true,
             quality = playbackQuality,
-            songDetail = songDetail
+            songDetail = songDetail,
+            platform = platform
         )
 
         // 再次确保位置为0
@@ -466,6 +480,10 @@ class PlaybackManager private constructor(context: Context) {
         clearPlaybackState()
         playbackPreferences.currentPosition = 0L
         playbackPreferences.isPlaying = false
+        // 关键修复：重新设置索引，因为 clearPlaybackState 会清除它
+        if (songIndex != -1) {
+            playbackPreferences.currentIndex = songIndex
+        }
 
         // 7. 保存播放状态（使用用户设置的试听音质）
         val finalDetail = SongDetail(
@@ -479,7 +497,8 @@ class PlaybackManager private constructor(context: Context) {
             position = 0L,
             isPlaying = true,
             quality = playbackQuality,
-            songDetail = finalDetail
+            songDetail = finalDetail,
+            platform = platform
         )
 
         // 8. 启动播放页面
@@ -548,7 +567,8 @@ class PlaybackManager private constructor(context: Context) {
             position = 0L,
             isPlaying = true,
             quality = playbackQuality,
-            songDetail = songDetail
+            songDetail = songDetail,
+            platform = platform
         )
 
         // 再次确保位置为0
@@ -772,13 +792,15 @@ class PlaybackManager private constructor(context: Context) {
         position: Long,
         isPlaying: Boolean,
         quality: String,
-        songDetail: SongDetail? = null
+        songDetail: SongDetail? = null,
+        platform: MusicRepository.Platform? = null
     ) {
         playbackPreferences.apply {
             currentSongId = songId
             currentPosition = position
             this.isPlaying = isPlaying
             currentQuality = quality
+            this.currentPlatform = platform?.name ?: "KUWO"
         }
 
         // 同时保存完整的歌曲信息到PlaybackPreferences，用于恢复播放
@@ -938,7 +960,8 @@ class PlaybackManager private constructor(context: Context) {
                 position = 0L,
                 isPlaying = true,
                 quality = playbackQuality,
-                songDetail = detail
+                songDetail = detail,
+                platform = platform
             )
 
             // 启动播放页面
@@ -1027,7 +1050,8 @@ class PlaybackManager private constructor(context: Context) {
             position = 0L,
             isPlaying = true,
             quality = playbackQuality,
-            songDetail = finalDetail
+            songDetail = finalDetail,
+            platform = validPlatform
         )
 
         // 启动播放页面
@@ -1178,7 +1202,8 @@ class PlaybackManager private constructor(context: Context) {
             position = 0L,
             isPlaying = true,
             quality = playbackQuality,
-            songDetail = songDetail
+            songDetail = songDetail,
+            platform = platform
         )
 
         // 启动播放页面
