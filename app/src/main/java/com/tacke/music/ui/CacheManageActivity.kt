@@ -29,9 +29,9 @@ class CacheManageActivity : AppCompatActivity() {
         const val PREFS_NAME = "cache_settings"
         const val KEY_CACHE_EXPIRY_DAYS = "cache_expiry_days"
 
-        const val DEFAULT_CACHE_EXPIRY_DAYS = 30
+        const val DEFAULT_CACHE_EXPIRY_DAYS = 180
 
-        val CACHE_EXPIRY_OPTIONS = listOf(7, 15, 30, 60, 90)
+        val CACHE_EXPIRY_OPTIONS = listOf(7, 15, 30, 60, 90, 120, 150, 180)
 
         fun getCacheExpiryDays(context: Context): Int {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

@@ -684,6 +684,82 @@ class PlayerActivity : AppCompatActivity() {
             updateUIForCurrentSong()
             return true
         }
+
+        // 关键修复：如果 playlistManager 中没有当前歌曲，尝试直接从 playbackPreferences 恢复
+        // 这种情况可能发生在应用重启后，播放列表还没有加载或歌曲不在播放列表中
+        val savedSongId = playbackPreferences.currentSongId
+        val savedDetail = savedSongId?.let { playbackPreferences.getSongDetail(it) }
+
+        if (savedSongId != null && savedDetail != null) {
+            Log.d(TAG, "从 playbackPreferences 恢复歌曲信息: $savedSongId")
+
+            // 恢复歌曲信息
+            songId = savedSongId
+            songName = savedDetail.info.name
+            songArtists = savedDetail.info.artist
+            songCover = savedDetail.cover
+            songLyrics = savedDetail.lyrics
+            platform = try {
+                MusicRepository.Platform.valueOf(playbackPreferences.currentPlatform?.uppercase() ?: "KUWO")
+            } catch (e: Exception) {
+                MusicRepository.Platform.KUWO
+            }
+            currentQuality = playbackPreferences.currentQuality
+
+            // 创建 SongDetail
+            val detail = SongDetail(
+                url = savedDetail.url,
+                info = savedDetail.info,
+                cover = savedDetail.cover,
+                lyrics = savedDetail.lyrics
+            )
+            songDetail = detail
+
+            // 标记为非空状态
+            isFromEmptyState = false
+
+            // 更新UI
+            binding.tvSongName.text = songName
+            binding.tvArtist.text = songArtists
+            updateUI(detail)
+
+            // 解析封面URL
+            val resolvedCoverUrl = withContext(Dispatchers.IO) {
+                CoverUrlResolver.resolveCoverUrl(
+                    this@PlayerActivity,
+                    songCover,
+                    songId,
+                    platform.name
+                )
+            }
+            songCover = resolvedCoverUrl ?: songCover
+            loadCoverAndBackground(songCover)
+
+            // 如果播放器没有加载媒体项，加载歌曲但不播放
+            if (currentMediaItem == null) {
+                loadSongButNotPlay(detail.url, playbackPreferences.currentPosition, false)
+            }
+
+            // 更新播放控制UI
+            updateUIForCurrentSong()
+
+            // 将歌曲添加到播放列表（如果还没有）
+            val playlistSong = PlaylistSong(
+                id = songId,
+                name = songName,
+                artists = songArtists,
+                coverUrl = songCover ?: "",
+                platform = platform.name
+            )
+            playlistManager.addSong(playlistSong)
+            val newIndex = playlistManager.currentPlaylist.value.indexOfFirst { it.id == songId }
+            if (newIndex >= 0) {
+                playlistManager.setCurrentIndex(newIndex)
+            }
+
+            return true
+        }
+
         return false
     }
 
@@ -1958,23 +2034,47 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun playNextSong() {
-        val nextSong = playlistManager.next()
+        val playlist = playlistManager.currentPlaylist.value
+        val currentIndex = playlistManager.currentIndex.value
+        val playMode = playlistManager.playMode.value
+        
+        Log.d(TAG, "playNextSong: playlistSize=${playlist.size}, currentIndex=$currentIndex, playMode=$playMode")
+        if (playlist.isNotEmpty()) {
+            Log.d(TAG, "playNextSong: currentSong=${playlist[currentIndex].name}")
+        }
+        
+        // 使用nextManual()方法，在单曲循环模式下也能切换到下一首
+        val nextSong = playlistManager.nextManual()
         if (nextSong != null) {
+            Log.d(TAG, "playNextSong: switching to ${nextSong.name} (id=${nextSong.id})")
             lifecycleScope.launch {
                 loadAndPlaySong(nextSong)
             }
         } else {
+            Log.w(TAG, "playNextSong: nextManual() returned null")
             Toast.makeText(this, "播放列表为空", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun playPreviousSong() {
-        val prevSong = playlistManager.previous()
+        val playlist = playlistManager.currentPlaylist.value
+        val currentIndex = playlistManager.currentIndex.value
+        val playMode = playlistManager.playMode.value
+        
+        Log.d(TAG, "playPreviousSong: playlistSize=${playlist.size}, currentIndex=$currentIndex, playMode=$playMode")
+        if (playlist.isNotEmpty()) {
+            Log.d(TAG, "playPreviousSong: currentSong=${playlist[currentIndex].name}")
+        }
+        
+        // 使用previousManual()方法，在单曲循环模式下也能切换到上一首
+        val prevSong = playlistManager.previousManual()
         if (prevSong != null) {
+            Log.d(TAG, "playPreviousSong: switching to ${prevSong.name} (id=${prevSong.id})")
             lifecycleScope.launch {
                 loadAndPlaySong(prevSong)
             }
         } else {
+            Log.w(TAG, "playPreviousSong: previousManual() returned null")
             Toast.makeText(this, "播放列表为空", Toast.LENGTH_SHORT).show()
         }
     }
@@ -2821,10 +2921,8 @@ class PlayerActivity : AppCompatActivity() {
                 }
 
                 if (songUrl.isNotEmpty()) {
-                    // 如果已经有URL（从搜索列表播放），直接播放
-                    playSong(songUrl)
-                    hideLoadingToast()
-
+                    // 如果已经有URL（从搜索列表播放），先添加到播放列表，再播放
+                    // 关键修复：必须先添加到播放列表，否则 recordRecentPlay 无法获取当前歌曲
                     val playlistSong = PlaylistSong(
                         id = songId,
                         name = songName,
@@ -2833,6 +2931,9 @@ class PlayerActivity : AppCompatActivity() {
                         platform = persistencePlatformName()
                     )
                     playlistManager.addSong(playlistSong)
+
+                    playSong(songUrl)
+                    hideLoadingToast()
                 } else {
                     // 使用带缓存的Repository获取歌曲详情
                     // 传递 songCover 用于酷我平台的相对路径封面解析
@@ -2857,9 +2958,8 @@ class PlayerActivity : AppCompatActivity() {
                     songDetail?.let { detail ->
                         songLyrics = detail.lyrics
                         updateUI(detail)
-                        // 修复：获取歌曲详情后需要自动播放
-                        loadSongButNotPlay(detail.url, 0L, true)
 
+                        // 关键修复：先添加到播放列表，再播放，确保播放历史能正确记录
                         val playlistSong = PlaylistSong(
                             id = songId,
                             name = songName,
@@ -2868,6 +2968,12 @@ class PlayerActivity : AppCompatActivity() {
                             platform = persistencePlatformName()
                         )
                         playlistManager.addSong(playlistSong)
+
+                        // 修复：获取歌曲详情后需要自动播放
+                        loadSongButNotPlay(detail.url, 0L, true)
+
+                        // 关键修复：手动记录播放历史，因为 loadSongButNotPlay 不会调用 recordRecentPlay
+                        recordRecentPlay()
                     } ?: run {
                         Toast.makeText(this@PlayerActivity, "获取歌曲信息失败", Toast.LENGTH_SHORT).show()
                     }

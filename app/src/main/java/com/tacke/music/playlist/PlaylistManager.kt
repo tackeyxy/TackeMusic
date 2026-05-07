@@ -1,6 +1,7 @@
 package com.tacke.music.playlist
 
 import android.content.Context
+import android.util.Log
 import com.tacke.music.data.db.AppDatabase
 import com.tacke.music.data.model.PlaylistSong
 import com.tacke.music.data.model.Song
@@ -51,12 +52,41 @@ class PlaylistManager private constructor(context: Context) {
         // 从持久化存储恢复状态
         _playMode.value = playbackPreferences.playMode
         _currentIndex.value = playbackPreferences.currentIndex
+        
+        // 尝试从SharedPreferences恢复播放列表（同步方式）
+        val savedPlaylist = playbackPreferences.getPlaylist()
+        if (savedPlaylist.isNotEmpty()) {
+            _currentPlaylist.value = savedPlaylist
+            Log.d("PlaylistManager", "init: restored ${savedPlaylist.size} songs from SharedPreferences")
+            // 确保currentIndex在有效范围内
+            if (_currentIndex.value >= savedPlaylist.size) {
+                _currentIndex.value = 0
+                playbackPreferences.currentIndex = 0
+            }
+        }
     }
 
     // 加载播放列表
     suspend fun loadPlaylist() {
         val playlist = playlistSongDao.getAllSongsSync()
         _currentPlaylist.value = playlist
+        Log.d("PlaylistManager", "loadPlaylist: loaded ${playlist.size} songs from database")
+        playlist.forEachIndexed { index, song ->
+            Log.d("PlaylistManager", "  [$index] ${song.name} (id=${song.id})")
+        }
+        
+        // 修复：确保currentIndex在有效范围内
+        val savedIndex = playbackPreferences.currentIndex
+        if (playlist.isNotEmpty() && savedIndex >= playlist.size) {
+            Log.w("PlaylistManager", "loadPlaylist: savedIndex=$savedIndex is out of bounds (size=${playlist.size}), resetting to 0")
+            _currentIndex.value = 0
+            playbackPreferences.currentIndex = 0
+        } else if (playlist.isNotEmpty() && savedIndex != _currentIndex.value) {
+            Log.d("PlaylistManager", "loadPlaylist: restoring savedIndex=$savedIndex")
+            _currentIndex.value = savedIndex
+        }
+        
+        Log.d("PlaylistManager", "loadPlaylist: final currentIndex=${_currentIndex.value}")
     }
 
     // 设置播放列表
@@ -201,8 +231,10 @@ class PlaylistManager private constructor(context: Context) {
     fun setCurrentIndex(index: Int) {
         val playlist = _currentPlaylist.value
         if (playlist.isNotEmpty()) {
+            val oldIndex = _currentIndex.value
             _currentIndex.value = index.coerceIn(0, playlist.size - 1)
             playbackPreferences.currentIndex = _currentIndex.value
+            Log.d("PlaylistManager", "setCurrentIndex: $oldIndex -> ${_currentIndex.value}, song=${playlist[_currentIndex.value].name}")
         }
     }
 
@@ -214,17 +246,28 @@ class PlaylistManager private constructor(context: Context) {
     // 下一首
     fun next(): PlaylistSong? {
         val playlist = _currentPlaylist.value
-        if (playlist.isEmpty()) return null
+        val currentMode = _playMode.value
+        val currentIdx = _currentIndex.value
+        
+        Log.d("PlaylistManager", "next() called: playlistSize=${playlist.size}, currentIndex=$currentIdx, playMode=$currentMode (${getPlayModeName()})")
+        
+        if (playlist.isEmpty()) {
+            Log.w("PlaylistManager", "next() returned null: playlist is empty")
+            return null
+        }
 
         return when (_playMode.value) {
             PLAY_MODE_REPEAT_ONE -> { // 单曲循环，返回当前歌曲
+                Log.d("PlaylistManager", "next() REPEAT_ONE: returning current song at index $currentIdx")
                 getCurrentSong()
             }
             PLAY_MODE_SHUFFLE -> { // 随机播放
                 if (playlist.size == 1) {
+                    Log.d("PlaylistManager", "next() SHUFFLE: only one song, returning it")
                     playlist[0]
                 } else {
                     val randomIndex = (playlist.indices).random()
+                    Log.d("PlaylistManager", "next() SHUFFLE: random index $randomIndex (was $currentIdx)")
                     _currentIndex.value = randomIndex
                     playbackPreferences.currentIndex = randomIndex
                     playlist[randomIndex]
@@ -236,6 +279,7 @@ class PlaylistManager private constructor(context: Context) {
                 } else {
                     0 // 循环到第一首
                 }
+                Log.d("PlaylistManager", "next() REPEAT_LIST: moving from $currentIdx to $nextIndex, song=${playlist[nextIndex].name}")
                 _currentIndex.value = nextIndex
                 playbackPreferences.currentIndex = nextIndex
                 playlist[nextIndex]
@@ -244,8 +288,10 @@ class PlaylistManager private constructor(context: Context) {
                 val nextIndex = if (_currentIndex.value + 1 < playlist.size) {
                     _currentIndex.value + 1
                 } else {
+                    Log.d("PlaylistManager", "next() SEQUENTIAL: reached end of playlist, returning null")
                     return null // 顺序播放不循环，返回null
                 }
+                Log.d("PlaylistManager", "next() SEQUENTIAL: moving from $currentIdx to $nextIndex, song=${playlist[nextIndex].name}")
                 _currentIndex.value = nextIndex
                 playbackPreferences.currentIndex = nextIndex
                 playlist[nextIndex]
@@ -253,20 +299,31 @@ class PlaylistManager private constructor(context: Context) {
         }
     }
 
-    // 上一首
+    // 上一首（自动播放结束调用）
     fun previous(): PlaylistSong? {
         val playlist = _currentPlaylist.value
-        if (playlist.isEmpty()) return null
+        val currentMode = _playMode.value
+        val currentIdx = _currentIndex.value
+        
+        Log.d("PlaylistManager", "previous() called: playlistSize=${playlist.size}, currentIndex=$currentIdx, playMode=$currentMode (${getPlayModeName()})")
+        
+        if (playlist.isEmpty()) {
+            Log.w("PlaylistManager", "previous() returned null: playlist is empty")
+            return null
+        }
 
         return when (_playMode.value) {
             PLAY_MODE_REPEAT_ONE -> { // 单曲循环，返回当前歌曲
+                Log.d("PlaylistManager", "previous() REPEAT_ONE: returning current song at index $currentIdx")
                 getCurrentSong()
             }
             PLAY_MODE_SHUFFLE -> { // 随机播放
                 if (playlist.size == 1) {
+                    Log.d("PlaylistManager", "previous() SHUFFLE: only one song, returning it")
                     playlist[0]
                 } else {
                     val randomIndex = (playlist.indices).random()
+                    Log.d("PlaylistManager", "previous() SHUFFLE: random index $randomIndex (was $currentIdx)")
                     _currentIndex.value = randomIndex
                     playbackPreferences.currentIndex = randomIndex
                     playlist[randomIndex]
@@ -278,6 +335,7 @@ class PlaylistManager private constructor(context: Context) {
                 } else {
                     playlist.size - 1 // 循环到最后一首
                 }
+                Log.d("PlaylistManager", "previous() REPEAT_LIST: moving from $currentIdx to $prevIndex, song=${playlist[prevIndex].name}")
                 _currentIndex.value = prevIndex
                 playbackPreferences.currentIndex = prevIndex
                 playlist[prevIndex]
@@ -286,8 +344,90 @@ class PlaylistManager private constructor(context: Context) {
                 val prevIndex = if (_currentIndex.value - 1 >= 0) {
                     _currentIndex.value - 1
                 } else {
+                    Log.d("PlaylistManager", "previous() SEQUENTIAL: reached start of playlist, returning null")
                     return null // 顺序播放不循环，返回null
                 }
+                Log.d("PlaylistManager", "previous() SEQUENTIAL: moving from $currentIdx to $prevIndex, song=${playlist[prevIndex].name}")
+                _currentIndex.value = prevIndex
+                playbackPreferences.currentIndex = prevIndex
+                playlist[prevIndex]
+            }
+        }
+    }
+    
+    // 手动切换到下一首（按钮点击调用）- 单曲循环模式下也能切换
+    fun nextManual(): PlaylistSong? {
+        val playlist = _currentPlaylist.value
+        val currentIdx = _currentIndex.value
+        
+        Log.d("PlaylistManager", "nextManual() called: playlistSize=${playlist.size}, currentIndex=$currentIdx, playMode=${_playMode.value}")
+        
+        if (playlist.isEmpty()) {
+            Log.w("PlaylistManager", "nextManual() returned null: playlist is empty")
+            return null
+        }
+
+        // 手动切换时，即使是单曲循环也切换到下一首
+        return when (_playMode.value) {
+            PLAY_MODE_SHUFFLE -> { // 随机播放
+                if (playlist.size == 1) {
+                    Log.d("PlaylistManager", "nextManual() SHUFFLE: only one song, returning it")
+                    playlist[0]
+                } else {
+                    val randomIndex = (playlist.indices).random()
+                    Log.d("PlaylistManager", "nextManual() SHUFFLE: random index $randomIndex (was $currentIdx)")
+                    _currentIndex.value = randomIndex
+                    playbackPreferences.currentIndex = randomIndex
+                    playlist[randomIndex]
+                }
+            }
+            else -> { // 单曲循环、列表循环、顺序播放都按列表循环处理
+                val nextIndex = if (_currentIndex.value + 1 < playlist.size) {
+                    _currentIndex.value + 1
+                } else {
+                    0 // 循环到第一首
+                }
+                Log.d("PlaylistManager", "nextManual(): moving from $currentIdx to $nextIndex, song=${playlist[nextIndex].name}")
+                _currentIndex.value = nextIndex
+                playbackPreferences.currentIndex = nextIndex
+                playlist[nextIndex]
+            }
+        }
+    }
+    
+    // 手动切换到上一首（按钮点击调用）- 单曲循环模式下也能切换
+    fun previousManual(): PlaylistSong? {
+        val playlist = _currentPlaylist.value
+        val currentIdx = _currentIndex.value
+        
+        Log.d("PlaylistManager", "previousManual() called: playlistSize=${playlist.size}, currentIndex=$currentIdx, playMode=${_playMode.value}")
+        
+        if (playlist.isEmpty()) {
+            Log.w("PlaylistManager", "previousManual() returned null: playlist is empty")
+            return null
+        }
+
+        // 手动切换时，即使是单曲循环也切换到上一首
+        return when (_playMode.value) {
+            PLAY_MODE_SHUFFLE -> { // 随机播放
+                if (playlist.size == 1) {
+                    Log.d("PlaylistManager", "previousManual() SHUFFLE: only one song, returning it")
+                    playlist[0]
+                } else {
+                    val randomIndex = (playlist.indices).random()
+                    Log.d("PlaylistManager", "previousManual() SHUFFLE: random index $randomIndex (was $currentIdx)")
+                    _currentIndex.value = randomIndex
+                    playbackPreferences.currentIndex = randomIndex
+                    playlist[randomIndex]
+                }
+            }
+            else -> { // 单曲循环、列表循环、顺序播放都按列表循环处理
+                val prevIndex = if (_currentIndex.value - 1 >= 0) {
+                    _currentIndex.value - 1
+                } else {
+                    playlist.size - 1 // 循环到最后一首
+                }
+                Log.d("PlaylistManager", "previousManual(): moving from $currentIdx to $prevIndex, song=${playlist[prevIndex].name}")
                 _currentIndex.value = prevIndex
                 playbackPreferences.currentIndex = prevIndex
                 playlist[prevIndex]

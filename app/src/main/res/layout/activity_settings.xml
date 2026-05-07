@@ -45,12 +45,18 @@
 
     </LinearLayout>
 
-    <!-- 设置选项列表 -->
-    <LinearLayout
+    <!-- 设置选项列表 - 使用ScrollView支持滚动 -->
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp">
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
 
         <!-- 默认音源设置 -->
         <LinearLayout
@@ -166,6 +172,51 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="旋转圆形"
+                android:textSize="14sp"
+                android:textColor="@color/text_secondary" />
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_chevron_right"
+                android:tint="@color/text_hint" />
+
+        </LinearLayout>
+
+        <!-- 音乐识别引擎设置 -->
+        <LinearLayout
+            android:id="@+id/layoutRecognitionEngine"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/bg_card_rounded"
+            android:paddingHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_mic"
+                android:tint="@color/primary" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:text="音乐识别引擎"
+                android:textSize="15sp"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                android:id="@+id/tvRecognitionEngineValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Doreso识别"
                 android:textSize="14sp"
                 android:textColor="@color/text_secondary" />
 
@@ -554,6 +605,8 @@
 
         </LinearLayout>
 
-    </LinearLayout>
+        </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
 
 </LinearLayout>
